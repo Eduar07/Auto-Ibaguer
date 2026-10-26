@@ -4,11 +4,12 @@ Aunque el código tenga un error, PostgreSQL rechaza estos cambios. Cada prueba
 comprueba además que el rechazo venga de la regla correcta.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.bot.tablas import SesionBot
 from app.catalogo.tablas import ServicioPrecio
 from app.clientes.tablas import Cliente
 from app.integraciones.tablas import MensajeEntrante
@@ -166,6 +167,35 @@ def test_un_solo_precio_vigente_por_servicio_y_vehiculo(sesion: Session):
         sesion.add(precio(45_000, activo=True))
     # Un precio viejo (inactivo) sí se puede guardar como historia.
     sesion.add(precio(35_000, activo=False))
+    sesion.flush()
+
+
+def nueva_sesion_bot(telefono: str, cliente_id: int | None = None) -> SesionBot:
+    return SesionBot(
+        telefono=telefono,
+        cliente_id=cliente_id,
+        paso_actual="menu",
+        expira_en=datetime.now(UTC) + timedelta(minutes=30),
+    )
+
+
+def test_un_numero_tiene_una_sola_sesion_con_el_bot(sesion: Session):
+    sesion.add(nueva_sesion_bot("573001112233"))
+    sesion.flush()
+    with debe_rechazar(sesion, "uq_sesion_bot_telefono"):
+        sesion.add(nueva_sesion_bot("573001112233"))
+
+
+def test_un_cliente_tiene_una_sola_sesion_con_el_bot(sesion: Session):
+    cliente = nuevo_cliente(sesion)
+    sesion.add(nueva_sesion_bot("573001112233", cliente.id))
+    sesion.flush()
+    with debe_rechazar(sesion, "uq_sesion_bot_cliente_id"):
+        sesion.add(nueva_sesion_bot("573004445566", cliente.id))
+
+
+def test_varias_sesiones_sin_cliente_mientras_no_aceptan_el_aviso(sesion: Session):
+    sesion.add_all([nueva_sesion_bot("573001112233"), nueva_sesion_bot("573004445566")])
     sesion.flush()
 
 

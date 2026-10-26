@@ -155,6 +155,7 @@ def upgrade() -> None:
             ["cliente_id"], ["cliente.id"], name=op.f("fk_sesion_bot_cliente_id_cliente")
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_sesion_bot")),
+        sa.UniqueConstraint("cliente_id", name=op.f("uq_sesion_bot_cliente_id")),
         sa.UniqueConstraint("telefono", name=op.f("uq_sesion_bot_telefono")),
     )
     op.create_table(

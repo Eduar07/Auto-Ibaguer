@@ -23,8 +23,9 @@ class SesionBot(Base):
 
     id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
     telefono: Mapped[str] = mapped_column(String(15), unique=True)
-    # Vacío mientras la persona no ha aceptado el aviso de datos.
-    cliente_id: Mapped[int | None] = mapped_column(ForeignKey("cliente.id"))
+    # Vacío mientras la persona no ha aceptado el aviso de datos. Un cliente tiene una sola
+    # sesión: si dos números quedaran apuntando al mismo cliente, la base lo rechaza.
+    cliente_id: Mapped[int | None] = mapped_column(ForeignKey("cliente.id"), unique=True)
     paso_actual: Mapped[str] = mapped_column(String(40))
     # Lo que el cliente va respondiendo antes de confirmar (vehículo, placa, servicio...).
     datos_temporales: Mapped[dict[str, Any]] = mapped_column(

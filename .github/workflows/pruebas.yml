@@ -1,0 +1,59 @@
+# Cada vez que se abre o actualiza un pull request (y cada vez que algo entra a main),
+# GitHub prende un PostgreSQL de verdad, instala el proyecto y corre todas las pruebas.
+# Si algo falla, el pull request queda en rojo y no se debe unir.
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: auto
+          POSTGRES_PASSWORD: auto
+          POSTGRES_DB: auto_ibaguer
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U auto -d auto_ibaguer"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+psycopg://auto:auto@localhost:5433/auto_ibaguer
+      TEST_DATABASE_URL: postgresql+psycopg://auto:auto@localhost:5433/auto_ibaguer_pruebas
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Instalar Python y dependencias
+        run: uv sync --locked
+
+      - name: Revisar el estilo del código
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Correr las pruebas
+        run: uv run pytest

@@ -1,0 +1,16 @@
+# Entorno de Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Claves y configuración local: NUNCA se suben a GitHub
+.env
+
+# Cachés de herramientas
+.pytest_cache/
+.ruff_cache/
+
+# Editores y sistema
+.vscode/
+.idea/
+.DS_Store

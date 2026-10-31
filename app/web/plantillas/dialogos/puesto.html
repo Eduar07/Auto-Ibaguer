@@ -1,0 +1,29 @@
+{% import "_iconos.html" as iconos %}
+{% import "_partes.html" as partes %}
+<form class="dialogo__caja" hx-post="/turnos/{{ turno.id }}/puesto" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button">
+  <input type="hidden" name="dialogo" value="1">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver a la fila</button>
+    <h2 id="dialogo-titulo">Pasar <span class="numero">{{ turno.numero }}</span> a un puesto</h2>
+    <p>{{ turno.nombre }} · {{ partes.vehiculo(turno) }} · {{ partes.servicio_y_precio(turno) }}</p>
+  </div>
+
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    {% if libres %}
+    <p class="etiqueta" id="puestos-libres">Puestos libres</p>
+    <div class="puestos-libres" role="group" aria-labelledby="puestos-libres">
+      {% for puesto in libres %}
+      <button type="submit" class="boton" name="puesto_id" value="{{ puesto.id }}">{{ puesto.nombre }}</button>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p>Ya no hay puestos libres en esta fila. Espera a que uno quede listo.</p>
+    {% endif %}
+  </div>
+
+  <div class="dialogo__pie">
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

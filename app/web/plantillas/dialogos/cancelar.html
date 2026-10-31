@@ -1,0 +1,29 @@
+{% import "_iconos.html" as iconos %}
+{% import "_partes.html" as partes %}
+{% set t = turno %}
+<form class="dialogo__caja" hx-post="/turnos/{{ t.id }}/cancelar" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver a la fila</button>
+    <h2 id="dialogo-titulo">Cancelar turno <span class="numero">{{ t.numero }}</span></h2>
+    <p>{{ t.nombre }} · {{ partes.vehiculo(t) }} · {{ nombre_del_estado[t.estado] }}</p>
+  </div>
+
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <p>El turno sale de la fila y los que siguen avanzan. No se puede deshacer.</p>
+    {% if t.por_whatsapp %}
+    <p class="nota nota--suelta">{{ iconos.icono("info", 18) }}<span>Al cliente no le llega ningún mensaje. Si pidió el turno por WhatsApp y no está en el local, avísale tú.</span></p>
+    {% endif %}
+    <div class="campo">
+      <label for="motivo">Motivo (opcional)</label>
+      <input id="motivo" name="motivo" value="{{ motivo or '' }}" maxlength="200"
+             placeholder="Ej.: se fue sin lavar, avisó que no viene">
+    </div>
+  </div>
+
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande boton--peligro">Sí, cancelar el turno</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>No, volver a la fila</button>
+  </div>
+</form>

@@ -9,7 +9,7 @@ el turno, en ese orden, para que dos operaciones nunca se queden esperándose en
 from collections.abc import Iterable
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.catalogo.datos_iniciales import DURACION_ESTIMADA_MIN
@@ -19,10 +19,22 @@ from app.turnos.errores import TurnoNoExiste
 from app.turnos.estados import ESTADOS_ACTIVOS, ESTADOS_EN_ESPERA, EstadoTurno
 from app.turnos.tablas import Turno
 
+# Canal de PostgreSQL por el que se avisa que una fila cambió. El dashboard lo escucha
+# para actualizarse solo (app.web.en_vivo).
+CANAL_DE_CAMBIOS = "fila_cambio"
+
 
 def bloquear_fila(sesion: Session, fila_id: int) -> Fila:
-    """Bloquea la fila hasta el commit: los demás cambios a esa fila esperan su turno."""
-    return sesion.execute(select(Fila).where(Fila.id == fila_id).with_for_update()).scalar_one()
+    """Bloquea la fila hasta el commit: los demás cambios a esa fila esperan su turno.
+
+    También deja anotado el aviso de que la fila cambió. PostgreSQL solo lo entrega si
+    el cambio se confirma (commit): si algo falla y se deshace, nadie se entera.
+    """
+    fila = sesion.execute(select(Fila).where(Fila.id == fila_id).with_for_update()).scalar_one()
+    sesion.execute(
+        text("SELECT pg_notify(:canal, :fila)"), {"canal": CANAL_DE_CAMBIOS, "fila": str(fila_id)}
+    )
+    return fila
 
 
 def bloquear_turno(sesion: Session, turno_id: int) -> Turno:

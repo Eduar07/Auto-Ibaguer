@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% import "_iconos.html" as iconos %}
+
+{% block titulo %}Entrar · Auto Ibaguer{% endblock %}
+
+{% block cuerpo %}
+<div class="pagina-entrar">
+  <header class="encabezado">
+    <div class="encabezado__contenido">
+      <span class="marca">{{ iconos.icono("gota", 28) }}<span class="marca__nombre">Auto Ibaguer</span></span>
+    </div>
+  </header>
+
+  <main class="entrar">
+    <div class="entrar__titulo">
+      <h1>Entrar al dashboard</h1>
+      <p class="suave">La fila en vivo y los cobros del lavadero.</p>
+    </div>
+
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+    <form method="post" action="/entrar" class="entrar__formulario">
+      <div class="campo">
+        <label for="usuario">Usuario</label>
+        <input id="usuario" name="usuario" value="{{ usuario or '' }}" required
+               autocomplete="username" autocapitalize="none" spellcheck="false"
+               {% if not usuario %}autofocus{% endif %}>
+      </div>
+      <div class="campo">
+        <label for="clave">Contraseña</label>
+        <input id="clave" name="clave" type="password" required
+               autocomplete="current-password" {% if usuario %}autofocus{% endif %}>
+      </div>
+      <button class="boton boton--grande" type="submit">Entrar</button>
+    </form>
+
+    <p class="ayuda">¿Olvidaste la contraseña? En el computador donde está el sistema, corre
+      <code>uv run auto-ibaguer crear-admin --usuario tu-usuario</code> y escribe una nueva.</p>
+  </main>
+</div>
+{% endblock %}

@@ -155,7 +155,9 @@ Es como en Java separar el dominio, los `@Service` y los repositorios: el bot y 
 | `permission denied ... docker.sock` | `sudo usermod -aG docker $USER`, luego en PowerShell `wsl --shutdown` y abre Ubuntu otra vez. |
 | `docker: 'compose' is not a docker command` | Instala el complemento: `sudo apt install docker-compose-plugin` |
 | `port is already allocated` (5433) | Otro programa usa ese puerto. Cambia `5433` en `docker-compose.yml` y en `.env`. |
-| `connection refused` al correr el servidor o las pruebas | PostgreSQL está apagado: `docker compose up -d` |
+| `No hay conexión con PostgreSQL`, `connection refused` o `server closed the connection unexpectedly` | PostgreSQL está apagado. Enciéndelo con `docker compose up -d` y espera a que `docker compose ps` diga `(healthy)`. |
+| `docker compose ps` dice `Restarting` o `Exited` | La base no logra arrancar: mira por qué con `docker compose logs postgres --tail 30`. |
+| `Cannot connect to the Docker daemon` | Docker está apagado: abre Docker Desktop o, si lo instalaste dentro de Ubuntu, `sudo service docker start`. |
 
 ## Seguridad
 

@@ -5,6 +5,9 @@ services:
   postgres:
     image: postgres:17-alpine
     container_name: auto-ibaguer-postgres
+    # Se enciende sola cada vez que arranca Docker (por ejemplo, después de reiniciar el
+    # computador), salvo que la apagues tú con: docker compose stop
+    restart: unless-stopped
     environment:
       POSTGRES_USER: auto
       POSTGRES_PASSWORD: auto

@@ -17,7 +17,12 @@ def _en_el_servidor(url: str, *ordenes: str) -> None:
     # Seguro contra accidentes: nunca tocar una base que no sea de pruebas.
     if "prueba" not in nombre:
         raise RuntimeError(f"La base de pruebas debe tener 'prueba' en el nombre: '{nombre}'")
-    servidor = create_engine(destino.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    servidor = create_engine(
+        destino.set(database="postgres"),
+        isolation_level="AUTOCOMMIT",
+        # Si la base está apagada, mejor saberlo en 5 segundos que esperar minutos.
+        connect_args={"connect_timeout": 5},
+    )
     try:
         with servidor.connect() as conexion:
             for orden in ordenes:

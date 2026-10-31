@@ -11,6 +11,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.catalogo.datos_iniciales import cargar_datos_iniciales
@@ -20,6 +21,12 @@ from app.web.administradores import guardar_administrador
 RAIZ_DEL_PROYECTO = Path(__file__).resolve().parent.parent
 
 NOMBRES_PARA_MOSTRAR = {"tipos_de_vehiculo": "tipos de vehículo", "parametros": "parámetros"}
+
+MENSAJE_SIN_BASE = (
+    "No hay conexión con PostgreSQL. Lo más probable es que Docker o la base estén apagados.\n"
+    "Enciéndela con: docker compose up -d\n"
+    "y revisa que diga (healthy) con: docker compose ps"
+)
 
 
 def configuracion_alembic(url: str | None = None, configurar_logs: bool = True) -> Config:
@@ -81,9 +88,13 @@ def main(argv: list[str] | None = None) -> int:
     admin.add_argument("--usuario", required=True, help="Nombre de usuario, por ejemplo: eduar")
 
     argumentos = lector.parse_args(argv)
-    if argumentos.comando == "preparar-base":
-        return preparar_base()
-    return crear_admin(argumentos.usuario)
+    try:
+        if argumentos.comando == "preparar-base":
+            return preparar_base()
+        return crear_admin(argumentos.usuario)
+    except OperationalError:
+        print(MENSAJE_SIN_BASE, file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

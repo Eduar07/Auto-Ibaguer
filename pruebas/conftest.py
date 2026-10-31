@@ -9,17 +9,23 @@ from collections.abc import Iterator
 
 import pytest
 from sqlalchemy import Connection, Engine, create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.catalogo.datos_iniciales import cargar_datos_iniciales
-from app.cli import migrar
+from app.cli import MENSAJE_SIN_BASE, migrar
 from pruebas.base_de_pruebas import URL_PRUEBAS, recrear_base
 
 
 @pytest.fixture(scope="session")
 def motor() -> Iterator[Engine]:
     """Base de pruebas con todas las tablas y los datos de Auto Ibaguer."""
-    recrear_base(URL_PRUEBAS)
+    try:
+        recrear_base(URL_PRUEBAS)
+    except OperationalError:
+        # Sin PostgreSQL, cada prueba que lo necesita fallaría con el mismo error largo.
+        # Mejor parar de una vez con un mensaje claro.
+        pytest.exit(MENSAJE_SIN_BASE + "\nDespués vuelve a correr: uv run pytest", returncode=1)
     migrar(URL_PRUEBAS, configurar_logs=False)
     motor = create_engine(URL_PRUEBAS)
     with Session(motor) as sesion, sesion.begin():

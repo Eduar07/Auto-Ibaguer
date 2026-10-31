@@ -2,10 +2,23 @@
 
 import pytest
 from sqlalchemy import Connection, select
+from sqlalchemy.exc import OperationalError
 
 from app import cli
 from app.web.claves import verificar_clave
 from app.web.tablas import Administrador
+
+
+def test_sin_base_de_datos_el_comando_dice_como_encenderla(monkeypatch, capsys):
+    def base_apagada():
+        raise OperationalError("SELECT 1", {}, Exception("server closed the connection"))
+
+    monkeypatch.setattr(cli, "migrar", base_apagada)
+
+    assert cli.main(["preparar-base"]) == 1
+    error = capsys.readouterr().err
+    assert "No hay conexión con PostgreSQL" in error
+    assert "docker compose up -d" in error
 
 
 @pytest.fixture

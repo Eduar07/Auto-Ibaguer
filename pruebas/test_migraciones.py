@@ -1,5 +1,6 @@
 """Las migraciones suben y bajan sin errores, en una base aparte."""
 
+import pytest
 from alembic import command
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import make_url
@@ -8,6 +9,8 @@ from app.cli import configuracion_alembic, migrar
 from pruebas.base_de_pruebas import URL_PRUEBAS, borrar_base, recrear_base
 
 
+# Pide la base de pruebas primero: si PostgreSQL está apagado, se detiene con un mensaje claro.
+@pytest.mark.usefixtures("motor")
 def test_la_migracion_sube_baja_y_vuelve_a_subir():
     url = (
         make_url(URL_PRUEBAS)

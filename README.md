@@ -12,8 +12,8 @@ Sistema de turnos para el lavadero de carros y motos **Auto Ibaguer**:
 |---|---|
 | 1 · Todo conectado | Estructura del proyecto y PostgreSQL listos. WhatsApp pendiente hasta tener el número del bot. |
 | 2 · Base de datos | Listo: 16 tablas, reglas dentro de la base y datos iniciales del lavadero. |
-| 3 · Reglas del negocio | Sigue. |
-| 4 · Dashboard | — |
+| 3 · Reglas del negocio | Listo: la fila completa (pedir turno, llamados, avisos, gracia, puestos, cobro y correcciones), con sus pruebas y sin choques. |
+| 4 · Dashboard | Sigue. |
 | 5 · Bot con botones | — |
 | 6 · Reloj | — |
 | 7 · Gemini | — |
@@ -92,20 +92,34 @@ GitHub corre lo mismo en cada pull request (pestaña **Actions**). Si sale en ro
 ```text
 app/
 ├── catalogo/       filas, puestos, tipos de vehículo, servicios, precios y parámetros
-├── clientes/       clientes, vehículos y consultas
-├── turnos/         turnos, historial de estados y pagos
+├── clientes/       clientes, vehículos, placas y teléfonos
+├── turnos/         la fila: turnos, llamados, avisos, puestos, historial y cobro
 ├── bot/            conversación de WhatsApp
-├── integraciones/  mensajes que entran y salen de WhatsApp
+├── integraciones/  mensajes que entran y salen de WhatsApp (bandejas)
 ├── web/            servidor, dashboard y administradores
 ├── db/             conexión a la base de datos
 ├── cli.py          comandos de la terminal (preparar-base, crear-admin)
 ├── config.py       configuración técnica, leída del archivo .env
+├── errores.py      el error base de las reglas del negocio
+├── formato.py      pesos y horas a la colombiana ($40.000, 5:30 a.m.)
+├── tiempo.py       la hora del sistema y la hora de Bogotá
 └── main.py         servidor web
 migraciones/        cambios de la base de datos, numerados y en orden (Alembic)
 pruebas/            pruebas automáticas
 ```
 
-Cada módulo tiene su archivo `tablas.py` con sus tablas.
+Cada módulo se arma por capas, de la más pura a la que toca la base de datos. En `turnos/`:
+
+| Archivo | Qué tiene | Se prueba |
+|---|---|---|
+| `estados.py` | Estados del turno y demás listas cerradas | — |
+| `reglas.py` | Las reglas puras: quién se llama, quién recibe aviso, cuánto se espera, qué cambios se permiten | Sin base de datos, en milisegundos |
+| `casos_de_uso.py` | Lo que hacen el bot, el dashboard y el reloj: pedir turno, pasar a puesto, cobrar... | Con PostgreSQL |
+| `consultas.py` | Lo que se pregunta sin cambiar nada: cómo va la fila, "mi turno" | Con PostgreSQL |
+| `datos.py` | Lecturas y bloqueos de la base que comparten los casos de uso | Con PostgreSQL |
+| `tablas.py` | Las tablas | Con PostgreSQL |
+
+Es como en Java separar el dominio, los `@Service` y los repositorios: el bot y el dashboard solo llaman a los casos de uso, así cada regla vive en un solo lugar.
 
 ## Dónde se cambia cada cosa
 
@@ -118,8 +132,8 @@ Cada módulo tiene su archivo `tablas.py` con sus tablas.
 ## Cambiar una tabla
 
 1. Cambia el modelo en el `tablas.py` del módulo.
-2. Crea la migración con el siguiente número:
-   `uv run alembic revision --autogenerate --rev-id 0002 -m "que cambio"`
+2. Crea la migración con el siguiente número (la última es la 0002):
+   `uv run alembic revision --autogenerate --rev-id 0003 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
 4. Aplícala: `uv run auto-ibaguer preparar-base`
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.

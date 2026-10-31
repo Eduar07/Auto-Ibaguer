@@ -1,7 +1,6 @@
 """Tablas de turnos, historial de estados y pagos."""
 
 from datetime import date, datetime
-from enum import StrEnum
 
 from sqlalchemy import (
     BigInteger,
@@ -21,51 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, lista_cerrada
-
-
-class EstadoTurno(StrEnum):
-    """Los estados posibles de un turno. La base de datos rechaza cualquier otro."""
-
-    EN_FILA = "en_fila"
-    LLAMADO = "llamado"
-    LLEGO = "llego"
-    EN_LAVADO = "en_lavado"
-    LISTO = "listo"
-    PAGADO = "pagado"
-    CANCELADO = "cancelado"
-    NO_LLEGO = "no_llego"
-
-
-# Un turno en estos estados todavía está "vivo" en el lavadero.
-ESTADOS_ACTIVOS = frozenset(
-    {
-        EstadoTurno.EN_FILA,
-        EstadoTurno.LLAMADO,
-        EstadoTurno.LLEGO,
-        EstadoTurno.EN_LAVADO,
-        EstadoTurno.LISTO,
-    }
-)
-
-
-class OrigenTurno(StrEnum):
-    WHATSAPP = "whatsapp"
-    DASHBOARD = "dashboard"
-
-
-class Actor(StrEnum):
-    """Quién hizo un cambio de estado."""
-
-    CLIENTE = "cliente"
-    ADMINISTRADOR = "administrador"
-    SISTEMA = "sistema"
-
-
-class MedioPago(StrEnum):
-    EFECTIVO = "efectivo"
-    NEQUI = "nequi"
-    DAVIPLATA = "daviplata"
-    TARJETA = "tarjeta"
+from app.turnos.estados import Actor, EstadoTurno, MedioPago, OrigenTurno
 
 
 class Turno(Base):
@@ -85,6 +40,9 @@ class Turno(Base):
             "estado <> 'en_lavado' OR puesto_id IS NOT NULL", name="en_lavado_con_puesto"
         ),
         CheckConstraint(
+            "estado <> 'en_lavado' OR en_lavado_desde IS NOT NULL", name="en_lavado_con_hora"
+        ),
+        CheckConstraint(
             "estado <> 'llamado' OR (llamado_en IS NOT NULL AND gracia_hasta IS NOT NULL)",
             name="llamado_con_hora_limite",
         ),
@@ -102,6 +60,12 @@ class Turno(Base):
             "fila_id",
             "en_fila_desde",
             postgresql_where=text("estado IN ('en_fila', 'llamado', 'llego')"),
+        ),
+        # El reloj busca cada 30 segundos los llamados cuyo tiempo de gracia ya venció.
+        Index(
+            "ix_turno_gracia_por_vencer",
+            "gracia_hasta",
+            postgresql_where=text("estado = 'llamado'"),
         ),
     )
 
@@ -131,8 +95,14 @@ class Turno(Base):
     en_fila_desde: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Cuándo se le pidió salir hacia el lavadero: con el aviso de "faltan 2 turnos" o ya
+    # en la confirmación, si pidió el turno estando cerca. Vuelve a vacío si pasa al
+    # final, para avisarle otra vez.
+    aviso_anticipado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     llamado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     gracia_hasta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Cuándo entró al puesto. Con la hora de Listo da la duración real del lavado.
+    en_lavado_desde: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     actualizado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

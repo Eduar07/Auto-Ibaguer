@@ -83,9 +83,10 @@ class MensajeSaliente(Base):
     telefono: Mapped[str] = mapped_column(String(15))
     cliente_id: Mapped[int | None] = mapped_column(ForeignKey("cliente.id"))
     turno_id: Mapped[int | None] = mapped_column(ForeignKey("turno.id"), index=True)
-    # Qué aviso es: aviso_llamado, vehiculo_listo, faltan_dos_turnos...
+    # Qué aviso es: llamado, vehiculo_listo, aviso_anticipado... (app.turnos.estados.TipoAviso)
     tipo: Mapped[str] = mapped_column(String(40))
-    # El mensaje tal como se le entrega a la API de WhatsApp.
+    # Los datos del aviso (número de turno, hora límite...). El texto final se arma con los
+    # textos del bot al momento de enviarlo.
     contenido: Mapped[dict[str, Any]] = mapped_column(JSONB)
     estado: Mapped[EstadoMensaje] = mapped_column(
         lista_cerrada(EstadoMensaje, "estado"),

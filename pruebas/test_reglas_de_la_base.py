@@ -13,7 +13,8 @@ from app.bot.tablas import SesionBot
 from app.catalogo.tablas import ServicioPrecio
 from app.clientes.tablas import Cliente
 from app.integraciones.tablas import MensajeEntrante
-from app.turnos.tablas import EstadoTurno, MedioPago, Pago
+from app.turnos.estados import EstadoTurno, MedioPago
+from app.turnos.tablas import Pago
 from pruebas.fabricas import (
     DIA_DE_PRUEBA,
     debe_rechazar,
@@ -100,6 +101,13 @@ def test_el_puesto_se_libera_cuando_el_vehiculo_queda_listo(sesion: Session):
 def test_en_lavado_exige_un_puesto(sesion: Session):
     with debe_rechazar(sesion, "ck_turno_en_lavado_con_puesto"):
         nuevo_turno(sesion, estado=EstadoTurno.EN_LAVADO, nombre_puesto=None)
+
+
+def test_en_lavado_exige_la_hora_de_entrada(sesion: Session):
+    turno = nuevo_turno(sesion, estado=EstadoTurno.EN_LAVADO, nombre_puesto="C1", guardar=False)
+    turno.en_lavado_desde = None
+    with debe_rechazar(sesion, "ck_turno_en_lavado_con_hora"):
+        sesion.add(turno)
 
 
 def test_un_turno_llamado_exige_hora_limite(sesion: Session):

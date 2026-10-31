@@ -11,6 +11,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.6",
     "sqlalchemy>=2.0.36",
+    "tzdata>=2025.2",
 ]
 
 [project.scripts]

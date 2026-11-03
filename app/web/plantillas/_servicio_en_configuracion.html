@@ -1,0 +1,31 @@
+{#- Una fila del menú: precio por tipo de vehículo, duración estimada y la real. -#}
+{% set campo_duracion = "duracion-%d"|format(servicio.id) %}
+<tr>
+  <th scope="row">{{ servicio.nombre }}{% if servicio.descripcion %}<span class="tabla-menu__descripcion">{{ servicio.descripcion }}</span>{% endif %}</th>
+  {% for tipo in fila.tipos %}
+  {% set campo = "precio-%d-%d"|format(servicio.id, tipo.id) %}
+  <td data-etiqueta="{{ tipo.nombre }}">
+    <span class="campo-pesos">
+      <span aria-hidden="true">$</span>
+      <input name="{{ campo }}" inputmode="numeric" value="{{ valores.get(campo, '') }}" maxlength="11"
+             aria-label="Precio de {{ servicio.nombre }} para {{ tipo.nombre|lower }}"
+             {% if errores.get(campo) %}aria-invalid="true" title="{{ errores[campo] }}"{% endif %}>
+    </span>
+  </td>
+  {% endfor %}
+  <td data-etiqueta="Duración estimada">
+    <span class="campo-minutos">
+      <input name="{{ campo_duracion }}" inputmode="numeric" value="{{ valores.get(campo_duracion, '') }}" maxlength="3"
+             aria-label="Duración estimada de {{ servicio.nombre }} en minutos"
+             {% if errores.get(campo_duracion) %}aria-invalid="true" title="{{ errores[campo_duracion] }}"{% endif %}>
+      <span aria-hidden="true">min</span>
+    </span>
+  </td>
+  <td data-etiqueta="Real promedio" class="tabla-menu__real">
+    {%- if servicio.real -%}
+      <span title="Promedio de {{ servicio.real[1] }} lavada{{ 's' if servicio.real[1] != 1 }} en los últimos {{ dias_de_duracion_real or 30 }} días">{{ servicio.real[0]|duracion }}</span>
+    {%- else -%}
+      <span class="suave" title="Todavía no hay lavados de este servicio en los últimos {{ dias_de_duracion_real or 30 }} días">—</span>
+    {%- endif -%}
+  </td>
+</tr>

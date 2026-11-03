@@ -25,3 +25,11 @@ class PlacaDeOtroCliente(ReglaDelNegocio):
 
 class NoExiste(ReglaDelNegocio):
     """Se pidió un cliente, vehículo o tipo de vehículo que no está en la base."""
+
+
+class TelefonoDeOtroCliente(ReglaDelNegocio):
+    """Un celular identifica a un solo cliente."""
+
+
+class TieneTurnoActivo(ReglaDelNegocio):
+    """Mientras su vehículo esté en la fila, no se borran los datos del cliente."""

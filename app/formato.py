@@ -1,6 +1,6 @@
 """Cómo se escriben pesos, horas, fechas y teléfonos, a la colombiana."""
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
 MESES = (
@@ -68,3 +68,19 @@ def telefono_oculto(telefono: str | None) -> str:
         return "Sin celular"
     local = telefono.removeprefix("57") if len(telefono) == 12 else telefono
     return f"{local[:3]} *** {local[-4:]}"
+
+
+def fecha(dia: date) -> str:
+    """date(2026, 10, 3) -> "3 de octubre de 2026" """
+    return f"{dia.day} de {MESES[dia.month - 1]} de {dia.year}"
+
+
+def dia_relativo(dia: date, hoy: date) -> str:
+    """ "Hoy", "Ayer", "17 de octubre" o, si fue otro año, "17 de octubre de 2025"."""
+    if dia == hoy:
+        return "Hoy"
+    if dia == hoy - timedelta(days=1):
+        return "Ayer"
+    if dia.year == hoy.year:
+        return f"{dia.day} de {MESES[dia.month - 1]}"
+    return fecha(dia)

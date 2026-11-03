@@ -10,16 +10,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy.orm import Session
-
 from app.bot import sesiones as sesiones_del_bot
-from app.integraciones import bandeja_salida
+from app.db.sesion import AbrirSesion
+from app.integraciones import bandeja_entrada, bandeja_salida
 from app.integraciones.bandeja_salida import Enviador, Resultado
 from app.turnos import avisos
 from app.turnos import casos_de_uso as casos
 from app.turnos.estados import EstadoTurno
-
-AbrirSesion = Callable[[], Session]
 
 
 @dataclass(frozen=True)
@@ -70,42 +67,48 @@ def _vencer_sesiones_del_bot(abrir: AbrirSesion, ahora: datetime) -> list[str]:
 SESIONES_DEL_BOT = Tarea("las sesiones del bot", _vencer_sesiones_del_bot)
 
 
-# --- Avisos por WhatsApp ---------------------------------------------------------------------
-
-# Máximo de mensajes por vuelta, para que una vuelta nunca se alargue demasiado. Los que
-# falten salen en la siguiente.
-MENSAJES_POR_VUELTA = 50
+# --- WhatsApp: mensajes por atender y por enviar ----------------------------------------------
 
 
-def enviar_avisos(enviador: Enviador, *, por_vuelta: int = MENSAJES_POR_VUELTA) -> Tarea:
-    """Envía los mensajes de la bandeja de salida que ya toca enviar.
+def _atender_olvidados(abrir: AbrirSesion, ahora: datetime) -> list[str]:
+    """Mensajes de clientes que nadie atendió porque el servidor se cayó a mitad de camino."""
+    with abrir() as sesion:
+        telefonos = bandeja_entrada.telefonos_con_mensajes_olvidados(sesion, ahora=ahora)
+    atendidos = sum(bandeja_entrada.atender_pendientes(abrir, t, ahora=ahora) for t in telefonos)
+    if not atendidos:
+        return []
+    return [
+        _cuantos(atendidos, "mensaje de WhatsApp", "mensajes de WhatsApp")
+        + " que se habían quedado sin atender ya se atendieron."
+    ]
 
-    Cada mensaje va en su propia transacción: si el servidor se cae a mitad de la vuelta,
-    los que ya salieron quedan anotados como enviados y no se repiten.
-    """
+
+MENSAJES_OLVIDADOS = Tarea("los mensajes de WhatsApp sin atender", _atender_olvidados)
+
+
+def enviar_mensajes(enviador: Enviador) -> Tarea:
+    """Envía lo que ya toca de la bandeja de salida: respuestas del bot, avisos de la fila
+    y los reintentos de lo que WhatsApp no aceptó."""
 
     def hacer(abrir: AbrirSesion, ahora: datetime) -> list[str]:
-        cuenta: Counter[Resultado] = Counter()
-        for _ in range(por_vuelta):
-            with abrir() as sesion, sesion.begin():
-                resultado = bandeja_salida.enviar_siguiente(
-                    sesion, enviador, ahora=ahora, sigue_vigente=avisos.sigue_vigente
-                )
-            if resultado is None:
-                break
-            cuenta[resultado] += 1
+        cuenta = bandeja_salida.enviar_pendientes(
+            abrir, enviador, ahora=ahora, sigue_vigente=avisos.sigue_vigente
+        )
         return _resumen_de_envios(cuenta)
 
-    return Tarea("los avisos por WhatsApp", hacer)
+    return Tarea("los mensajes por WhatsApp", hacer)
 
 
 def _resumen_de_envios(cuenta: Counter[Resultado]) -> list[str]:
     frases = {
-        Resultado.ENVIADO: ("aviso enviado", "avisos enviados"),
-        Resultado.REINTENTO: ("aviso no salió: se reintenta", "avisos no salieron: se reintentan"),
+        Resultado.ENVIADO: ("mensaje enviado", "mensajes enviados"),
+        Resultado.REINTENTO: (
+            "mensaje no salió: se reintenta",
+            "mensajes no salieron: se reintentan",
+        ),
         Resultado.FALLIDO: (
-            "aviso no se pudo enviar y se dejó de intentar",
-            "avisos no se pudieron enviar y se dejó de intentar",
+            "mensaje no se pudo enviar y se dejó de intentar",
+            "mensajes no se pudieron enviar y se dejó de intentar",
         ),
         Resultado.DESCARTADO: (
             "aviso ya no servía (el turno cambió) y no se envió",
@@ -125,11 +128,11 @@ def _resumen_de_envios(cuenta: Counter[Resultado]) -> list[str]:
 def del_servidor(enviador: Enviador | None) -> list[Tarea]:
     """Las tareas, en el orden en que corren en cada vuelta.
 
-    Los avisos van de últimos: así salen en la misma vuelta los que acaban de dejar las
-    otras tareas (por ejemplo, el de "pasaste al final"). Sin enviador (hasta el hito 5)
-    no se envía nada y los avisos esperan en la bandeja de salida.
+    El envío va de último: así salen en la misma vuelta los mensajes que acaban de dejar
+    las otras tareas (por ejemplo, el aviso de "pasaste al final"). Sin WhatsApp conectado
+    no se envía nada y los mensajes esperan en la bandeja de salida.
     """
     tareas = [GRACIAS, SESIONES_DEL_BOT]
     if enviador is not None:
-        tareas.append(enviar_avisos(enviador))
+        tareas += [MENSAJES_OLVIDADOS, enviar_mensajes(enviador)]
     return tareas

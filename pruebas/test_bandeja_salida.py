@@ -1,13 +1,14 @@
-"""La bandeja de salida: cada aviso sale una sola vez; si WhatsApp no lo acepta, se
-reintenta cada vez más tarde, y si ya no sirve, no se envía.
+"""La bandeja de salida: cada aviso sale una sola vez y a cada celular en orden; si
+WhatsApp no lo acepta, se reintenta cada vez más tarde, y si ya no sirve, no se envía.
 
-El WhatsApp de estas pruebas es de mentira: el de verdad llega en el hito 5.
+El WhatsApp de estas pruebas es de mentira. El de verdad (app.integraciones.whatsapp) se
+prueba en test_whatsapp.py, con un Meta de mentira.
 """
 
 import logging
 import threading
 from collections.abc import Iterator
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import pytest
@@ -54,10 +55,12 @@ def siempre_sirve(_sesion: Session, _mensaje: MensajeSaliente, _ahora: datetime)
     return True
 
 
-def dejar_mensaje(sesion: Session, *, ahora: datetime = LUNES_8AM, **datos: Any) -> MensajeSaliente:
+def dejar_mensaje(
+    sesion: Session, *, ahora: datetime = LUNES_8AM, telefono: str = "573001112233", **datos: Any
+) -> MensajeSaliente:
     mensaje = bandeja_salida.encolar(
         sesion,
-        telefono="573001112233",
+        telefono=telefono,
         tipo=datos.get("tipo", "prueba"),
         contenido=datos.get("contenido", {}),
         ahora=ahora,
@@ -81,8 +84,8 @@ def test_sin_mensajes_por_enviar_no_hace_nada(sesion: Session):
 
 
 def test_sale_primero_el_mas_antiguo_y_queda_anotado(sesion: Session):
-    nuevo = dejar_mensaje(sesion)
-    antiguo = dejar_mensaje(sesion, ahora=LUNES_8AM - minutos(1))
+    nuevo = dejar_mensaje(sesion, telefono="573001112233")
+    antiguo = dejar_mensaje(sesion, ahora=LUNES_8AM - minutos(1), telefono="573004445566")
     whatsapp = WhatsAppDeMentira("wamid.ABC")
 
     assert enviar(sesion, whatsapp) == Resultado.ENVIADO
@@ -91,6 +94,25 @@ def test_sale_primero_el_mas_antiguo_y_queda_anotado(sesion: Session):
     assert antiguo.estado == EstadoMensaje.ENVIADO
     assert (antiguo.id_meta, antiguo.enviado_en, antiguo.intentos) == ("wamid.ABC", LUNES_8AM, 1)
     assert nuevo.estado == EstadoMensaje.PENDIENTE
+
+
+def test_a_cada_celular_le_llegan_sus_mensajes_en_orden(sesion: Session):
+    primero = dejar_mensaje(sesion)
+    segundo = dejar_mensaje(sesion)
+    de_otro = dejar_mensaje(sesion, telefono="573004445566")
+    whatsapp = WhatsAppDeMentira(EnvioFallido("WhatsApp no responde", reintentar=True))
+
+    assert enviar(sesion, whatsapp) == Resultado.REINTENTO  # el primero espera reintento...
+    assert enviar(sesion, whatsapp) == Resultado.ENVIADO
+    assert enviar(sesion, whatsapp) is None  # ...y el segundo lo espera a él
+
+    assert whatsapp.enviados == [primero.id, de_otro.id]  # a otro celular no lo atrasa
+    ahora = primero.proximo_intento_en
+    assert [enviar(sesion, whatsapp, ahora), enviar(sesion, whatsapp, ahora)] == [
+        Resultado.ENVIADO,
+        Resultado.ENVIADO,
+    ]
+    assert whatsapp.enviados[2:] == [primero.id, segundo.id]
 
 
 def test_un_mensaje_que_todavia_no_toca_espera(sesion: Session):
@@ -133,14 +155,14 @@ def test_si_el_problema_no_se_arregla_solo_no_se_insiste(sesion: Session):
 
 def test_un_error_del_programa_no_tranca_la_bandeja(sesion: Session, caplog):
     roto = dejar_mensaje(sesion, ahora=LUNES_8AM - minutos(1))
-    otro = dejar_mensaje(sesion)
+    otro = dejar_mensaje(sesion)  # para el mismo celular
     whatsapp = WhatsAppDeMentira(KeyError("texto_llamado"))
 
-    assert enviar(sesion, whatsapp) == Resultado.REINTENTO
+    assert enviar(sesion, whatsapp) == Resultado.FALLIDO  # reintentar no lo arregla
     assert enviar(sesion, whatsapp) == Resultado.ENVIADO  # el siguiente sale igual
 
     assert whatsapp.enviados == [roto.id, otro.id]
-    assert roto.proximo_intento_en == LUNES_8AM + timedelta(seconds=30)
+    assert (roto.estado, roto.intentos) == (EstadoMensaje.FALLIDO, 1)
     assert "KeyError" in roto.ultimo_error
     assert f"Error inesperado al enviar el mensaje {roto.id}." in caplog.messages
 
@@ -163,19 +185,19 @@ def test_la_base_no_acepta_un_mensaje_enviado_sin_fecha(sesion: Session):
 
 def test_el_reloj_envia_lo_pendiente_y_resume_como_le_fue(sesion: Session, conexion, caplog):
     caplog.set_level(logging.INFO, logger="app.reloj")
-    for _ in range(3):
-        dejar_mensaje(sesion)
+    for telefono in ("573001112233", "573004445566", "573007778899"):
+        dejar_mensaje(sesion, telefono=telefono)
     whatsapp = WhatsAppDeMentira("wamid.1", EnvioFallido("caído", reintentar=True))
     reloj = proceso.Reloj(
-        [tareas.enviar_avisos(whatsapp)],
+        [tareas.enviar_mensajes(whatsapp)],
         lambda: Session(bind=conexion, join_transaction_mode="create_savepoint"),
     )
 
     reloj.una_vuelta(LUNES_8AM)
 
     assert caplog.messages == [
-        "Reloj: 2 avisos enviados.",
-        "Reloj: 1 aviso no salió: se reintenta.",
+        "Reloj: 2 mensajes enviados.",
+        "Reloj: 1 mensaje no salió: se reintenta.",
     ]
 
 
@@ -218,6 +240,40 @@ def test_un_mensaje_que_otro_reloj_esta_enviando_no_se_envia_dos_veces(base: Eng
 
     assert resultados == [Resultado.ENVIADO]
     assert rapido.enviados == []
+
+
+def test_mientras_otro_reloj_envia_un_mensaje_el_siguiente_del_mismo_celular_espera(base: Engine):
+    with Session(base) as sesion, sesion.begin():
+        primero = dejar_mensaje(sesion).id
+        segundo = dejar_mensaje(sesion).id
+        de_otro = dejar_mensaje(sesion, telefono="573004445566").id
+    dentro, soltar = threading.Event(), threading.Event()
+
+    class WhatsAppLento(WhatsAppDeMentira):
+        def enviar(self, sesion: Session, mensaje: MensajeSaliente) -> str:
+            dentro.set()
+            soltar.wait(timeout=10)
+            return super().enviar(sesion, mensaje)
+
+    lento, rapido = WhatsAppLento(), WhatsAppDeMentira()
+
+    def primer_reloj() -> None:
+        with Session(base) as sesion, sesion.begin():
+            enviar(sesion, lento)
+
+    hilo = threading.Thread(target=primer_reloj)
+    hilo.start()
+    assert dentro.wait(timeout=10)  # el primero está saliendo
+    with Session(base) as sesion, sesion.begin():
+        assert enviar(sesion, rapido) == Resultado.ENVIADO  # el de otro celular sale
+        assert enviar(sesion, rapido) is None  # el segundo espera a que salga el primero
+    soltar.set()
+    hilo.join(timeout=10)
+    with Session(base) as sesion, sesion.begin():
+        assert enviar(sesion, rapido) == Resultado.ENVIADO
+
+    assert lento.enviados == [primero]
+    assert rapido.enviados == [de_otro, segundo]
 
 
 # --- ¿Todavía sirve el aviso? -----------------------------------------------------------------

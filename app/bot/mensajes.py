@@ -11,6 +11,7 @@ ids llevan un prefijo con el paso de la conversación al que pertenecen ("vehicu
 """
 
 from dataclasses import dataclass, field
+from typing import Any
 
 # Límites de WhatsApp para los mensajes con botones o lista.
 MAX_BOTONES = 3
@@ -70,6 +71,36 @@ class Mensaje:
     def opciones(self) -> tuple[Opcion, ...]:
         """Los botones o las opciones de la lista: lo que el cliente puede tocar."""
         return self.lista.opciones if self.lista is not None else self.botones
+
+    # Las respuestas del bot esperan en la bandeja de salida como JSON (mensaje_saliente).
+
+    def a_datos(self) -> dict[str, Any]:
+        datos: dict[str, Any] = {"texto": self.texto}
+        if self.botones:
+            datos["botones"] = [[boton.id, boton.titulo] for boton in self.botones]
+        if self.lista is not None:
+            datos["lista"] = {
+                "boton": self.lista.boton,
+                "opciones": [[o.id, o.titulo, o.descripcion] for o in self.lista.opciones],
+            }
+        return datos
+
+    @classmethod
+    def desde_datos(cls, datos: dict[str, Any]) -> "Mensaje":
+        lista = datos.get("lista")
+        return cls(
+            texto=datos["texto"],
+            botones=tuple(Opcion(id_, titulo) for id_, titulo in datos.get("botones", [])),
+            lista=Lista(
+                lista["boton"],
+                tuple(
+                    Opcion(id_, titulo, descripcion)
+                    for id_, titulo, descripcion in lista["opciones"]
+                ),
+            )
+            if lista
+            else None,
+        )
 
 
 def _revisar(cumple: bool, que: str) -> None:

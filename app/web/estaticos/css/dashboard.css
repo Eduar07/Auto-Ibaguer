@@ -710,6 +710,27 @@ legend { padding: 0; margin-bottom: 8px; }
 }
 .barra-guardar .boton { min-height: 48px; padding: 0 22px; }
 
+/* --- Mensajes de WhatsApp ------------------------------------------------------------ */
+
+.insignia--rojo { background: var(--rojo-claro); color: var(--rojo-oscuro); }
+.nota--verde { background: var(--verde-claro); color: var(--verde); }
+.pantalla > .nota { margin: 0; }
+.mensajes { display: flex; flex-direction: column; gap: 20px; }
+.mensajes__bandeja { padding: 18px 0 6px; overflow-x: auto; }
+.mensajes__bandeja h2 { padding: 0 18px; }
+.mensajes__bandeja > .suave { padding: 0 18px 12px; }
+.tabla-mensajes { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tabla-mensajes th {
+  text-align: left; font-size: 13px; font-weight: 700; color: var(--tinta-suave);
+  padding: 8px 18px; border-bottom: 1px solid var(--linea); white-space: nowrap;
+}
+.tabla-mensajes td { padding: 10px 18px; border-bottom: 1px solid var(--linea); vertical-align: top; }
+.tabla-mensajes td:first-child, .tabla-mensajes td:nth-child(2) { white-space: nowrap; color: var(--tinta-suave); }
+.tabla-mensajes td:last-child { white-space: nowrap; }
+.tabla-mensajes td:last-child .suave { display: block; margin-top: 4px; font-size: 12px; }
+.tabla-mensajes__error { display: block; margin-top: 4px; color: var(--rojo-oscuro); font-size: 13px; }
+.tabla-mensajes__error--superado { color: var(--tinta-suave); }
+
 /* --- Probar el bot ---------------------------------------------------------------- */
 
 .probar-bot { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
@@ -760,7 +781,7 @@ legend { padding: 0; margin-bottom: 8px; }
 }
 .chat-bot__escribir .boton { min-height: 44px; border-radius: 22px; padding: 0 18px; }
 .probar-bot__ayuda { flex: 1 1 280px; max-width: 420px; }
-.probar-bot__enlace { align-self: flex-start; }
+.enlaces-del-bot { display: flex; flex-wrap: wrap; gap: 10px; }
 .probar-bot__lista { display: flex; flex-direction: column; gap: 10px; padding-left: 18px; font-size: 15px; line-height: 1.45; }
 .probar-bot__celular { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--tinta-suave); }
 .probar-bot__fila { display: flex; gap: 8px; }
@@ -791,6 +812,14 @@ legend { padding: 0; margin-bottom: 8px; }
   .ficha-vacia { display: none; }
   .clientes__ficha:has(.ficha-vacia) { display: none; }
   .ficha__cifras .numero { font-size: 22px; }
+  .tabla-mensajes thead { display: none; }
+  .tabla-mensajes, .tabla-mensajes tbody { display: block; }
+  .tabla-mensajes tr {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; padding: 10px 16px; border-bottom: 1px solid var(--linea);
+  }
+  .tabla-mensajes td { display: block; padding: 0; border: 0; font-size: 13px; }
+  .tabla-mensajes td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; font-size: 14px; overflow-wrap: anywhere; }
+  .tabla-mensajes td:last-child { grid-column: 3; grid-row: 1; text-align: right; white-space: normal; max-width: 140px; }
   .tabla-menu thead { display: none; }
   .tabla-menu, .tabla-menu tbody { display: block; }
   .tabla-menu tr {

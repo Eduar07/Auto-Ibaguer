@@ -1,23 +1,27 @@
 """La bandeja de salida: dejar un mensaje y enviarlo, con reintentos.
 
-Quien produce un aviso (por ejemplo, la fila al llamar a alguien) no habla con WhatsApp:
-deja el mensaje aquí (`encolar`), en la misma operación que el cambio que lo produjo.
-El reloj recoge los que ya toca enviar (`enviar_siguiente`) y se los pasa al que envía.
-Si WhatsApp no lo acepta, se vuelve a intentar más tarde, cada vez esperando un poco más.
+Nadie le habla a WhatsApp directamente: quien produce un mensaje lo deja aquí, en la
+misma operación que el cambio que lo produjo. La fila deja sus avisos (`encolar`) y el
+bot sus respuestas (`encolar_respuesta`). Si el cambio quedó guardado, el mensaje sale;
+si algo se deshace, el mensaje tampoco existe.
 
-El que envía de verdad llega en el hito 5 (WhatsApp). Aquí está todo lo demás: el
-orden, los reintentos, cuándo darse por vencido y qué hacer con un aviso que ya no sirve.
+Después, `enviar_pendientes` toma los que ya toca enviar y se los pasa al que envía
+(app.integraciones.whatsapp). Si WhatsApp no lo acepta, se vuelve a intentar más tarde,
+cada vez esperando un poco más. Lo hacen el webhook apenas atiende un mensaje y el reloj
+en cada vuelta.
 """
 
 import logging
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any, Protocol
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session, aliased
 
+from app.bot.mensajes import Mensaje
 from app.integraciones.tablas import EstadoMensaje, MensajeSaliente
 
 logger = logging.getLogger(__name__)
@@ -53,6 +57,30 @@ def encolar(
     )
     sesion.add(mensaje)
     return mensaje
+
+
+# Así se llaman en la bandeja las respuestas del bot. Los avisos de la fila usan su tipo
+# (llamado, vehiculo_listo...: app.turnos.estados.TipoAviso).
+TIPO_RESPUESTA = "respuesta"
+
+
+def encolar_respuesta(
+    sesion: Session,
+    *,
+    telefono: str,
+    mensaje: Mensaje,
+    ahora: datetime,
+    cliente_id: int | None = None,
+) -> MensajeSaliente:
+    """Una respuesta del bot: el mensaje entero (texto y botones) queda guardado como JSON."""
+    return encolar(
+        sesion,
+        telefono=telefono,
+        tipo=TIPO_RESPUESTA,
+        contenido=mensaje.a_datos(),
+        ahora=ahora,
+        cliente_id=cliente_id,
+    )
 
 
 # --- Enviar ------------------------------------------------------------------------------
@@ -115,16 +143,30 @@ def enviar_siguiente(
     El mensaje queda bloqueado hasta el commit (FOR UPDATE SKIP LOCKED): si otro reloj
     corre al mismo tiempo, se lo salta y toma otro, así nadie recibe el mismo aviso dos
     veces. Antes de enviarlo se revisa que todavía sirva.
+
+    A cada celular sus mensajes le llegan en orden: uno no sale mientras haya otro más
+    viejo para el mismo celular sin enviar (porque se está enviando o espera reintento).
     """
+    anterior = aliased(MensajeSaliente)
+    hay_uno_antes = (
+        select(anterior.id)
+        .where(
+            anterior.telefono == MensajeSaliente.telefono,
+            anterior.estado == EstadoMensaje.PENDIENTE,
+            anterior.id < MensajeSaliente.id,
+        )
+        .exists()
+    )
     consulta = (
         select(MensajeSaliente)
         .where(
             MensajeSaliente.estado == EstadoMensaje.PENDIENTE,
             MensajeSaliente.proximo_intento_en <= ahora,
+            ~hay_uno_antes,
         )
         .order_by(MensajeSaliente.proximo_intento_en, MensajeSaliente.id)
         .limit(1)
-        .with_for_update(skip_locked=True)
+        .with_for_update(skip_locked=True, of=MensajeSaliente)
     )
     mensaje = sesion.scalars(consulta).first()
     if mensaje is None:
@@ -143,10 +185,11 @@ def enviar_siguiente(
     except EnvioFallido as error:
         resultado = _fallo(mensaje, str(error), reintentar=error.reintentar, ahora=ahora)
     except Exception as error:
-        # Un error del programa tampoco puede trancar la bandeja: este mensaje espera su
-        # próximo intento y los demás siguen saliendo.
+        # Un error del programa no se arregla reintentando y no puede trancar la bandeja:
+        # este mensaje queda fallido (y en el registro, para arreglar el error) y los
+        # demás siguen saliendo, también los del mismo celular.
         logger.exception("Error inesperado al enviar el mensaje %s.", mensaje.id)
-        resultado = _fallo(mensaje, f"Error inesperado: {error!r}", reintentar=True, ahora=ahora)
+        resultado = _fallo(mensaje, f"Error inesperado: {error!r}", reintentar=False, ahora=ahora)
     else:
         mensaje.id_meta = id_meta
         mensaje.estado = EstadoMensaje.ENVIADO
@@ -166,3 +209,49 @@ def _fallo(
         return Resultado.FALLIDO
     mensaje.proximo_intento_en = siguiente
     return Resultado.REINTENTO
+
+
+# Máximo de mensajes por tanda, para que una vuelta del reloj nunca se alargue demasiado.
+# Los que falten salen en la siguiente.
+MENSAJES_POR_TANDA = 50
+
+
+def enviar_pendientes(
+    abrir: Callable[[], Session],
+    enviador: Enviador,
+    *,
+    ahora: datetime,
+    sigue_vigente: SigueVigente,
+    limite: int = MENSAJES_POR_TANDA,
+) -> Counter[Resultado]:
+    """Envía los mensajes que ya toca enviar, en orden. Devuelve cómo le fue a cada uno.
+
+    Cada mensaje va en su propia transacción: si el servidor se cae a mitad de camino, los
+    que ya salieron quedan anotados como enviados y no se repiten.
+    """
+    cuenta: Counter[Resultado] = Counter()
+    for _ in range(limite):
+        with abrir() as sesion, sesion.begin():
+            resultado = enviar_siguiente(sesion, enviador, ahora=ahora, sigue_vigente=sigue_vigente)
+        if resultado is None:
+            break
+        cuenta[resultado] += 1
+    return cuenta
+
+
+def registrar_estados(sesion: Session, estados: Iterable[tuple[str, str | None]]) -> int:
+    """WhatsApp avisa después si un mensaje que aceptó no se pudo entregar.
+
+    Recibe (id de Meta, motivo) de cada mensaje que falló; ese mensaje queda fallido.
+    Devuelve cuántos se encontraron.
+    """
+    cambiados = 0
+    for id_meta, motivo in estados:
+        resultado = sesion.execute(
+            update(MensajeSaliente)
+            .where(MensajeSaliente.id_meta == id_meta)
+            .values(estado=EstadoMensaje.FALLIDO, ultimo_error=motivo)
+            .execution_options(synchronize_session=False)
+        )
+        cambiados += resultado.rowcount
+    return cambiados

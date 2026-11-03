@@ -30,9 +30,26 @@ class ConfiguracionEntorno(BaseSettings):
     # apagar para mirar algo sin que el reloj mueva la fila.
     reloj_activo: bool = True
 
+    # --- WhatsApp (Cloud API de Meta). Sin estos datos el bot no se conecta a WhatsApp,
+    # y todo lo demás funciona igual. Son secretos: solo van en el .env, nunca en GitHub.
+    # El token permanente del usuario del sistema (no el temporal, que vence en un día).
+    whatsapp_token: str = ""
+    # El "identificador del número de teléfono" que da Meta (no es el número mismo).
+    whatsapp_id_numero: str = ""
+    # La clave secreta de la app de Meta: con ella se revisa que cada mensaje venga de Meta.
+    whatsapp_secreto_app: str = ""
+    # Una palabra que inventas tú y escribes también en Meta al registrar el webhook.
+    whatsapp_token_verificacion: str = ""
+    whatsapp_version_api: str = "v26.0"
+
     @property
     def es_produccion(self) -> bool:
         return self.entorno == "produccion"
+
+    @property
+    def whatsapp_conectado(self) -> bool:
+        """Están los datos para hablar con WhatsApp."""
+        return bool(self.whatsapp_token and self.whatsapp_id_numero and self.whatsapp_secreto_app)
 
     @model_validator(mode="after")
     def clave_segura_en_produccion(self) -> "ConfiguracionEntorno":

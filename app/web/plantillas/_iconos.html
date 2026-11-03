@@ -1,0 +1,37 @@
+{#- Los íconos del diseño, dibujados con SVG. Toman el color del texto que los rodea. -#}
+
+{% macro icono(nombre, tamano=24, grosor=2) -%}
+<svg class="icono" width="{{ tamano }}" height="{{ tamano }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ grosor }}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{%- if nombre == "gota" -%}
+<path d="M12 3c3.5 4.2 6 7.6 6 10.5a6 6 0 0 1-12 0C6 10.6 8.5 7.2 12 3z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5"/>
+{%- elif nombre == "mas" -%}
+<path d="M12 5v14M5 12h14"/>
+{%- elif nombre == "carro" -%}
+<path d="M3 13l2-5h14l2 5v4H3z"/><circle cx="7.5" cy="17" r="1.5"/><circle cx="16.5" cy="17" r="1.5"/>
+{%- elif nombre == "moto" -%}
+<circle cx="6" cy="16" r="3"/><circle cx="18" cy="16" r="3"/><path d="M6 16l4-6h4l4 6M13 10l-1-3h-2"/>
+{%- elif nombre == "camioneta" -%}
+<path d="M2 15l2-7h11l4 4h3v5H2z"/><circle cx="7" cy="17" r="1.6"/><circle cx="17" cy="17" r="1.6"/>
+{%- elif nombre == "listo" -%}
+<path d="M5 12l5 5 9-10"/>
+{%- elif nombre == "reloj" -%}
+<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+{%- elif nombre == "info" -%}
+<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>
+{%- elif nombre == "volver" -%}
+<path d="M15 5l-7 7 7 7"/>
+{%- elif nombre == "actividad" -%}
+<path d="M4 5h16v11H9l-5 4z"/>
+{%- elif nombre == "opciones" -%}
+<circle cx="5" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.8" fill="currentColor" stroke="none"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+
+{% macro icono_de_tipo(nombre_del_tipo, tamano=26) -%}
+{{ icono({"Moto": "moto", "Camioneta": "camioneta"}.get(nombre_del_tipo, "carro"), tamano) }}
+{%- endmacro %}
+
+{% macro icono_de_fila(nombre_de_la_fila, tamano=24) -%}
+{{ icono("moto" if nombre_de_la_fila == "Motos" else "carro", tamano) }}
+{%- endmacro %}

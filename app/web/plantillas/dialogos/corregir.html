@@ -1,0 +1,65 @@
+{% import "_iconos.html" as iconos %}
+{% import "_partes.html" as partes %}
+{% set t = turno %}
+<form class="dialogo__caja" data-formulario="servicio-por-tipo"
+      hx-post="/turnos/{{ t.id }}/corregir" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver a la fila</button>
+    <h2 id="dialogo-titulo">Corregir turno <span class="numero">{{ t.numero }}</span></h2>
+    <p>{{ t.nombre }} · {{ nombre_del_estado[t.estado] }}</p>
+  </div>
+
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+    {% if tipos|length > 1 %}
+    <fieldset>
+      <legend>Tipo de vehículo</legend>
+      <div class="opciones opciones--{{ tipos|length }}">
+        {% for tipo in tipos %}
+        <label class="opcion opcion--centrada">
+          <input type="radio" name="tipo_vehiculo_id" value="{{ tipo.id }}" required
+                 data-placa="{{ partes.ejemplo_de_placa(tipo.nombre) }}"
+                 {% if formulario.tipo_vehiculo_id == tipo.id %}checked{% endif %}>
+          {{ iconos.icono_de_tipo(tipo.nombre) }}<span>{{ tipo.nombre }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% else %}
+    <input type="hidden" name="tipo_vehiculo_id" value="{{ tipos[0].id }}">
+    {% endif %}
+
+    <div class="campo">
+      <label for="placa">Placa</label>
+      <input id="placa" name="placa" class="placa" value="{{ formulario.placa or '' }}" maxlength="8"
+             placeholder="{{ partes.ejemplo_de_placa(t.tipo_vehiculo) }}" autocapitalize="characters" spellcheck="false">
+      <span class="ayuda">Si el vehículo ya tenía placa y escribes otra, queda como otro vehículo del mismo cliente.</span>
+    </div>
+
+    {% for tipo in tipos %}
+    {% set es_el_elegido = tipo.id == formulario.tipo_vehiculo_id %}
+    <fieldset class="servicios-del-tipo" data-tipo="{{ tipo.id }}" {% if not es_el_elegido %}hidden disabled{% endif %}>
+      <legend>Servicio para {{ tipo.nombre|lower }}</legend>
+      <div class="opciones">
+        {% for opcion in menu.get(tipo.id, []) %}
+        <label class="opcion">
+          <input type="radio" name="servicio_id" value="{{ opcion.id }}"
+                 {% if opcion.nombre == "Básico" %}data-basico{% endif %}
+                 {% if es_el_elegido and formulario.servicio_id == opcion.id %}checked{% endif %}>
+          <span class="opcion__nombre"><span class="opcion__marca">{{ iconos.icono("listo", 18, 2.5) }}</span>{{ opcion.nombre }}</span>
+          <span class="opcion__precio">{{ opcion.precio|pesos }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% if t.servicio_por_definir %}<span class="ayuda">Todavía no tiene servicio: elige el que el cliente pidió.</span>{% endif %}
+    </fieldset>
+    {% endfor %}
+  </div>
+
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande">Guardar cambios</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

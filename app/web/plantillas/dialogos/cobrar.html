@@ -1,0 +1,99 @@
+{% import "_iconos.html" as iconos %}
+{% import "_partes.html" as partes %}
+{% set t = turno %}
+{% set precio_del_menu = (servicios|selectattr("id", "equalto", formulario.servicio_id)|map(attribute="precio")|first) if formulario.servicio_id else none %}
+{% set total = formulario.precio_cobrado if formulario.precio_cobrado is not none else precio_del_menu %}
+{% set falta_placa = t.placa_pendiente and not formulario.placa %}
+<form class="dialogo__caja" data-formulario="cobro"
+      hx-post="/turnos/{{ t.id }}/cobrar" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver a la fila</button>
+    <div class="dialogo__fila-titulo">
+      <h2 id="dialogo-titulo">Cobrar turno <span class="numero">{{ t.numero }}</span></h2>
+      <span class="insignia insignia--verde">{{ partes.listo_hace(t, ahora) }}</span>
+    </div>
+  </div>
+
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+    <div class="dos-columnas">
+      <div class="tarjeta-dato">
+        <span>Cliente</span>
+        <strong>{{ t.nombre }}</strong>
+        <span>{{ t.telefono|telefono_oculto }}{% if t.por_whatsapp %} · WhatsApp{% endif %}</span>
+      </div>
+      <div class="tarjeta-dato">
+        <span>Vehículo</span>
+        <strong>{{ t.tipo_vehiculo }}</strong>
+        {% if t.placa %}<span>Placa {{ t.placa }}</span>{% else %}<span class="tarjeta-dato__pendiente">Placa pendiente</span>{% endif %}
+      </div>
+    </div>
+
+    {% if t.placa_pendiente %}
+    <div class="alerta-placa campo">
+      <label for="placa">Placa (obligatoria para cobrar)</label>
+      <input id="placa" name="placa" class="placa" value="{{ formulario.placa or '' }}" required
+             placeholder="{{ partes.ejemplo_de_placa(t.tipo_vehiculo) }}" maxlength="8"
+             autocapitalize="characters" spellcheck="false">
+      <span class="ayuda">Sin placa no se puede cobrar ni sumar la lavada a la promoción.</span>
+    </div>
+    {% endif %}
+
+    <div class="campo">
+      <label for="servicio">Servicio</label>
+      <select id="servicio" name="servicio_id" required>
+        {% if formulario.servicio_id is none %}<option value="" selected disabled>Elige el servicio que se hizo</option>{% endif %}
+        {% for servicio in servicios %}
+        <option value="{{ servicio.id }}" data-precio="{{ servicio.precio }}"
+                {% if formulario.servicio_id == servicio.id %}selected{% endif %}>{{ servicio.nombre }} · {{ servicio.precio|pesos }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="dos-columnas">
+      <div class="campo">
+        <span class="etiqueta">Precio del menú</span>
+        <span class="precio-menu" data-precio-menu="{{ precio_del_menu if precio_del_menu is not none else '' }}">
+          {{- precio_del_menu|pesos if precio_del_menu is not none else "—" -}}
+        </span>
+      </div>
+      <div class="campo">
+        <label for="precio-cobrado">Precio cobrado</label>
+        <input id="precio-cobrado" name="precio_cobrado" inputmode="numeric" value="{{ formulario.precio_cobrado|miles }}"
+               placeholder="{{ precio_del_menu|miles }}" maxlength="12">
+      </div>
+    </div>
+
+    <div class="campo">
+      <label for="motivo">Motivo del cambio de precio</label>
+      <input id="motivo" name="motivo" value="{{ formulario.motivo or '' }}" maxlength="200"
+             placeholder="Solo si cambias el precio: descuento, barro extra...">
+    </div>
+
+    <fieldset>
+      <legend>Medio de pago</legend>
+      <div class="opciones opciones--4">
+        {% for medio in MedioPago %}
+        <label class="opcion opcion--centrada opcion--corta">
+          <input type="radio" name="medio_pago" value="{{ medio.value }}" required
+                 {% if formulario.medio_pago == medio.value %}checked{% endif %}>
+          <span>{{ medio.value|capitalize }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+  </div>
+
+  <div class="dialogo__pie">
+    <div class="total">
+      <span>Total a cobrar · <span data-medio>{{ formulario.medio_pago|capitalize }}</span></span>
+      <strong data-total>{{ total|pesos if total is not none else "—" }}</strong>
+    </div>
+    <button type="submit" class="boton boton--grande" data-confirmar {% if falta_placa %}disabled{% endif %}>
+      {{- "Escribe la placa para cobrar" if falta_placa else "Confirmar cobro" -}}
+    </button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

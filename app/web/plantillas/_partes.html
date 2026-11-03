@@ -1,0 +1,18 @@
+{#- Pedazos de texto que se repiten en la fila y en los diálogos. -#}
+
+{% macro vehiculo(t) -%}
+{{ t.tipo_vehiculo }}{% if t.placa %} · {{ t.placa }}{% endif %}
+{%- endmacro %}
+
+{% macro servicio_y_precio(t) -%}
+{% if t.servicio %}{{ t.servicio }}{% if t.precio is not none %} · {{ t.precio|pesos }}{% endif %}{% else %}Por definir{% endif %}
+{%- endmacro %}
+
+{% macro listo_hace(t, ahora) -%}
+{% set minutos = minutos_desde(t.listo_desde, ahora) %}
+{%- if minutos < 1 %}Listo hace un momento{% else %}Listo hace {{ minutos|duracion }}{% endif %}
+{%- endmacro %}
+
+{% macro ejemplo_de_placa(nombre_del_tipo) -%}
+{{ "ABC12D" if nombre_del_tipo == "Moto" else "ABC123" }}
+{%- endmacro %}

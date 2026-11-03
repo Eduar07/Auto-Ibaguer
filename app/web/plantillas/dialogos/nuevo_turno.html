@@ -1,0 +1,92 @@
+{% import "_iconos.html" as iconos %}
+{% import "_partes.html" as partes %}
+<form class="dialogo__caja" data-formulario="servicio-por-tipo" data-elegir-basico
+      hx-post="/turnos" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver a la fila</button>
+    <h2 id="dialogo-titulo">Nuevo turno en el local</h2>
+    <p>Para clientes que llegan sin haber escrito por WhatsApp. Entran a la misma fila.</p>
+  </div>
+
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+    <div class="campos-juntos">
+      <div class="dos-columnas">
+        <div class="campo">
+          <label for="nombre">Nombre</label>
+          <input id="nombre" name="nombre" value="{{ formulario.nombre or '' }}" placeholder="Nombre del cliente"
+                 required maxlength="60" autocapitalize="words" autofocus>
+        </div>
+        <div class="campo">
+          <label for="celular">Celular (opcional)</label>
+          <input id="celular" name="celular" type="tel" inputmode="tel" value="{{ formulario.celular or '' }}"
+                 placeholder="300 000 0000" maxlength="20">
+        </div>
+      </div>
+      <p class="ayuda">Para recibir avisos por WhatsApp, el cliente escanea el código QR del mostrador y envía el mensaje; el bot lo reconoce por este celular.</p>
+    </div>
+
+    <fieldset hx-get="/turnos/nuevo/vista-previa" hx-trigger="change" hx-include="this"
+              hx-target="#vista-previa" hx-swap="outerHTML">
+      <legend>Tipo de vehículo</legend>
+      <div class="opciones opciones--3">
+        {% for tipo in tipos %}
+        <label class="opcion opcion--centrada">
+          <input type="radio" name="tipo_vehiculo_id" value="{{ tipo.id }}" required
+                 data-placa="{{ partes.ejemplo_de_placa(tipo.nombre) }}"
+                 {% if formulario.tipo_vehiculo_id == tipo.id %}checked{% endif %}>
+          {{ iconos.icono_de_tipo(tipo.nombre) }}<span>{{ tipo.nombre }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    {% set tipo_elegido = tipos|selectattr("id", "equalto", formulario.tipo_vehiculo_id)|first %}
+    <div class="campo">
+      <label for="placa">Placa (opcional ahora)</label>
+      <input id="placa" name="placa" class="placa" value="{{ formulario.placa or '' }}"
+             placeholder="{{ partes.ejemplo_de_placa(tipo_elegido.nombre) }}" maxlength="8"
+             autocapitalize="characters" spellcheck="false">
+      <span class="ayuda">Es obligatoria para cobrar. Si no la tienes ahora, el turno queda con placa pendiente.</span>
+    </div>
+
+    {% for tipo in tipos %}
+    {% set es_el_elegido = tipo.id == formulario.tipo_vehiculo_id %}
+    <fieldset class="servicios-del-tipo" data-tipo="{{ tipo.id }}" {% if not es_el_elegido %}hidden disabled{% endif %}>
+      <legend>Servicio para {{ tipo.nombre|lower }}</legend>
+      <div class="opciones">
+        {% for opcion in menu.get(tipo.id, []) %}
+        {% set marcada = es_el_elegido and (formulario.servicio_id|string == opcion.id|string
+                         or (formulario.servicio_id == "basico" and opcion.nombre == "Básico")) %}
+        <label class="opcion">
+          <input type="radio" name="servicio_id" value="{{ opcion.id }}"
+                 {% if opcion.nombre == "Básico" %}data-basico{% endif %} {% if marcada %}checked{% endif %}>
+          <span class="opcion__nombre"><span class="opcion__marca">{{ iconos.icono("listo", 18, 2.5) }}</span>{{ opcion.nombre }}</span>
+          <span class="opcion__precio">{{ opcion.precio|pesos }}</span>
+        </label>
+        {% endfor %}
+        <label class="opcion">
+          <input type="radio" name="servicio_id" value="" {% if es_el_elegido and formulario.servicio_id == "" %}checked{% endif %}>
+          <span class="opcion__nombre"><span class="opcion__marca">{{ iconos.icono("listo", 18, 2.5) }}</span>Lo decide al llegar</span>
+          <span class="opcion__precio">Por definir</span>
+        </label>
+      </div>
+    </fieldset>
+    {% endfor %}
+
+    <div class="autorizacion">
+      <input id="acepta-datos" type="checkbox" name="acepta_datos" value="si" required
+             {% if formulario.acepta_datos %}checked{% endif %}>
+      <label for="acepta-datos">El cliente autoriza el tratamiento de sus datos personales para gestionar su turno (Ley 1581 de 2012). Obligatorio.</label>
+    </div>
+  </div>
+
+  <div class="dialogo__pie">
+    {% include "dialogos/vista_previa.html" %}
+    <p class="ayuda">Al agregarlo, pídele que escanee el código QR del mostrador para recibir los avisos.</p>
+    <button type="submit" class="boton boton--grande">Agregar a la fila</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

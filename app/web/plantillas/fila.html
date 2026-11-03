@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_iconos.html" as iconos %}
+
+{% block titulo %}Fila en vivo · Auto Ibaguer{% endblock %}
+
+{% block cuerpo %}
+<header class="encabezado">
+  <div class="encabezado__contenido">
+    <a class="marca" href="/fila">{{ iconos.icono("gota", 28) }}<span class="marca__nombre">Auto Ibaguer</span></a>
+    <nav class="navegacion" aria-label="Secciones del dashboard">
+      <a href="/fila" aria-current="page">Fila en vivo</a>
+    </nav>
+    <div class="encabezado__acciones">
+      <span class="estado-bot{% if not tablero.bot_activo %} estado-bot--apagado{% endif %}">
+        <span class="estado-bot__punto" aria-hidden="true"></span>{{ "Bot activo" if tablero.bot_activo else "Bot apagado" }}
+      </span>
+      <button type="button" class="boton boton-nuevo" aria-label="Nuevo turno"
+              hx-get="/turnos/nuevo" hx-target="#dialogo-contenido">
+        {{ iconos.icono("mas", 18, 2.5) }}<span class="boton-nuevo__texto">Nuevo turno</span>
+      </button>
+      <form method="post" action="/salir">
+        <button type="submit" class="boton-salir">Salir</button>
+      </form>
+    </div>
+  </div>
+</header>
+
+<main class="principal" hx-ext="sse" sse-connect="/eventos">
+  {#- Vuelve a pedir la fila cuando el servidor avisa un cambio, cada minuto por si un aviso
+      se perdió, y al volver a la pantalla (dashboard.js dispara "refrescar"). -#}
+  <div id="refrescar" hidden
+       hx-get="/fila/tablero" hx-target="#tablero"
+       hx-trigger="sse:cambio delay:300ms, every 60s, refrescar"
+       hx-sync="this:replace"></div>
+  <div id="tablero" class="tablero">
+    {% include "_tablero.html" %}
+  </div>
+</main>
+
+<dialog id="dialogo" class="dialogo" aria-labelledby="dialogo-titulo">
+  <div id="dialogo-contenido" class="dialogo__contenido"></div>
+</dialog>
+
+<div id="avisos" class="avisos" aria-live="polite"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ estatico('js/htmx-2.0.11.min.js') }}"></script>
+<script src="{{ estatico('js/htmx-sse-2.2.4.js') }}"></script>
+<script src="{{ estatico('js/dashboard.js') }}"></script>
+{% endblock %}

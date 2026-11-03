@@ -7,8 +7,11 @@ en la tabla `configuracion`, para que el administrador los cambie sin tocar cód
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Solo sirve en tu computador. En producción el sistema no arranca con esta clave.
+CLAVE_DE_DESARROLLO = "solo-para-desarrollo-no-usar-en-produccion"
 
 
 class ConfiguracionEntorno(BaseSettings):
@@ -17,6 +20,26 @@ class ConfiguracionEntorno(BaseSettings):
     database_url: str = "postgresql+psycopg://auto:auto@localhost:5433/auto_ibaguer"
     zona_horaria: str = "America/Bogota"
     entorno: str = "desarrollo"
+    # Firma la sesión del dashboard: quien la conozca podría hacerse pasar por el
+    # administrador, así que en producción es larga, aleatoria y secreta.
+    clave_secreta: str = CLAVE_DE_DESARROLLO
+    # Horas sin usar el dashboard para que la sesión venza y pida la contraseña otra vez.
+    sesion_horas: int = 12
+
+    @property
+    def es_produccion(self) -> bool:
+        return self.entorno == "produccion"
+
+    @model_validator(mode="after")
+    def clave_segura_en_produccion(self) -> "ConfiguracionEntorno":
+        if self.es_produccion and (
+            self.clave_secreta == CLAVE_DE_DESARROLLO or len(self.clave_secreta) < 32
+        ):
+            raise ValueError(
+                "En producción CLAVE_SECRETA debe tener al menos 32 caracteres aleatorios. "
+                'Genera una con: python -c "import secrets; print(secrets.token_urlsafe(48))"'
+            )
+        return self
 
     @field_validator("database_url")
     @classmethod

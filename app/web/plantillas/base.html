@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0E1A2B">
+  <meta name="robots" content="noindex, nofollow">
+  {#- HTMX sin evaluar código que venga en atributos: el JavaScript vive solo en dashboard.js. #}
+  <meta name="htmx-config" content='{"allowEval": false, "allowScriptTags": false}'>
+  <title>{% block titulo %}Auto Ibaguer{% endblock %}</title>
+  <link rel="icon" href="{{ estatico('img/icono.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ estatico('css/dashboard.css') }}">
+</head>
+<body{% block atributos_body %}{% endblock %}>
+{% block cuerpo %}{% endblock %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

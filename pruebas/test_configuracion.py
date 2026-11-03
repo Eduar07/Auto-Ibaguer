@@ -1,9 +1,30 @@
-"""Configuración del entorno: la URL de la base de datos llega bien escrita a todos lados."""
+"""Configuración del entorno: la URL de la base de datos llega bien escrita a todos lados,
+y en producción nadie arranca el servidor con la clave de desarrollo."""
 
 import pytest
+from pydantic import ValidationError
 
 from app.cli import configuracion_alembic
-from app.config import ConfiguracionEntorno
+from app.config import CLAVE_DE_DESARROLLO, ConfiguracionEntorno
+
+CLAVE_LARGA = "x7Kp2" * 10  # 50 caracteres
+
+
+@pytest.mark.parametrize("clave", [CLAVE_DE_DESARROLLO, "corta-de-20-letras!!"])
+def test_en_produccion_la_clave_secreta_es_obligatoria(clave: str):
+    with pytest.raises(ValidationError, match="CLAVE_SECRETA"):
+        ConfiguracionEntorno(_env_file=None, entorno="produccion", clave_secreta=clave)
+
+
+def test_en_produccion_arranca_con_una_clave_larga():
+    entorno = ConfiguracionEntorno(_env_file=None, entorno="produccion", clave_secreta=CLAVE_LARGA)
+    assert entorno.es_produccion
+
+
+def test_en_desarrollo_sirve_la_clave_de_desarrollo():
+    entorno = ConfiguracionEntorno(_env_file=None, entorno="desarrollo")
+    assert entorno.clave_secreta == CLAVE_DE_DESARROLLO
+    assert not entorno.es_produccion
 
 
 @pytest.mark.parametrize(

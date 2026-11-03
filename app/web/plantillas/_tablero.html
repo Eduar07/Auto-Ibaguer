@@ -1,0 +1,246 @@
+{#- La fila en vivo. Este pedazo se vuelve a pedir cada vez que algo cambia. -#}
+{% import "_iconos.html" as iconos %}
+{% import "_partes.html" as partes %}
+
+{% macro menu_del_turno(t) %}
+<details class="menu-turno">
+  <summary class="boton boton--icono" aria-label="Más opciones para {{ t.numero }}">{{ iconos.icono("opciones", 20) }}</summary>
+  <div class="menu-turno__opciones">
+    {% if t.estado == EstadoTurno.EN_FILA %}
+    <button type="button" hx-post="/turnos/{{ t.id }}/llegada" hx-target="#tablero">Marcar llegada</button>
+    {% endif %}
+    <button type="button" hx-get="/turnos/{{ t.id }}/corregir" hx-target="#dialogo-contenido">Corregir datos</button>
+    <button type="button" class="peligro" hx-get="/turnos/{{ t.id }}/cancelar" hx-target="#dialogo-contenido">Cancelar turno</button>
+  </div>
+</details>
+{% endmacro %}
+
+{% macro turno_en_espera(t, fila, ahora) %}
+{% set es_siguiente = t.id == fila.siguiente_id %}
+<div class="turno{% if es_siguiente %} turno--siguiente{% endif %}" id="turno-{{ t.id }}">
+  <span class="numero">{{ t.numero }}</span>
+  <div class="turno__quien">
+    <strong>{{ t.nombre }}</strong>
+    <span>{{ partes.vehiculo(t) }} · {{ "por WhatsApp" if t.por_whatsapp else "creado en el local" }}</span>
+    {% if t.placa_pendiente or t.servicio_por_definir or t.intentos_sin_llegar %}
+    <div class="marcas">
+      {% if t.placa_pendiente %}<span class="insignia insignia--pendiente">Placa pendiente</span>{% endif %}
+      {% if t.servicio_por_definir %}<span class="insignia insignia--pendiente">Servicio por definir</span>{% endif %}
+      {% if t.intentos_sin_llegar %}<span class="insignia insignia--pendiente">Ya pasó al final una vez</span>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  <div class="turno__servicio"><span class="turno__etiqueta">Servicio</span><strong>{{ partes.servicio_y_precio(t) }}</strong></div>
+  {#- El estado y los botones van juntos: si no caben en la línea, bajan juntos. -#}
+  <div class="turno__lado">
+  <div class="turno__estado">
+    {% if t.estado == EstadoTurno.LLAMADO %}
+      {% set restante = segundos_hasta(t.gracia_hasta, ahora) %}
+      <span class="insignia {{ 'insignia--llamado' if restante else 'insignia--vencido' }}" data-restante="{{ restante }}">
+        {{- iconos.icono("reloj", 14, 2.5) -}}
+        <span class="cuenta-regresiva">Llamado · {% if restante %}{{ "%02d:%02d"|format(restante // 60, restante % 60) }}{% else %}tiempo vencido{% endif %}</span>
+      </span>
+      {% if t.en_camino %}<span class="insignia insignia--azul">En camino</span>{% endif %}
+    {% elif t.estado == EstadoTurno.LLEGO %}
+      <span class="insignia insignia--llego">Llegó · en el local</span>
+    {% else %}
+      <span class="insignia insignia--gris">En fila</span>
+      {% if t.adelante == 0 %}<span class="suave">Es el siguiente</span>
+      {% elif t.avisado %}<span class="suave">Avisado: {{ "falta 1 turno" if t.adelante == 1 else "faltan %d turnos"|format(t.adelante) }}</span>
+      {% elif t.espera_min %}<span class="suave">Aprox. {{ t.espera_min|duracion }}</span>
+      {% endif %}
+    {% endif %}
+  </div>
+  <div class="turno__acciones">
+    {% if t.estado == EstadoTurno.LLAMADO %}
+      <button type="button" class="boton boton--borde" hx-post="/turnos/{{ t.id }}/llegada"
+              hx-target="#tablero" hx-disabled-elt="this">Marcar llegada</button>
+    {% elif t.estado == EstadoTurno.LLEGO and fila.libres %}
+      {#- El puesto no espera: el primero que ya llegó va resaltado, pero el administrador
+          puede pasar a otro si tiene una razón. -#}
+      {% set clase = "boton" if es_siguiente else "boton boton--borde" %}
+      {% if fila.libres|length == 1 %}
+      <button type="button" class="{{ clase }}" hx-post="/turnos/{{ t.id }}/puesto"
+              hx-vals='{"puesto_id": "{{ fila.libres[0].id }}"}' hx-target="#tablero"
+              hx-disabled-elt="this">Pasar a puesto {{ fila.libres[0].nombre }}</button>
+      {% else %}
+      <button type="button" class="{{ clase }}" hx-get="/turnos/{{ t.id }}/puesto"
+              hx-target="#dialogo-contenido">Pasar a puesto</button>
+      {% endif %}
+    {% endif %}
+    {{ menu_del_turno(t) }}
+  </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro tarjeta_de_puesto(puesto, ahora) %}
+{% set t = puesto.turno %}
+{% if t %}
+<article class="puesto" aria-label="Puesto {{ puesto.nombre }}">
+  <div class="puesto__cabeza">
+    <span class="puesto__nombre">Puesto {{ puesto.nombre }}</span>
+    <span class="insignia insignia--azul">En lavado</span>
+  </div>
+  <div class="puesto__turno">
+    <span class="numero">{{ t.numero }}</span>
+    <div class="puesto__dato">
+      <strong>{{ t.nombre }}</strong>
+      <span class="suave">{{ partes.vehiculo(t) }}</span>
+    </div>
+  </div>
+  <div class="puesto__detalle">
+    {% if t.servicio %}<span><strong>{{ t.servicio }}</strong>{% if t.precio is not none %} · {{ t.precio|pesos }}{% endif %}</span>
+    {% else %}<span class="insignia insignia--pendiente">Servicio por definir</span>{% endif %}
+    {% if t.placa_pendiente %}<span class="insignia insignia--pendiente">Placa pendiente</span>{% endif %}
+  </div>
+  {% set lleva = minutos_desde(t.en_lavado_desde, ahora) %}
+  {% set estimado = t.duracion_estimada_min %}
+  {% set sobre = lleva - estimado %}
+  {% set avance = [100, (lleva * 100 // estimado) if estimado else 100]|min %}
+  <div class="progreso">
+    <div class="progreso__texto">
+      <span>Lleva {{ lleva|duracion }}</span>
+      {% if sobre > 0 %}<span class="atrasado">{{ sobre|duracion }} sobre el estimado</span>{% endif %}
+    </div>
+    <div class="progreso__pista" aria-hidden="true">
+      <div class="progreso__barra{% if sobre > 0 %} progreso__barra--atrasada{% endif %}" style="width: {{ avance }}%"></div>
+    </div>
+  </div>
+  <button type="button" class="boton boton--grande" hx-post="/turnos/{{ t.id }}/listo"
+          hx-target="#tablero" hx-disabled-elt="this">{{ iconos.icono("listo", 18, 2.5) }}Marcar listo</button>
+</article>
+{% else %}
+<article class="puesto puesto--libre" aria-label="Puesto {{ puesto.nombre }}">
+  <div class="puesto__cabeza">
+    <span class="puesto__nombre">Puesto {{ puesto.nombre }}</span>
+    <span class="insignia insignia--verde">Libre</span>
+  </div>
+  <span class="puesto__libre" aria-hidden="true">Libre</span>
+  <p class="puesto__mensaje">{{ puesto.mensaje }}</p>
+</article>
+{% endif %}
+{% endmacro %}
+
+{% macro resumen_de_la_fila(fila) -%}
+{% set puestos = fila.puestos|length %}
+{{ puestos }} puesto{{ "s" if puestos != 1 }} · {{ fila.espera|length }} en espera · si pide turno ahora:
+{%- if fila.espera_nuevo_min %} aprox. {{ fila.espera_nuevo_min|duracion }}
+{%- elif fila.espera_nuevo_min == 0 %} sin espera
+{%- else %} sin estimado{% endif %}
+{%- endmacro %}
+
+<div class="titular">
+  <div>
+    <h1>Fila en vivo</h1>
+    <p>{{ fecha_larga(tablero.ahora) }} · {{ tablero.ahora|hora }} · Se actualiza sola</p>
+  </div>
+  <div class="cifras">
+    <div class="cifra"><span class="cifra__valor">{{ tablero.en_lavado }}</span><span class="cifra__nombre">en lavado</span></div>
+    <div class="cifra"><span class="cifra__valor">{{ tablero.en_espera }}</span><span class="cifra__nombre">en espera</span></div>
+    <div class="cifra"><span class="cifra__valor">{{ tablero.por_cobrar|length }}</span><span class="cifra__nombre">por cobrar</span></div>
+  </div>
+</div>
+
+{#- En el celular se ve una fila a la vez. -#}
+<div class="pestanas" role="tablist" aria-label="Filas">
+  {% for fila in tablero.filas %}
+  <button type="button" role="tab" class="pestana" id="pestana-{{ fila.id }}" data-fila="{{ fila.id }}"
+          aria-controls="fila-{{ fila.id }}" aria-selected="{{ 'true' if loop.first else 'false' }}">
+    {{ fila.nombre }} · {{ fila.espera|length }} en espera
+  </button>
+  {% endfor %}
+</div>
+
+{% if tablero.por_cobrar %}
+<a class="banner-cobrar" href="#por-cobrar">
+  <span>
+    <strong>{{ tablero.por_cobrar|length }} por cobrar</strong>
+    <small>{% for t in tablero.por_cobrar %}{{ t.numero }} · {{ t.precio|pesos if t.precio is not none else "por definir" }}{{ " · " if not loop.last }}{% endfor %}</small>
+  </span>
+  <span class="banner-cobrar__accion">Cobrar</span>
+</a>
+{% endif %}
+
+<div class="columnas">
+  <div class="columna-filas">
+    {% for fila in tablero.filas %}
+    <section class="seccion" id="fila-{{ fila.id }}" data-fila="{{ fila.id }}" aria-labelledby="titulo-fila-{{ fila.id }}">
+      <div class="seccion__titulo">
+        <h2 id="titulo-fila-{{ fila.id }}">{{ iconos.icono_de_fila(fila.nombre) }}{{ fila.nombre }}</h2>
+        <span class="seccion__resumen">{{ resumen_de_la_fila(fila) }}</span>
+      </div>
+
+      <h3 class="subtitulo-celular">Puestos</h3>
+      <div class="puestos{% if fila.nombre == 'Motos' %} puestos--compactos{% endif %}">
+        {% for puesto in fila.puestos %}
+          {{ tarjeta_de_puesto(puesto, tablero.ahora) }}
+        {% else %}
+          <p class="suave">Esta fila no tiene puestos activos.</p>
+        {% endfor %}
+      </div>
+
+      <div class="lista">
+        <div class="lista__cabeza">
+          <h3>En espera</h3>
+          <span class="suave">En orden de llegada a la fila</span>
+        </div>
+        {% if fila.aviso_puesto_no_espera %}
+        <p class="nota">{{ iconos.icono("info", 18) }}<span>{{ fila.aviso_puesto_no_espera }}</span></p>
+        {% endif %}
+        {% for t in fila.espera %}
+          {{ turno_en_espera(t, fila, tablero.ahora) }}
+        {% else %}
+          <p class="lista__vacia">Nadie en espera.</p>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+
+  <aside class="columna-lateral">
+    <section class="panel" id="por-cobrar" aria-labelledby="titulo-por-cobrar">
+      <div class="panel__cabeza">
+        <h2 id="titulo-por-cobrar">Por cobrar</h2>
+        {% set listos = tablero.por_cobrar|length %}
+        {% if listos %}<span class="insignia insignia--verde">{{ listos }} listo{{ "s" if listos != 1 }}</span>{% endif %}
+      </div>
+      {% for t in tablero.por_cobrar %}
+      <div class="por-cobrar">
+        <div class="por-cobrar__fila">
+          <span class="numero">{{ t.numero }}</span>
+          <span class="suave">{{ partes.listo_hace(t, tablero.ahora) }}</span>
+        </div>
+        <strong>{{ t.nombre }}</strong>
+        <span class="suave">{{ t.tipo_vehiculo }} · {{ t.placa or "placa pendiente" }} · {{ t.servicio or "servicio por definir" }}</span>
+        <div class="por-cobrar__fila">
+          <span class="por-cobrar__precio">{{ t.precio|pesos if t.precio is not none else "Por definir" }}</span>
+          <button type="button" class="boton boton--oscuro" hx-get="/turnos/{{ t.id }}/cobrar"
+                  hx-target="#dialogo-contenido" aria-label="Cobrar {{ t.numero }}">Cobrar</button>
+        </div>
+      </div>
+      {% else %}
+      <p class="suave">Nada por cobrar.</p>
+      {% endfor %}
+    </section>
+
+    <section class="panel" aria-labelledby="titulo-caja">
+      <h2 id="titulo-caja">Caja de hoy</h2>
+      <span class="caja__total">{{ tablero.cobrado_hoy|pesos }}</span>
+      <span class="suave">{{ tablero.cobros_hoy }} vehículo{{ "s" if tablero.cobros_hoy != 1 }} cobrado{{ "s" if tablero.cobros_hoy != 1 }}</span>
+    </section>
+
+    <section class="panel" aria-labelledby="titulo-actividad">
+      <h2 id="titulo-actividad" class="panel__titulo">{{ iconos.icono("actividad", 20) }}Actividad de hoy</h2>
+      {% if tablero.actividad %}
+      <ol class="actividad">
+        {% for movimiento in tablero.actividad %}
+        <li><time datetime="{{ movimiento.hora.isoformat() }}">{{ movimiento.hora|hora }}</time><span>{{ movimiento.texto }}</span></li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="suave">Todavía no hay movimientos hoy.</p>
+      {% endif %}
+    </section>
+  </aside>
+</div>

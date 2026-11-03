@@ -1,0 +1,15 @@
+{#- Lo que recibiría el turno nuevo. Cambia cuando se elige otro tipo de vehículo. -#}
+<div class="vista-previa" id="vista-previa">
+  <span class="numero">{{ vista.numero }}</span>
+  <span>
+    <strong>Entra a la fila de {{ vista.fila }}</strong>
+    <span>
+      {%- if vista.resumen.puede_venir_ya -%}
+        Hay un puesto libre: puede pasar de una vez
+      {%- else -%}
+        {{ vista.resumen.en_espera }} adelante
+        {%- if vista.resumen.espera_min %} · espera aprox. {{ vista.resumen.espera_min|duracion }}{% endif %}
+      {%- endif -%}
+    </span>
+  </span>
+</div>

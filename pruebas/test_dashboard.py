@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.main import app
 from app.turnos.estados import EstadoTurno
 from app.turnos.tablas import Pago, Turno
-from app.web import comun, en_vivo, fila, sesiones
+from app.web import comun, en_vivo, fila, sesiones, tablero
 from app.web.administradores import guardar_administrador
 from app.web.tablas import Administrador
 from pruebas.fabricas import (
@@ -224,6 +224,28 @@ def test_un_llamado_sin_llegar_muestra_el_tiempo_vencido(
 
     assert llamado.llamado
     assert "Llamado · tiempo vencido" in pagina
+
+
+def test_un_lavado_que_pasa_su_duracion_estimada_se_ve_demorado(
+    adentro: TestClient, sesion: Session, reloj: dict
+):
+    ocupar_puestos(sesion, "C1")  # servicio por definir: cuenta como Básico, 1 hora
+
+    reloj["ahora"] = LUNES_8AM + minutos(60)
+    a_tiempo = adentro.get("/fila/tablero", headers=HTMX).text
+    assert "Lleva 1 h" in a_tiempo
+    assert "Demorado" not in a_tiempo and "pestana__alerta" not in a_tiempo
+    assert tablero.armar_tablero(sesion, reloj["ahora"]).demorados == 0
+
+    reloj["ahora"] = LUNES_8AM + minutos(61)
+    tarde = adentro.get("/fila/tablero", headers=HTMX).text
+    assert 'class="puesto puesto--demorado"' in tarde
+    assert "Demorado</span>" in tarde
+    assert "1 min sobre el estimado" in tarde
+    # Arriba, en el computador, y en la pestaña de la fila, en el celular.
+    assert '<span class="cifra__valor">1</span><span class="cifra__nombre">demorado</span>' in tarde
+    assert "pestana__alerta" in tarde and ", 1 lavado demorado" in tarde
+    assert tablero.armar_tablero(sesion, reloj["ahora"]).demorados == 1
 
 
 # --- Nuevo turno en el local -----------------------------------------------------------

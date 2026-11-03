@@ -12,7 +12,7 @@ from datetime import datetime, time, timedelta
 
 from app.formato import pesos
 from app.turnos.errores import PrecioInvalido
-from app.turnos.estados import Actor, EstadoTurno
+from app.turnos.estados import Actor, EstadoTurno, TipoAviso
 
 _E = EstadoTurno
 _A = Actor
@@ -113,6 +113,42 @@ def elegir_siguiente_para_puesto(espera: Sequence[TurnoEnEspera]) -> int | None:
 def al_vencer_la_gracia(intentos_sin_llegar: int) -> EstadoTurno:
     """Primera vez sin llegar: vuelve a la fila, al final. Segunda vez: pierde el turno."""
     return EstadoTurno.EN_FILA if intentos_sin_llegar == 0 else EstadoTurno.NO_LLEGO
+
+
+# En qué estados del turno todavía sirve cada aviso.
+ESTADOS_DONDE_SIRVE_EL_AVISO = {
+    # Si ya lo llamaron, el que sirve es el aviso del llamado.
+    TipoAviso.AVISO_ANTICIPADO: frozenset({_E.EN_FILA}),
+    TipoAviso.LLAMADO: frozenset({_E.LLAMADO}),
+    # Si nadie más esperaba, al pasar al final lo llaman otra vez de inmediato: igual
+    # sirve que sepa que ya perdió una oportunidad.
+    TipoAviso.PASA_AL_FINAL: frozenset({_E.EN_FILA, _E.LLAMADO}),
+    TipoAviso.NO_LLEGO: frozenset({_E.NO_LLEGO}),
+    TipoAviso.VEHICULO_LISTO: frozenset({_E.LISTO}),
+}
+
+
+def aviso_sigue_vigente(
+    tipo: TipoAviso,
+    estado: EstadoTurno,
+    *,
+    gracia_hasta: datetime | None,
+    gracia_del_aviso: datetime | None,
+    ahora: datetime,
+) -> bool:
+    """¿Todavía sirve enviar este aviso?
+
+    Un aviso que no salió a tiempo (por ejemplo, WhatsApp estuvo caído) puede quedar
+    viejo: si el turno ya cambió, mandarlo tarde confundiría al cliente. El del llamado,
+    además, debe ser de este mismo llamado (no de uno anterior) y salir antes de que se
+    acabe el tiempo para llegar.
+    """
+    if estado not in ESTADOS_DONDE_SIRVE_EL_AVISO[tipo]:
+        return False
+    if tipo == TipoAviso.LLAMADO:
+        mismo_llamado = gracia_del_aviso is None or gracia_del_aviso == gracia_hasta
+        return mismo_llamado and gracia_hasta is not None and ahora < gracia_hasta
+    return True
 
 
 # --- Espera estimada -------------------------------------------------------------------

@@ -74,13 +74,17 @@
 </div>
 {% endmacro %}
 
-{% macro tarjeta_de_puesto(puesto, ahora) %}
+{% macro tarjeta_de_puesto(puesto) %}
 {% set t = puesto.turno %}
 {% if t %}
-<article class="puesto" aria-label="Puesto {{ puesto.nombre }}">
+<article class="puesto{% if t.demorado %} puesto--demorado{% endif %}" aria-label="Puesto {{ puesto.nombre }}">
   <div class="puesto__cabeza">
     <span class="puesto__nombre">Puesto {{ puesto.nombre }}</span>
+    {% if t.demorado %}
+    <span class="insignia insignia--demorado">{{ iconos.icono("reloj", 14, 2.5) }}Demorado</span>
+    {% else %}
     <span class="insignia insignia--azul">En lavado</span>
+    {% endif %}
   </div>
   <div class="puesto__turno">
     <span class="numero">{{ t.numero }}</span>
@@ -94,17 +98,16 @@
     {% else %}<span class="insignia insignia--pendiente">Servicio por definir</span>{% endif %}
     {% if t.placa_pendiente %}<span class="insignia insignia--pendiente">Placa pendiente</span>{% endif %}
   </div>
-  {% set lleva = minutos_desde(t.en_lavado_desde, ahora) %}
+  {% set lleva = t.lavado_lleva_min or 0 %}
   {% set estimado = t.duracion_estimada_min %}
-  {% set sobre = lleva - estimado %}
   {% set avance = [100, (lleva * 100 // estimado) if estimado else 100]|min %}
   <div class="progreso">
     <div class="progreso__texto">
       <span>Lleva {{ lleva|duracion }}</span>
-      {% if sobre > 0 %}<span class="atrasado">{{ sobre|duracion }} sobre el estimado</span>{% endif %}
+      {% if t.demorado %}<span class="atrasado">{{ t.sobre_el_estimado_min|duracion }} sobre el estimado</span>{% endif %}
     </div>
     <div class="progreso__pista" aria-hidden="true">
-      <div class="progreso__barra{% if sobre > 0 %} progreso__barra--atrasada{% endif %}" style="width: {{ avance }}%"></div>
+      <div class="progreso__barra{% if t.demorado %} progreso__barra--atrasada{% endif %}" style="width: {{ avance }}%"></div>
     </div>
   </div>
   <button type="button" class="boton boton--grande" hx-post="/turnos/{{ t.id }}/listo"
@@ -139,6 +142,9 @@
     <div class="cifra"><span class="cifra__valor">{{ tablero.en_lavado }}</span><span class="cifra__nombre">en lavado</span></div>
     <div class="cifra"><span class="cifra__valor">{{ tablero.en_espera }}</span><span class="cifra__nombre">en espera</span></div>
     <div class="cifra"><span class="cifra__valor">{{ tablero.por_cobrar|length }}</span><span class="cifra__nombre">por cobrar</span></div>
+    {% if tablero.demorados %}
+    <div class="cifra cifra--alerta"><span class="cifra__valor">{{ tablero.demorados }}</span><span class="cifra__nombre">demorado{{ "s" if tablero.demorados != 1 }}</span></div>
+    {% endif %}
   </div>
 </div>
 
@@ -148,6 +154,7 @@
   <button type="button" role="tab" class="pestana" id="pestana-{{ fila.id }}" data-fila="{{ fila.id }}"
           aria-controls="fila-{{ fila.id }}" aria-selected="{{ 'true' if loop.first else 'false' }}">
     {{ fila.nombre }} · {{ fila.espera|length }} en espera
+    {%- if fila.demorados %}<span class="pestana__alerta" title="Lavados demorados"></span><span class="solo-lector">, {{ fila.demorados }} lavado{{ "s" if fila.demorados != 1 }} demorado{{ "s" if fila.demorados != 1 }}</span>{% endif %}
   </button>
   {% endfor %}
 </div>
@@ -174,7 +181,7 @@
       <h3 class="subtitulo-celular">Puestos</h3>
       <div class="puestos{% if fila.nombre == 'Motos' %} puestos--compactos{% endif %}">
         {% for puesto in fila.puestos %}
-          {{ tarjeta_de_puesto(puesto, tablero.ahora) }}
+          {{ tarjeta_de_puesto(puesto) }}
         {% else %}
           <p class="suave">Esta fila no tiene puestos activos.</p>
         {% endfor %}

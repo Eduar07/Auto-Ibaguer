@@ -19,7 +19,12 @@ def obtener_motor() -> Engine:
     return create_engine(obtener_entorno().database_url, pool_pre_ping=True)
 
 
+def abrir_sesion() -> Session:
+    """Una sesión nueva. La usan las peticiones al servidor, el reloj y los comandos."""
+    return Session(obtener_motor(), expire_on_commit=False)
+
+
 def obtener_sesion() -> Iterator[Session]:
     """Entrega una sesión y la cierra al terminar. FastAPI la usa como dependencia."""
-    with Session(obtener_motor(), expire_on_commit=False) as sesion:
+    with abrir_sesion() as sesion:
         yield sesion

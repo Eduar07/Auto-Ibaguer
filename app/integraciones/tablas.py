@@ -56,9 +56,10 @@ class MensajeEntrante(Base):
 
 
 class EstadoMensaje(StrEnum):
-    PENDIENTE = "pendiente"
-    ENVIADO = "enviado"
-    FALLIDO = "fallido"
+    PENDIENTE = "pendiente"  # por enviar, o esperando el próximo intento
+    ENVIADO = "enviado"  # WhatsApp lo recibió
+    FALLIDO = "fallido"  # WhatsApp no lo aceptó y se acabaron los intentos
+    DESCARTADO = "descartado"  # ya no servía: el turno cambió antes de poder enviarlo
 
 
 class MensajeSaliente(Base):
@@ -72,6 +73,7 @@ class MensajeSaliente(Base):
     __table_args__ = (
         CheckConstraint("telefono ~ '^[0-9]{8,15}$'", name="telefono_solo_digitos"),
         CheckConstraint("intentos >= 0", name="intentos_no_negativos"),
+        CheckConstraint("estado <> 'enviado' OR enviado_en IS NOT NULL", name="enviado_con_fecha"),
         Index(
             "ix_mensaje_saliente_por_enviar",
             "proximo_intento_en",

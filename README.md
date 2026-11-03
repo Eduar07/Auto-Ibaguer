@@ -14,7 +14,7 @@ Sistema de turnos para el lavadero de carros y motos **Auto Ibaguer**:
 | 2 · Base de datos | Listo: 16 tablas, reglas dentro de la base y datos iniciales del lavadero. |
 | 3 · Reglas del negocio | Listo: la fila completa (pedir turno, llamados, avisos, gracia, puestos, cobro y correcciones), con sus pruebas y sin choques. |
 | 4 · Dashboard | Construido: entrar, la fila en vivo con sus botones, nuevo turno en el local, cobrar, clientes (buscar, ficha, editar y borrar datos) y configuración (negocio, horario, bot, puestos, menú y precios). Falta la prueba final desde el celular. |
-| 5 · Bot con botones | — |
+| 5 · Bot con botones | En construcción: la conversación con botones ya funciona en la página **Probar el bot**. Falta conectarla a WhatsApp (cuando llegue la SIM) y poder editar los textos desde Configuración. |
 | 6 · Reloj | Construido: cada 30 segundos pasa al final a quien no llegó a tiempo, vence las sesiones del bot y marca los lavados demorados. Los reintentos de WhatsApp quedan listos para cuando llegue el envío (hito 5). Falta su prueba en tu computador. |
 | 7 · Gemini | — |
 | 8 · Producción | — |
@@ -68,6 +68,34 @@ Para revisar solo el servidor, <http://localhost:8000/salud> debe decir `{"estad
 | Lavado **Demorado** | Cuando un lavado pasa su duración estimada, su puesto se pone naranja y arriba se cuenta. En el celular, la pestaña de esa fila muestra un punto naranja aunque estés viendo la otra. Casi siempre quiere decir que ya está listo y falta marcarlo: mientras tanto el cliente no recibe el aviso y la espera de la fila se calcula mal. |
 
 En el celular se ve una fila a la vez (pestañas **Carros** y **Motos**) y las secciones quedan en la barra de abajo. Para ver cómo queda en el celular sin salir del computador: en Chrome, `F12` y luego `Ctrl+Shift+M`. Desde el celular de verdad se usará cuando esté en la nube (hito 8).
+
+## El bot
+
+El bot conversa con botones y unas pocas palabras; el texto libre lo entenderá Gemini en el hito 7.
+
+| El cliente | El bot |
+|---|---|
+| Escribe cualquier cosa la primera vez | Saluda con el horario y ofrece **Pedir turno**, **Ver la fila** y **Servicios y precios**. |
+| Pide turno | Si es nuevo, primero el aviso de datos (sin aceptarlo no se guarda nada). Después nombre (solo la primera vez), vehículo, placa (puede ser después), servicio (o "lo decido en el local"), resumen y confirmación. |
+| Ve la fila | Solo cantidades, nunca nombres ni placas: hay puesto libre, nadie esperando, o cuántos esperan y cuánto tardaría. |
+| Ve los precios | El menú de su tipo de vehículo, con descripción. Si dice "carro", pregunta si es automóvil o camioneta. |
+| Escribe *mi turno* | Cómo va: cuántos tiene adelante y cuánto le falta, o hasta qué hora tiene si lo están llamando. |
+| Escribe *cancelar* | Siempre pregunta antes con botones (cancelar no se puede deshacer), y la fila avanza. |
+| Escribe *ya estoy aquí* o *en camino* | Marca la llegada o el "en camino"; el dashboard lo ve al instante. |
+| Escanea el código QR del mostrador | "Hola, ya estoy en la fila": el bot encuentra su turno por el celular, o le pide el número de turno. |
+| Dice "gracias" | Se despide sin volver a mostrar el menú. |
+
+Fuera del horario o con el bot apagado no da turnos, pero sí muestra la fila y los precios. Tampoco deja pedir un segundo turno en la misma fila: muestra el que tiene y ofrece mantenerlo o cancelarlo. Si el cliente no responde en 30 minutos, la conversación vuelve a empezar.
+
+**Probar el bot**: en Configuración, botón **Probar el bot** (o <http://localhost:8000/probar-bot>). Es la misma conversación que tendrá WhatsApp, con los mismos botones, y los avisos de la fila (te llamamos, tu vehículo está listo...) llegan a la charla. Lo que pidas ahí entra a la fila de verdad de tu computador. Solo existe en desarrollo.
+
+| Archivo de `bot/` | Qué tiene |
+|---|---|
+| `mensajes.py` | Lo que entra (texto o botón tocado) y lo que sale (texto con hasta 3 botones o una lista), con los límites de WhatsApp. |
+| `textos.py` | Todo lo que dice el bot, en un solo lugar. |
+| `conversacion.py` | Qué contesta a cada mensaje y en qué paso va cada cliente. Llama a los mismos casos de uso que el dashboard. |
+| `avisos.py` | Cómo dice el bot cada aviso de la fila. |
+| `sesiones.py` | Las conversaciones sin respuesta que vencen (las limpia el reloj). |
 
 ## El reloj
 
@@ -133,7 +161,7 @@ app/
 ├── catalogo/       filas, puestos, tipos de vehículo, servicios, precios y parámetros
 ├── clientes/       clientes, vehículos, placas y teléfonos
 ├── turnos/         la fila: turnos, llamados, avisos, puestos, historial y cobro
-├── bot/            conversación de WhatsApp
+├── bot/            conversación de WhatsApp: pasos, botones, textos y avisos
 ├── integraciones/  mensajes que entran y salen de WhatsApp (bandejas y reintentos)
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores
 ├── reloj/          lo que pasa solo cada 30 segundos (gracias, sesiones del bot, avisos)
@@ -180,6 +208,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 |---|---|
 | Horario, tiempo de gracia, cuándo avisar, nombre y teléfono del negocio, aviso de datos | Pantalla **Configuración** del dashboard (se guarda en la tabla `configuracion`). No se toca el código. |
 | Servicios, precios y puestos | Pantalla **Configuración**. Un precio nuevo apaga el viejo y crea otro en `servicio_precio`; así los cobros pasados no cambian. De la duración estimada de cada servicio dependen la espera de la fila y la alerta de lavado demorado. |
+| Lo que dice el bot | Por ahora en `app/bot/textos.py`; en la siguiente parte del hito 5 se cambiará desde **Configuración**. El aviso de datos ya se cambia ahí. |
 | Colores, letras y tamaños del dashboard | `app/web/estaticos/css/dashboard.css`. Los colores del diseño están al comienzo, con nombre. |
 | Conexión a la base, claves de Meta y Gemini, reloj encendido o apagado | Archivo `.env`, que nunca se sube a GitHub. `.env.example` solo trae los nombres. |
 
@@ -201,6 +230,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Salir de psql | `\q` |
 | Ver los mensajes de PostgreSQL | `docker compose logs postgres` |
 | Pedir un turno como si fuera por WhatsApp | `uv run auto-ibaguer simular-turno` |
+| Conversar con el bot sin WhatsApp | <http://localhost:8000/probar-bot> |
 | Ver los avisos que esperan en la bandeja de salida (dentro de psql) | `SELECT id, tipo, estado, intentos, creado_en FROM mensaje_saliente ORDER BY id DESC LIMIT 10;` |
 | Borrar la base y empezar de cero | `docker compose down -v`, luego `docker compose up -d` y `uv run auto-ibaguer preparar-base` |
 

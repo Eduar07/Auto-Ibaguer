@@ -1,0 +1,3 @@
+{% import "_burbujas_del_bot.html" as burbujas %}
+{% if escrito %}<div class="burbuja burbuja--yo"><p>{{ escrito }}</p></div>{% endif %}
+{% for mensaje in respuestas %}{{ burbujas.del_bot(mensaje, telefono) }}{% endfor %}

@@ -12,6 +12,11 @@ from sqlalchemy.orm import Session
 
 from app.config import obtener_entorno
 
+# Todas las tablas quedan cargadas antes de abrir una sesión: si falta una, SQLAlchemy no
+# sabe resolver las llaves foráneas que apuntan a ella (por ejemplo, la del administrador
+# en el historial de un turno). Así funciona igual desde el servidor, un comando o un script.
+from app.db import modelos  # noqa: F401
+
 
 @lru_cache
 def obtener_motor() -> Engine:

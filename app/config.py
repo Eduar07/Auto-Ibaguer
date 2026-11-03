@@ -42,6 +42,14 @@ class ConfiguracionEntorno(BaseSettings):
     whatsapp_token_verificacion: str = ""
     whatsapp_version_api: str = "v26.0"
 
+    # --- Gemini (Google). Entiende lo que el cliente escribe con sus palabras. Sin la
+    # clave, el bot funciona igual con botones y unas pocas palabras. Es secreta.
+    gemini_clave: str = ""
+    # Si el proyecto de Google tiene facturación (plan de pago). En el plan gratis Google
+    # usa los mensajes para mejorar sus productos y personas los pueden leer: en la nube,
+    # con clientes de verdad, Gemini solo se usa con el plan de pago.
+    gemini_plan_de_pago: bool = False
+
     @property
     def es_produccion(self) -> bool:
         return self.entorno == "produccion"

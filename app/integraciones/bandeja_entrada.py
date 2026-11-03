@@ -27,7 +27,7 @@ from app.catalogo.parametros import leer_parametros
 from app.clientes import servicio as clientes
 from app.db.sesion import AbrirSesion
 from app.formato import telefono as telefono_legible
-from app.integraciones import bandeja_salida
+from app.integraciones import bandeja_salida, gemini
 from app.integraciones.bandeja_salida import Enviador
 from app.integraciones.tablas import MensajeEntrante
 from app.integraciones.whatsapp import Recibido
@@ -131,7 +131,11 @@ def atender_pendientes(abrir: AbrirSesion, telefono: str, *, ahora: datetime | N
                 if mensaje is None:
                     return atendidos
                 mensaje_id = mensaje.id
-                respuestas = conversacion.atender(sesion, _entrada(mensaje), ahora=momento)
+                # Gemini entiende lo que el cliente escribe con sus palabras, si está.
+                interprete = gemini.para_el_bot(leer_parametros(sesion))
+                respuestas = conversacion.atender(
+                    sesion, _entrada(mensaje), ahora=momento, interprete=interprete
+                )
                 _contestar(sesion, telefono, respuestas, momento)
                 mensaje.procesado_en = momento
         except Exception as error:

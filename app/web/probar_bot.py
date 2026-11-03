@@ -21,6 +21,7 @@ from app.catalogo.parametros import leer_parametros
 from app.clientes.errores import TelefonoInvalido
 from app.clientes.reglas import normalizar_telefono
 from app.config import obtener_entorno
+from app.integraciones import gemini
 from app.integraciones.tablas import MensajeSaliente
 from app.turnos.estados import TipoAviso
 from app.web.comun import Admin, SesionBD, html, pagina, verificar_origen
@@ -78,7 +79,9 @@ def escribirle_al_bot(
     titulo: Annotated[str, Form()] = "",
 ) -> Response:
     entrada = Entrada(telefono=telefono, texto=texto or None, opcion=opcion or None)
-    respuestas = conversacion.atender(sesion, entrada)
+    # Igual que por WhatsApp: si Gemini está conectado, entiende lo que escribes.
+    interprete = gemini.para_el_bot(leer_parametros(sesion))
+    respuestas = conversacion.atender(sesion, entrada, interprete=interprete)
     sesion.commit()
     contexto = {"telefono": telefono, "escrito": titulo or texto, "respuestas": respuestas}
     return html(request, "_charla_del_bot.html", contexto)

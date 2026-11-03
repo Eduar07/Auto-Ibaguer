@@ -21,6 +21,7 @@ from app.catalogo import configuracion
 from app.catalogo.parametros import leer_parametros
 from app.catalogo.tablas import Fila, Puesto, Servicio, ServicioPrecio, TipoVehiculo
 from app.errores import ReglaDelNegocio
+from app.integraciones import gemini
 from app.turnos import casos_de_uso as casos
 from app.turnos import consultas
 from app.web.comun import (
@@ -124,6 +125,8 @@ def _valores_guardados(sesion: Session, filas: list[FilaEnConfiguracion]) -> dic
         "avisar_cuando_falten": str(parametros.avisar_cuando_falten),
         "sesion_bot_minutos": str(int(parametros.sesion_bot.total_seconds() // 60)),
         "aviso_datos": parametros.aviso_datos,
+        "gemini_activo": parametros.gemini_activo,
+        "modelo_gemini": parametros.modelo_gemini,
     }
     for fila in filas:
         for puesto in fila.puestos:
@@ -142,6 +145,7 @@ def _valores_escritos(formulario: FormData) -> dict[str, Any]:
         int(dia) for dia in formulario.getlist("dias_atencion") if dia.isdigit()
     ]
     valores["bot_activo"] = formulario.get("bot_activo") == "si"
+    valores["gemini_activo"] = formulario.get("gemini_activo") == "si"
     for clave in list(valores):
         if clave.startswith("puesto-"):
             valores[clave] = valores[clave] == "si"
@@ -161,6 +165,7 @@ def _formulario(
         "valores": valores if valores is not None else _valores_guardados(sesion, filas),
         "errores": errores or {},
         "dias_de_duracion_real": DIAS_DE_DURACION_REAL,
+        "gemini": gemini.estado(leer_parametros(sesion)),
     }
     return html(request, "_formulario_configuracion.html", contexto)
 
@@ -173,6 +178,7 @@ def pagina_configuracion(request: Request, sesion: SesionBD, _: Admin) -> Respon
         "valores": _valores_guardados(sesion, filas),
         "errores": {},
         "dias_de_duracion_real": DIAS_DE_DURACION_REAL,
+        "gemini": gemini.estado(leer_parametros(sesion)),
     }
     return pagina(request, sesion, "configuracion.html", contexto, seccion="configuracion")
 
@@ -193,10 +199,12 @@ async def guardar(request: Request, sesion: SesionBD, _: Admin) -> Response:
             "avisar_cuando_falten",
             "sesion_bot_minutos",
             "aviso_datos",
+            "modelo_gemini",
         )
     }
     parametros["dias_atencion"] = formulario.getlist("dias_atencion")
     parametros["bot_activo"] = formulario.get("bot_activo") == "si"
+    parametros["gemini_activo"] = formulario.get("gemini_activo") == "si"
     try:
         configuracion.guardar_parametros(sesion, parametros)
     except configuracion.ConfiguracionInvalida as error:

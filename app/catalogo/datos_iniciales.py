@@ -119,6 +119,16 @@ CONFIGURACION_INICIAL: tuple[tuple[str, Any, str], ...] = (
     ),
     ("bot_activo", True, "Si está apagado, el bot avisa que hoy no hay turnos"),
     (
+        "gemini_activo",
+        True,
+        "Si está apagado, el bot entiende solo los botones y unas pocas palabras",
+    ),
+    (
+        "modelo_gemini",
+        "gemini-3.5-flash-lite",
+        "Modelo de Gemini que entiende lo que escriben los clientes",
+    ),
+    (
         "aviso_datos",
         "Para darte turno guardamos tu nombre, tu celular y la placa de tu vehículo. Los "
         "usamos solo para atenderte y avisarte. Puedes pedir que los borremos cuando "

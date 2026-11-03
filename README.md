@@ -16,7 +16,7 @@ Sistema de turnos para el lavadero de carros y motos **Auto Ibaguer**:
 | 4 · Dashboard | Construido: entrar, la fila en vivo con sus botones, nuevo turno en el local, cobrar, clientes (buscar, ficha, editar y borrar datos) y configuración (negocio, horario, bot, puestos, menú y precios). Falta la prueba final desde el celular. |
 | 5 · Bot con botones | Construido: la conversación con botones funciona en **Probar el bot**, ya está conectada a WhatsApp (recibe, contesta, reintenta y a cada cliente le llegan sus mensajes en orden) y sus textos se cambian en **Configuración > Textos del bot**. Falta la prueba desde tu celular cuando llegue la SIM. |
 | 6 · Reloj | Construido: cada 30 segundos pasa al final a quien no llegó a tiempo, vence las sesiones del bot y marca los lavados demorados. Con WhatsApp conectado también envía y reintenta los mensajes, y atiende los que quedaron sin atender. Falta su prueba en tu computador. |
-| 7 · Gemini | — |
+| 7 · Gemini | Construido: el bot entiende lo que el cliente escribe con sus palabras ("cuánto vale lavar la camionetica", "ya no voy a poder ir") y, si Gemini falla o tarda más de 5 segundos, sigue con botones. Probado con un Gemini de mentira. Falta correr las frases de prueba con tu clave: `uv run auto-ibaguer probar-gemini`. |
 | 8 · Producción | — |
 | 9 · Piloto en el local | — |
 
@@ -89,12 +89,14 @@ Fuera del horario o con el bot apagado no da turnos, pero sí muestra la fila y 
 
 **Probar el bot**: en Configuración, botón **Probar el bot** (o <http://localhost:8000/probar-bot>). Es la misma conversación que tendrá WhatsApp, con los mismos botones, y los avisos de la fila (te llamamos, tu vehículo está listo...) llegan a la charla. Lo que pidas ahí entra a la fila de verdad de tu computador. Solo existe en desarrollo.
 
-**Textos del bot**: en Configuración, botón **Textos del bot** (o <http://localhost:8000/configuracion/textos>). Ahí se cambian los 38 textos que más leen los clientes (el saludo, el turno confirmado, los avisos de la fila...), agrupados como la conversación. Al abrir uno ves el texto, los datos que llena el bot ({numero}, {hora}...) y, al lado, cómo le llega al cliente mientras escribes. Cada texto se guarda por separado y el bot lo usa desde el siguiente mensaje; **Volver al original** lo deja como venía. Antes de guardar se revisa que no le falte un dato que el cliente necesita (por ejemplo, la hora límite del llamado), que no use datos que ese mensaje no tiene y que quepa en WhatsApp. Los botones y los demás textos (errores al escribir una placa, por ejemplo) siguen en `app/bot/textos.py`.
+**Textos del bot**: en Configuración, botón **Textos del bot** (o <http://localhost:8000/configuracion/textos>). Ahí se cambian los 39 textos que más leen los clientes (el saludo, el turno confirmado, los avisos de la fila...), agrupados como la conversación. Al abrir uno ves el texto, los datos que llena el bot ({numero}, {hora}...) y, al lado, cómo le llega al cliente mientras escribes. Cada texto se guarda por separado y el bot lo usa desde el siguiente mensaje; **Volver al original** lo deja como venía. Antes de guardar se revisa que no le falte un dato que el cliente necesita (por ejemplo, la hora límite del llamado), que no use datos que ese mensaje no tiene y que quepa en WhatsApp. Los botones y los demás textos (errores al escribir una placa, por ejemplo) siguen en `app/bot/textos.py`.
 
 | Archivo de `bot/` | Qué tiene |
 |---|---|
 | `mensajes.py` | Lo que entra (texto o botón tocado) y lo que sale (texto con hasta 3 botones o una lista), con los límites de WhatsApp. |
 | `textos.py` | Todo lo que dice el bot, en un solo lugar: los originales. Si un texto cambiado en Configuración no se puede usar, el bot usa el original. |
+| `interprete.py` | Lo que el bot le pide a Gemini: la lista cerrada de intenciones (pedir turno, ver la fila, precios, mi turno, cancelar, pico y placa, otra cosa) y tapar los datos personales antes de mandar el mensaje. |
+| `frases_de_prueba.py` | Las frases con las que se prueba un modelo de Gemini antes de usarlo, con lo que debe entender de cada una. |
 | `textos_editables.py` | Los textos que se cambian en Configuración: de qué datos se arma cada uno, cuáles no se pueden quitar, cuánto puede medir, la vista previa y guardarlos. |
 | `conversacion.py` | Qué contesta a cada mensaje y en qué paso va cada cliente. Llama a los mismos casos de uso que el dashboard. |
 | `avisos.py` | Cómo dice el bot cada aviso de la fila. |
@@ -116,6 +118,7 @@ La pantalla **Mensajes de WhatsApp** (en Configuración, o <http://localhost:800
 | Archivo de `integraciones/` | Qué tiene |
 |---|---|
 | `whatsapp.py` | La API de WhatsApp de Meta: la firma, leer lo que llega y enviar (texto, botones o lista). Sabe qué errores de Meta vale la pena reintentar. |
+| `gemini.py` | La API de Gemini: le pide la intención en un formato fijo, espera máximo 5 segundos y decide si se usa (clave, plan, Configuración). |
 | `bandeja_entrada.py` | Guarda cada mensaje que llega y lo atiende con el bot, de a uno por cliente. |
 | `bandeja_salida.py` | Deja cada mensaje por enviar y lo envía con reintentos, en orden para cada cliente. |
 | `tablas.py` | Las dos bandejas: `mensaje_entrante` y `mensaje_saliente`. |
@@ -160,6 +163,37 @@ Si no llegan los mensajes, mira la terminal del servidor y la pantalla **Mensaje
 | Meta no verifica la URL del webhook | Que el servidor y el túnel estén encendidos y que el token de verificación sea el mismo del `.env`. |
 | No aparece nada al escribirle al bot | Que el webhook esté suscrito a **messages**, la app en modo Live y el túnel encendido (si lo apagaste, la dirección cambió). |
 | Llegan los mensajes pero las respuestas dicen *No salió* | El motivo sale debajo del mensaje. `error 190`: el token venció o no es ese; `error 131042`: falta el método de pago o tiene un problema; `error 131047`: el cliente no ha escrito en 24 horas. |
+
+## Gemini
+
+Cuando el cliente escribe con sus palabras, Gemini dice qué quiere, de una lista cerrada: pedir turno, ver la fila, precios, mi turno, cancelar, pico y placa u otra cosa. También dice de qué vehículo o servicio habla. Gemini **nunca redacta** lo que contesta el bot ni inventa precios, turnos o tiempos: el bot contesta lo mismo que si el cliente hubiera tocado el botón.
+
+| El cliente escribe | El bot |
+|---|---|
+| "cuánto vale lavar la camionetica" | Los precios de camioneta. Si dice "carro", pregunta si es automóvil o camioneta. |
+| "está muy lleno?" | Cómo está la fila. |
+| "ya no voy a poder ir" | Pregunta con botones antes de cancelar: nada se cancela solo. |
+| "en la camionetica" (cuando el bot pregunta el vehículo) | Elige Camioneta. Igual con el servicio: "el que trae cera" elige Encerado. |
+| "a qué hora abren el domingo?" | Lo que no está en la lista: el menú, como antes. |
+
+Cuándo **no** se le pregunta a Gemini:
+
+- Cuando el cliente toca un botón, escribe una de las palabras que el bot ya conoce (*mi turno*, *cancelar*, *gracias*...) o solo saluda.
+- Cuando el bot pidió un dato (el nombre, la placa, el número de turno): lo que escribe es ese dato.
+- Al aceptar el aviso de datos y al confirmar el turno: ahí se responde con los botones o con un sí o un no claros, porque son decisiones que no se adivinan.
+
+Si Gemini no responde en 5 segundos, falla o se acabó la cuota, el bot muestra el menú y sigue con botones; en la terminal queda escrito por qué (una vez cada 5 minutos, nunca el mensaje del cliente). Antes de mandarle un mensaje se tapan las placas, los celulares y los correos (`[placa]`, `[número]`, `[correo]`): Gemini no los necesita para entender qué quiere el cliente.
+
+### Conectar Gemini
+
+1. En [Google AI Studio](https://aistudio.google.com/), en la sección de claves de la API (*API keys*), crea una clave y cópiala en `GEMINI_CLAVE` en tu `.env`. Es secreta, como el token de WhatsApp.
+2. Vuelve a encender el servidor. En **Configuración > Bot de WhatsApp** debe decir *Conectado*.
+3. Corre las frases de prueba: `uv run auto-ibaguer probar-gemini`. Prueba unas 40 frases como las escribe la gente y dice cuántas entendió bien. Si alguna sale MAL, revísala antes de usar ese modelo con clientes.
+4. Prueba la charla en **Probar el bot**.
+
+**Plan gratis o de pago.** Con el plan gratis de la API, Google usa los mensajes para mejorar sus productos y personas pueden leerlos; sus propios términos piden no mandar datos personales por ahí. Sirve para probar con mensajes tuyos. Con clientes de verdad hace falta el plan de pago (un proyecto de Google Cloud con facturación activa), donde Google no usa los mensajes. Por eso, en la nube (`ENTORNO=produccion`) el bot solo usa Gemini si pones `GEMINI_PLAN_DE_PAGO=true`; mientras tanto sigue con botones. Los límites del plan gratis (mensajes por minuto y por día) se ven en AI Studio; cada mensaje usa unos pocos cientos de tokens.
+
+**El modelo** se cambia en **Configuración > Bot de WhatsApp**, sin programar (al empezar, `gemini-3.5-flash-lite`, de los más rápidos y baratos de Google). Antes de cambiarlo, pruébalo con las frases: `uv run auto-ibaguer probar-gemini --modelo nombre-del-modelo`. El interruptor **Entender lo que escriben** apaga Gemini si algún día entiende mal.
 
 ## El reloj
 
@@ -231,7 +265,7 @@ app/
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores
 ├── reloj/          lo que pasa solo cada 30 segundos (gracias, sesiones del bot, avisos)
 ├── db/             conexión a la base de datos
-├── cli.py          comandos de la terminal (preparar-base, crear-admin, simular-turno, registrar-whatsapp)
+├── cli.py          comandos de la terminal (preparar-base, crear-admin, simular-turno, registrar-whatsapp, probar-gemini)
 ├── config.py       configuración técnica, leída del archivo .env
 ├── errores.py      el error base de las reglas del negocio
 ├── formato.py      pesos, horas y fechas a la colombiana ($40.000, 5:30 a.m.)
@@ -274,7 +308,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 |---|---|
 | Horario, tiempo de gracia, cuándo avisar, nombre y teléfono del negocio, aviso de datos | Pantalla **Configuración** del dashboard (se guarda en la tabla `configuracion`). No se toca el código. |
 | Servicios, precios y puestos | Pantalla **Configuración**. Un precio nuevo apaga el viejo y crea otro en `servicio_precio`; así los cobros pasados no cambian. De la duración estimada de cada servicio dependen la espera de la fila y la alerta de lavado demorado. |
-| Lo que dice el bot | **Configuración > Textos del bot** para los 38 que más leen los clientes, y **Configuración > Datos personales** para el aviso de datos. Cada texto cambiado es una fila `texto_bot.<nombre>` en la tabla `configuracion`. Los botones y los demás textos, en `app/bot/textos.py`. |
+| Lo que dice el bot | **Configuración > Textos del bot** para los 39 que más leen los clientes, y **Configuración > Datos personales** para el aviso de datos. Cada texto cambiado es una fila `texto_bot.<nombre>` en la tabla `configuracion`. Los botones y los demás textos, en `app/bot/textos.py`. |
 | Colores, letras y tamaños del dashboard | `app/web/estaticos/css/dashboard.css`. Los colores del diseño están al comienzo, con nombre. |
 | Conexión a la base, claves de Meta y Gemini, reloj encendido o apagado | Archivo `.env`, que nunca se sube a GitHub. `.env.example` solo trae los nombres. |
 
@@ -299,6 +333,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Conversar con el bot sin WhatsApp | <http://localhost:8000/probar-bot> |
 | Ver lo que entró y salió por WhatsApp | <http://localhost:8000/mensajes> |
 | Registrar el número del bot en WhatsApp (el día de la SIM) | `uv run auto-ibaguer registrar-whatsapp` |
+| Probar un modelo de Gemini con las frases de prueba | `uv run auto-ibaguer probar-gemini` (o `--modelo nombre`; `--pausa 0` con el plan de pago) |
 | Ver los mensajes que esperan en la bandeja de salida (dentro de psql) | `SELECT id, tipo, estado, intentos, creado_en FROM mensaje_saliente ORDER BY id DESC LIMIT 10;` |
 | Borrar la base y empezar de cero | `docker compose down -v`, luego `docker compose up -d` y `uv run auto-ibaguer preparar-base` |
 

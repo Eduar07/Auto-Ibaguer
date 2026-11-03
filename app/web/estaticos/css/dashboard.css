@@ -844,6 +844,11 @@ legend { padding: 0; margin-bottom: 8px; }
 .chat-bot__escribir .boton { min-height: 44px; border-radius: 22px; padding: 0 18px; }
 .probar-bot__ayuda { flex: 1 1 280px; max-width: 420px; }
 .enlaces-del-bot { display: flex; flex-wrap: wrap; gap: 10px; }
+.gemini { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 12px; background: var(--fondo); }
+.gemini .campo { max-width: 420px; }
+.gemini .ayuda code { font-size: 12px; overflow-wrap: anywhere; }
+.gemini__estado { align-self: flex-start; white-space: normal; line-height: 1.4; border-radius: 10px; padding: 6px 12px; }
+.insignia--naranja { background: var(--naranja-claro); color: var(--naranja-oscuro); }
 .probar-bot__lista { display: flex; flex-direction: column; gap: 10px; padding-left: 18px; font-size: 15px; line-height: 1.45; }
 .probar-bot__celular { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--tinta-suave); }
 .probar-bot__fila { display: flex; gap: 8px; }

@@ -26,6 +26,10 @@ from app.reloj.tareas import Tarea
 logger = logging.getLogger(__name__)
 
 CADA_SEGUNDOS = 30.0
+# Si pasa esto sin que empiece una vuelta, el reloj se detuvo: /salud lo dice y Render
+# reinicia el servidor. Es largo porque una vuelta con WhatsApp caído puede tardar varios
+# minutos (cada mensaje espera hasta 10 segundos).
+SE_DETUVO_SI_PASAN = 15 * 60.0
 
 
 class Reloj:
@@ -37,10 +41,23 @@ class Reloj:
         # Las tareas que fallaron en la vuelta anterior. El error completo se escribe solo
         # la primera vez, para no llenar el registro si la base de datos se cae un rato.
         self._fallando: set[str] = set()
+        # Cuándo empezó la última vuelta (time.monotonic), para saber si sigue dando vueltas.
+        self.encendido_desde = time.monotonic()
+        self.empezo_ultima_vuelta: float | None = None
 
     def una_vuelta(self, ahora: datetime | None = None) -> None:
+        self.empezo_ultima_vuelta = time.monotonic()
         for tarea in self.tareas:
             self._correr(tarea, ahora or tiempo.ahora())
+
+    def se_detuvo(self, ahora: float | None = None) -> bool:
+        """¿Lleva demasiado sin empezar una vuelta? (Algo lo trancó.)"""
+        desde = self.empezo_ultima_vuelta
+        if desde is None:
+            desde = self.encendido_desde  # todavía no ha dado la primera
+        if ahora is None:
+            ahora = time.monotonic()
+        return ahora - desde > SE_DETUVO_SI_PASAN
 
     def _correr(self, tarea: Tarea, ahora: datetime) -> None:
         try:

@@ -14,3 +14,8 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
+
+# Copias de seguridad de la base: tienen datos de clientes, NUNCA se suben a GitHub
+*.dump
+*.dump.gpg
+respaldos/

@@ -1,0 +1,67 @@
+# El sistema en la nube (hito 8), como lo arma Render: el servidor y su base de datos.
+# Se crea una sola vez en el dashboard de Render (New > Blueprint, eligiendo este
+# repositorio). Después, cada cambio que entra a main se publica solo, si las pruebas de
+# GitHub pasaron. Los pasos están en el README, en "Poner el sistema en la nube".
+services:
+  - type: web
+    name: auto-ibaguer
+    runtime: docker
+    # Siempre encendido (unos 7 dólares al mes): el reloj corre dentro del servidor y el
+    # plan gratis se apaga cuando nadie lo usa, así que nadie pasaría al final de la fila.
+    plan: 0.5c-512mb
+    # Estados Unidos, costa este: lo más cerca de Colombia que ofrece Render.
+    region: virginia
+    # Render lo revisa seguido: si no responde, reinicia el servidor. Revisa también la
+    # base de datos y que el reloj siga dando vueltas.
+    healthCheckPath: /salud
+    # Antes de encender cada versión nueva: crea o actualiza las tablas. Si falla, Render
+    # no publica esa versión y sigue la anterior.
+    preDeployCommand: auto-ibaguer preparar-base
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: ENTORNO
+        value: produccion
+      - key: ZONA_HORARIA
+        value: America/Bogota
+      - key: DATABASE_URL
+        fromDatabase:
+          name: auto-ibaguer-base
+          property: connectionString
+      # Firma la sesión del dashboard: Render la inventa larga y aleatoria.
+      - key: CLAVE_SECRETA
+        generateValue: true
+      # Los secretos de WhatsApp y Gemini: Render los pide al crear el servicio. Si
+      # todavía no los tienes (la SIM no ha llegado), déjalos vacíos y llénalos después
+      # en la pestaña Environment del servicio.
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WHATSAPP_ID_NUMERO
+        sync: false
+      - key: WHATSAPP_SECRETO_APP
+        sync: false
+      - key: WHATSAPP_TOKEN_VERIFICACION
+        sync: false
+      - key: GEMINI_CLAVE
+        sync: false
+      # true solo cuando el proyecto de Google tenga facturación (plan de pago).
+      - key: GEMINI_PLAN_DE_PAGO
+        value: "false"
+
+databases:
+  - name: auto-ibaguer-base
+    # La más pequeña con copias automáticas (unos 6 dólares al mes): Render guarda cómo
+    # estaba la base en cualquier momento de los últimos 3 días.
+    plan: 0.1c-256mb
+    region: virginia
+    databaseName: auto_ibaguer
+    user: auto
+    # La misma versión de tu computador y de las pruebas (docker-compose.yml).
+    postgresMajorVersion: "17"
+    # 1 GB alcanza para años de turnos; se puede agrandar después, pero no achicar.
+    diskSizeGB: 1
+    # Desde fuera de Render solo entra la copia de seguridad diaria de GitHub
+    # (.github/workflows/respaldo.yml), con la contraseña larga que inventó Render y por
+    # una conexión cifrada. GitHub no tiene direcciones fijas: por eso se permite cualquiera.
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: la copia de seguridad diaria desde GitHub

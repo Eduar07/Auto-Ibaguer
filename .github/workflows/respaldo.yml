@@ -1,0 +1,135 @@
+# Copia de seguridad diaria de la base de datos de la nube (hito 8).
+#
+# Render ya guarda cómo estaba la base en cualquier momento de los últimos 3 días, pero
+# esas copias viven en Render: si se borra la base (o la cuenta), se van con ella. Esta es
+# la copia "fuera de casa": cada madrugada GitHub saca una copia completa, la cifra con
+# una contraseña que solo tú tienes, prueba que se restaura completa y la guarda unos días
+# en la pestaña Actions del repositorio (en cada corrida, abajo, en "Artifacts").
+#
+# Necesita dos secretos del repositorio (Settings > Secrets and variables > Actions):
+#   RESPALDO_DATABASE_URL  la "External Database URL" de la base en Render
+#   RESPALDO_CLAVE         una contraseña larga que inventas tú. Guárdala también fuera de
+#                          GitHub (en tu gestor de contraseñas): sin ella, ninguna copia
+#                          se puede abrir.
+# Mientras no estén (antes de subir el sistema a la nube) no hace nada y queda en verde.
+# Cómo abrir y restaurar una copia: README, "Copias de seguridad".
+name: Copia de seguridad
+
+on:
+  schedule:
+    # 3:17 a. m. en Colombia (GitHub usa la hora UTC, 5 horas más). No en punto: a esa
+    # hora GitHub está más ocupado y las tareas programadas salen tarde.
+    - cron: "17 8 * * *"
+  # El botón "Run workflow", para sacar una copia cuando quieras (antes de un cambio grande).
+  workflow_dispatch:
+
+# No necesita leer ni cambiar nada del repositorio.
+permissions: {}
+
+concurrency:
+  group: copia-de-seguridad
+  cancel-in-progress: false
+
+env:
+  # La misma versión de PostgreSQL de la base en Render (render.yaml): pg_dump no copia una
+  # base más nueva que él. Si algún día subes la base de versión, cambia esto también.
+  POSTGRES: postgres:17-alpine
+  # Cuántos días se guarda cada copia. GitHub gratis guarda hasta 500 MB entre todas: el
+  # resumen de cada corrida dice cuánto pesa la copia y avisa si ya no van a caber.
+  DIAS_QUE_SE_GUARDA: 14
+
+jobs:
+  copia:
+    name: Sacar, cifrar y probar la copia
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Una base vacía y desechable, para probar que la copia se restaura completa.
+    services:
+      prueba:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: auto
+          POSTGRES_PASSWORD: prueba
+          POSTGRES_DB: restaurada
+        options: >-
+          --health-cmd "pg_isready -U auto -d restaurada"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      RESPALDO_DATABASE_URL: ${{ secrets.RESPALDO_DATABASE_URL }}
+      RESPALDO_CLAVE: ${{ secrets.RESPALDO_CLAVE }}
+
+    steps:
+      - name: Revisar que estén los secretos
+        id: secretos
+        run: |
+          if [ -z "$RESPALDO_DATABASE_URL" ] || [ -z "$RESPALDO_CLAVE" ]; then
+            echo "::notice title=No se sacó copia::Faltan los secretos RESPALDO_DATABASE_URL y RESPALDO_CLAVE (README, Copias de seguridad)."
+            echo "listos=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "listos=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sacar la copia y cifrarla
+        if: steps.secretos.outputs.listos == 'true'
+        run: |
+          archivo="auto-ibaguer-$(TZ=America/Bogota date +%Y-%m-%d-%H%M).dump.gpg"
+          # La copia va de pg_dump directo a gpg: sin cifrar, nunca toca el disco.
+          # PGSSLMODE=require: la conexión con Render siempre va cifrada.
+          docker run --rm -e RESPALDO_DATABASE_URL -e PGSSLMODE=require "$POSTGRES" \
+              sh -c 'exec pg_dump --format=custom --dbname="$RESPALDO_DATABASE_URL"' \
+            | gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-fd 3 \
+                --symmetric --cipher-algo AES256 --compress-algo none \
+                --output "$archivo" 3<<< "$RESPALDO_CLAVE"
+          echo "ARCHIVO=$archivo" >> "$GITHUB_ENV"
+
+      - name: Probar que se restaura completa
+        if: steps.secretos.outputs.listos == 'true'
+        env:
+          PRUEBA: ${{ job.services.prueba.id }}  # el contenedor de la base desechable
+        run: |
+          gpg --batch --quiet --pinentry-mode loopback --passphrase-fd 3 \
+              --decrypt "$ARCHIVO" 3<<< "$RESPALDO_CLAVE" \
+            | docker exec -i "$PRUEBA" pg_restore --username=auto --dbname=restaurada \
+                --no-owner --no-privileges --exit-on-error
+          # Solo cuántos hay, nunca los datos de los clientes.
+          docker exec "$PRUEBA" psql --username=auto --dbname=restaurada \
+            --tuples-only --no-align --field-separator=": " --command="
+              SELECT 'versión de las tablas', version_num FROM alembic_version
+              UNION ALL SELECT 'clientes', count(*)::text FROM cliente
+              UNION ALL SELECT 'turnos', count(*)::text FROM turno
+              UNION ALL SELECT 'mensajes salientes', count(*)::text FROM mensaje_saliente
+              UNION ALL SELECT 'administradores', count(*)::text FROM administrador" \
+            > conteo.txt
+          cat conteo.txt
+
+      - name: Resumen
+        if: steps.secretos.outputs.listos == 'true'
+        run: |
+          bytes=$(stat --format=%s "$ARCHIVO")
+          {
+            echo "### Copia de seguridad lista"
+            echo
+            echo "\`$ARCHIVO\`: $(numfmt --to=iec --suffix=B "$bytes"), cifrada."
+            echo "Se guarda $DIAS_QUE_SE_GUARDA días: está aquí abajo, en Artifacts."
+            echo
+            echo "Se restauró completa en una base de prueba:"
+            echo
+            sed 's/^/- /' conteo.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+          # GitHub gratis guarda hasta 500 MB entre todas las copias: aviso con margen.
+          if [ $((bytes * DIAS_QUE_SE_GUARDA)) -gt $((400 * 1024 * 1024)) ]; then
+            echo "::warning title=Las copias ya casi no caben::$DIAS_QUE_SE_GUARDA copias de este tamaño se acercan a los 500 MB que GitHub guarda gratis. Baja DIAS_QUE_SE_GUARDA en .github/workflows/respaldo.yml."
+          fi
+
+      - name: Guardar la copia
+        if: steps.secretos.outputs.listos == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.ARCHIVO }}
+          archive: false
+          retention-days: ${{ env.DIAS_QUE_SE_GUARDA }}
+          if-no-files-found: error

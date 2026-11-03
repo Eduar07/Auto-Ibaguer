@@ -1,8 +1,13 @@
-"""Los comandos de la terminal: preparar-base, crear-admin y simular-turno."""
+"""Los comandos de la terminal: preparar-base, revisar-base, crear-admin y simular-turno."""
+
+from collections.abc import Iterator
 
 import pytest
-from sqlalchemy import Connection, Row, select
+from alembic.script import ScriptDirectory
+from sqlalchemy import Connection, Row, select, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
 from app import cli
 from app.clientes.tablas import Cliente
@@ -11,19 +16,32 @@ from app.turnos.estados import EstadoTurno, OrigenTurno
 from app.turnos.tablas import Turno
 from app.web.claves import verificar_clave
 from app.web.tablas import Administrador
-from pruebas.fabricas import LUNES_8AM
+from pruebas.base_de_pruebas import URL_PRUEBAS, borrar_base, recrear_base
+from pruebas.fabricas import LUNES_8AM, nuevo_turno
+
+
+def base_apagada():
+    raise OperationalError("SELECT 1", {}, Exception("server closed the connection"))
 
 
 def test_sin_base_de_datos_el_comando_dice_como_encenderla(monkeypatch, capsys):
-    def base_apagada():
-        raise OperationalError("SELECT 1", {}, Exception("server closed the connection"))
-
     monkeypatch.setattr(cli, "migrar", base_apagada)
 
     assert cli.main(["preparar-base"]) == 1
     error = capsys.readouterr().err
     assert "No hay conexión con PostgreSQL" in error
     assert "docker compose up -d" in error
+
+
+def test_en_la_nube_sin_base_de_datos_dice_que_revisar_en_render(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "migrar", base_apagada)
+    monkeypatch.setattr(obtener_entorno(), "entorno", "produccion")
+
+    assert cli.main(["preparar-base"]) == 1
+    error = capsys.readouterr().err
+    assert "No hay conexión con PostgreSQL" in error
+    assert "Render" in error
+    assert "docker" not in error  # en la nube no hay Docker que encender
 
 
 @pytest.fixture
@@ -50,6 +68,92 @@ def test_preparar_base(base_de_pruebas, monkeypatch, capsys):
     assert "servicios: 0" in salida  # los datos ya estaban cargados
     assert "tipos de vehículo: 0" in salida
     assert "Listo" in salida
+
+
+# --- revisar-base: si las tablas están al día y cuánto hay ---------------------------------
+
+
+def ultima_version() -> str:
+    """La última migración que trae el código."""
+    migraciones = ScriptDirectory.from_config(cli.configuracion_alembic(configurar_logs=False))
+    return migraciones.get_current_head() or ""
+
+
+def test_revisar_la_base(base_de_pruebas, sesion: Session, capsys):
+    turno = nuevo_turno(sesion)
+    turno.creado_en = LUNES_8AM
+    sesion.flush()
+
+    assert cli.main(["revisar-base"]) == 0
+
+    salida = capsys.readouterr().out
+    assert "(PostgreSQL " in salida
+    assert f"Tablas: al día (versión {ultima_version()})" in salida
+    assert "  clientes: 1\n" in salida
+    assert "  turnos: 1 (el último: 2026-10-26 8:00 a.m.)\n" in salida
+    assert "  administradores: 0\n" in salida
+    assert "Crea uno con: auto-ibaguer crear-admin" in salida
+
+
+def test_revisar_una_base_desactualizada(base_de_pruebas, capsys):
+    base_de_pruebas.execute(text("UPDATE alembic_version SET version_num = '0003'"))
+
+    assert cli.main(["revisar-base"]) == 1
+
+    salida = capsys.readouterr().out
+    assert f"desactualizadas (versión 0003; la última es la {ultima_version()})" in salida
+    assert "Actualízalas con: auto-ibaguer preparar-base" in salida
+
+
+def test_revisar_una_base_de_una_version_mas_nueva_del_sistema(base_de_pruebas, capsys):
+    base_de_pruebas.execute(text("UPDATE alembic_version SET version_num = '0099'"))
+
+    assert cli.main(["revisar-base"]) == 1
+    assert "versión 0099, que este código no conoce" in capsys.readouterr().out
+
+
+def url_de_prueba(**cambios: str) -> str:
+    return make_url(URL_PRUEBAS).set(**cambios).render_as_string(hide_password=False)
+
+
+@pytest.fixture
+def base_vacia(motor) -> Iterator[str]:
+    """Una base recién creada, sin tablas (pide `motor`: sin PostgreSQL, para con un aviso)."""
+    url = url_de_prueba(database="auto_ibaguer_pruebas_vacia")
+    recrear_base(url)
+    yield url
+    borrar_base(url)
+
+
+def test_revisar_una_base_vacia(base_vacia: str, capsys):
+    assert cli.main(["revisar-base", "--url", base_vacia]) == 1
+    assert "Tablas: no hay, la base está vacía." in capsys.readouterr().out
+
+
+@pytest.mark.usefixtures("motor")
+def test_revisar_otra_base_con_la_url_como_la_da_render(capsys):
+    url = url_de_prueba(drivername="postgresql")  # postgresql://, sin +psycopg
+
+    assert cli.main(["revisar-base", "--url", url]) == 0
+
+    salida = capsys.readouterr().out
+    assert f"Base de datos {make_url(URL_PRUEBAS).database} (PostgreSQL " in salida
+    assert "Tablas: al día" in salida
+
+
+def test_revisar_con_una_url_equivocada_no_muestra_la_contrasena(capsys):
+    url = url_de_prueba(database="no_existe_prueba", password="clave-secreta-123")
+
+    assert cli.main(["revisar-base", "--url", url]) == 1
+
+    salida = capsys.readouterr()
+    assert "No hay conexión con la base de esa URL" in salida.err
+    assert "clave-secreta-123" not in salida.out + salida.err
+
+
+def test_revisar_con_una_url_que_no_se_entiende(capsys):
+    assert cli.main(["revisar-base", "--url", "la base de render"]) == 1
+    assert "Esa URL no se entiende" in capsys.readouterr().err
 
 
 def test_crear_admin(base_de_pruebas, monkeypatch, capsys):

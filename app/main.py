@@ -1,5 +1,4 @@
-"""Servidor web de Auto Ibaguer: el dashboard, /salud y el reloj. Aquí llegará el webhook
-de WhatsApp.
+"""Servidor web de Auto Ibaguer: el dashboard, el webhook de WhatsApp, /salud y el reloj.
 
 Para correrlo: uv run fastapi dev app/main.py   y abre http://localhost:8000
 """
@@ -19,8 +18,19 @@ from sqlalchemy.orm import Session
 
 from app.config import obtener_entorno
 from app.db.sesion import obtener_sesion
+from app.integraciones import whatsapp
 from app.reloj import proceso as reloj
-from app.web import clientes, comun, configuracion, en_vivo, entrar, fila, probar_bot
+from app.web import (
+    clientes,
+    comun,
+    configuracion,
+    en_vivo,
+    entrar,
+    fila,
+    mensajes,
+    probar_bot,
+    webhook,
+)
 
 
 def mostrar_registro_de_la_app() -> None:
@@ -43,8 +53,9 @@ async def ciclo_de_vida(_: FastAPI) -> AsyncIterator[None]:
     mostrar_registro_de_la_app()
     async with AsyncExitStack() as al_apagar:
         if obtener_entorno().reloj_activo:
-            # Hito 5: aquí recibe el enviador de WhatsApp y los avisos empiezan a salir.
-            await al_apagar.enter_async_context(reloj.encendido(reloj.del_servidor()))
+            # Con WhatsApp conectado, el reloj también envía y reintenta los mensajes.
+            enviador = whatsapp.del_entorno()
+            await al_apagar.enter_async_context(reloj.encendido(reloj.del_servidor(enviador)))
         yield
 
 
@@ -54,7 +65,7 @@ app.mount(
     StaticFiles(directory=Path(__file__).parent / "web" / "estaticos"),
     name="estaticos",
 )
-for modulo in (entrar, fila, clientes, configuracion, probar_bot):
+for modulo in (entrar, fila, clientes, configuracion, mensajes, probar_bot, webhook):
     app.include_router(modulo.router)
 app.add_exception_handler(comun.NecesitaEntrar, comun.responder_sin_sesion)
 

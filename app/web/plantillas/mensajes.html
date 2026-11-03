@@ -1,0 +1,79 @@
+{% extends "pagina.html" %}
+
+{% block titulo %}Mensajes de WhatsApp · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Mensajes de WhatsApp</h1>
+      <p>Lo último que escribieron los clientes y lo que el bot les envió. Sirve para revisar por qué a alguien no le llegó un aviso.</p>
+    </div>
+  </div>
+
+  {% if conectado %}
+  <p class="nota nota--verde">WhatsApp está conectado. Los mensajes salen apenas se atiende cada uno, y el reloj reintenta los que no salieron.</p>
+  {% else %}
+  <p class="nota">WhatsApp todavía no está conectado: {% if faltan %}faltan {{ faltan|join(", ") }} en el archivo .env{% endif %}. Mientras tanto el bot se prueba en Configuración &gt; Probar el bot, y los avisos esperan aquí, en la bandeja de salida.</p>
+  {% endif %}
+
+  <div class="mensajes">
+    <section class="panel mensajes__bandeja" aria-labelledby="t-entrantes">
+      <h2 id="t-entrantes">Lo que escribieron</h2>
+      {% if entrantes %}
+      <table class="tabla-mensajes">
+        <thead><tr><th>Hora</th><th>Celular</th><th>Mensaje</th><th>Atendido</th></tr></thead>
+        <tbody>
+          {% for m in entrantes %}
+          <tr>
+            <td>{{ dia_relativo(m.cuando.date()) }} · {{ m.cuando|hora }}</td>
+            <td>{{ m.telefono|telefono_oculto }}</td>
+            <td>
+              {{ m.dice }}
+              {% if m.error %}<span class="tabla-mensajes__error">El bot falló y le pidió disculpas al cliente: {{ m.error }}</span>{% endif %}
+            </td>
+            <td>
+              {% if m.error %}<span class="insignia insignia--rojo">Con error</span>
+              {% elif m.atendido %}<span class="insignia insignia--verde">Sí</span>
+              {% else %}<span class="insignia insignia--gris">Por atender</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="suave">Todavía no ha llegado ningún mensaje.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel mensajes__bandeja" aria-labelledby="t-salientes">
+      <h2 id="t-salientes">Lo que envió el bot</h2>
+      {% if salientes %}
+      <table class="tabla-mensajes">
+        <thead><tr><th>Hora</th><th>Celular</th><th>Mensaje</th><th>Estado</th></tr></thead>
+        <tbody>
+          {% for m in salientes %}
+          <tr>
+            <td>{{ dia_relativo(m.cuando.date()) }} · {{ m.cuando|hora }}</td>
+            <td>{{ m.telefono|telefono_oculto }}</td>
+            <td>
+              {{ m.dice }}
+              {% if m.error and m.error_superado %}<span class="tabla-mensajes__error tabla-mensajes__error--superado">Antes falló: {{ m.error }}</span>
+              {% elif m.error %}<span class="tabla-mensajes__error">{{ m.error }}</span>{% endif %}
+            </td>
+            <td>
+              <span class="insignia insignia--{{ m.color }}">{{ m.estado }}</span>
+              {% if m.reintenta %}<span class="suave">Reintenta a las {{ m.reintenta|hora }}</span>
+              {% elif m.intentos > 1 %}<span class="suave">{{ m.intentos }} intentos</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="suave">Todavía no hay mensajes en la bandeja de salida.</p>
+      {% endif %}
+    </section>
+  </div>
+</main>
+{% endblock %}

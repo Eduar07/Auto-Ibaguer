@@ -3,10 +3,12 @@
 uv run auto-ibaguer preparar-base             crea las tablas y carga los datos iniciales
 uv run auto-ibaguer crear-admin --usuario X   crea un administrador del dashboard
 uv run auto-ibaguer simular-turno             pide un turno como lo hará el bot (pruebas)
+uv run auto-ibaguer registrar-whatsapp        registra el número del bot (el día de la SIM)
 """
 
 import argparse
 import getpass
+import re
 import secrets
 import sys
 from pathlib import Path
@@ -25,6 +27,7 @@ from app.config import obtener_entorno
 from app.db.sesion import obtener_motor
 from app.errores import ReglaDelNegocio
 from app.formato import duracion, hora_con_articulo
+from app.integraciones import whatsapp
 from app.turnos import casos_de_uso as casos
 from app.turnos.errores import FueraDeHorario
 from app.turnos.estados import OrigenTurno
@@ -145,6 +148,33 @@ def simular_turno(vehiculo: str, nombre: str | None, celular: str | None) -> int
     return 0
 
 
+def registrar_whatsapp() -> int:
+    """Registra el número del bot en WhatsApp con el PIN de la verificación en dos pasos.
+
+    El PIN se escribe sin que se vea y no se guarda en ninguna parte.
+    """
+    entorno = obtener_entorno()
+    datos = {
+        "WHATSAPP_TOKEN": entorno.whatsapp_token,
+        "WHATSAPP_ID_NUMERO": entorno.whatsapp_id_numero,
+    }
+    faltan = [nombre for nombre, valor in datos.items() if not valor]
+    if faltan:
+        print(f"Faltan {' y '.join(faltan)} en el archivo .env.", file=sys.stderr)
+        return 1
+    pin = getpass.getpass("PIN de 6 dígitos (no se ve mientras lo escribes): ").strip()
+    if not re.fullmatch(r"[0-9]{6}", pin):
+        print("El PIN son 6 números. No se registró nada.", file=sys.stderr)
+        return 1
+    try:
+        whatsapp.registrar_numero(entorno, pin)
+    except whatsapp.RegistroFallido as error:
+        print(f"Meta no registró el número: {error}", file=sys.stderr)
+        return 1
+    print("Listo: el número quedó registrado en WhatsApp.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     lector = argparse.ArgumentParser(
         prog="auto-ibaguer", description="Comandos del sistema de turnos de Auto Ibaguer."
@@ -169,6 +199,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     simular.add_argument("--nombre", help="Nombre del cliente (si no, uno de prueba)")
     simular.add_argument("--celular", help="Celular del cliente (si no, uno inventado)")
+    comandos.add_parser(
+        "registrar-whatsapp",
+        help="Registra el número del bot en WhatsApp (una vez, el día que llega la SIM).",
+    )
 
     argumentos = lector.parse_args(argv)
     try:
@@ -176,6 +210,8 @@ def main(argv: list[str] | None = None) -> int:
             return preparar_base()
         if argumentos.comando == "simular-turno":
             return simular_turno(argumentos.vehiculo, argumentos.nombre, argumentos.celular)
+        if argumentos.comando == "registrar-whatsapp":
+            return registrar_whatsapp()
         return crear_admin(argumentos.usuario)
     except OperationalError:
         print(MENSAJE_SIN_BASE, file=sys.stderr)

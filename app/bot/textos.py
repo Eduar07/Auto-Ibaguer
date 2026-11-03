@@ -19,6 +19,8 @@ TEXTOS: dict[str, str] = {
     "boton_vencido": "Ese botón ya no está vigente. ¿En qué te ayudamos?",
     "toca_una_opcion": "Toca una de las opciones, por favor.",
     "despedida": "¡Con gusto! Que tengas un buen día.",
+    "error_interno": "Tuvimos un problema para atenderte. Intenta de nuevo en un momento o "
+    "llama al {telefono}.",
     # --- Cuando no se dan turnos ---
     "fuera_de_horario": "Por WhatsApp damos turnos {horario}, así que ahora no podemos "
     "darte uno. Abrimos {apertura}. Mientras tanto puedes ver la fila o los precios.",

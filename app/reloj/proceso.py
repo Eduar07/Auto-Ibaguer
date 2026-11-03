@@ -18,10 +18,10 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 
 from app import tiempo
-from app.db.sesion import abrir_sesion
+from app.db.sesion import AbrirSesion, abrir_sesion
 from app.integraciones.bandeja_salida import Enviador
 from app.reloj import tareas as tareas_del_reloj
-from app.reloj.tareas import AbrirSesion, Tarea
+from app.reloj.tareas import Tarea
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +62,10 @@ class Reloj:
 def del_servidor(enviador: Enviador | None = None) -> Reloj:
     if enviador is None:
         logger.info(
-            "Reloj: WhatsApp no está conectado; los avisos esperan en la bandeja de salida."
+            "Reloj: WhatsApp no está conectado; los mensajes esperan en la bandeja de salida."
         )
+    else:
+        logger.info("Reloj: WhatsApp conectado; también envía y reintenta los mensajes.")
     return Reloj(tareas_del_reloj.del_servidor(enviador), abrir_sesion)
 
 

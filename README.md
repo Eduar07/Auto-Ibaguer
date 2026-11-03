@@ -10,12 +10,12 @@ Sistema de turnos para el lavadero de carros y motos **Auto Ibaguer**:
 
 | Hito | Estado |
 |---|---|
-| 1 · Todo conectado | Estructura del proyecto y PostgreSQL listos. WhatsApp pendiente hasta tener el número del bot. |
+| 1 · Todo conectado | Estructura del proyecto y PostgreSQL listos. Lo de WhatsApp (el webhook con la firma de Meta, guardar cada mensaje y la pantalla **Mensajes de WhatsApp**) está construido y probado con mensajes de mentira. Falta la prueba de verdad cuando llegue la SIM. |
 | 2 · Base de datos | Listo: 16 tablas, reglas dentro de la base y datos iniciales del lavadero. |
 | 3 · Reglas del negocio | Listo: la fila completa (pedir turno, llamados, avisos, gracia, puestos, cobro y correcciones), con sus pruebas y sin choques. |
 | 4 · Dashboard | Construido: entrar, la fila en vivo con sus botones, nuevo turno en el local, cobrar, clientes (buscar, ficha, editar y borrar datos) y configuración (negocio, horario, bot, puestos, menú y precios). Falta la prueba final desde el celular. |
-| 5 · Bot con botones | En construcción: la conversación con botones ya funciona en la página **Probar el bot**. Falta conectarla a WhatsApp (cuando llegue la SIM) y poder editar los textos desde Configuración. |
-| 6 · Reloj | Construido: cada 30 segundos pasa al final a quien no llegó a tiempo, vence las sesiones del bot y marca los lavados demorados. Los reintentos de WhatsApp quedan listos para cuando llegue el envío (hito 5). Falta su prueba en tu computador. |
+| 5 · Bot con botones | En construcción: la conversación con botones funciona en **Probar el bot** y ya está conectada a WhatsApp (recibe, contesta, reintenta y a cada cliente le llegan sus mensajes en orden), probada con mensajes de Meta de mentira. Falta conectar el número cuando llegue la SIM y poder editar los textos desde Configuración. |
+| 6 · Reloj | Construido: cada 30 segundos pasa al final a quien no llegó a tiempo, vence las sesiones del bot y marca los lavados demorados. Con WhatsApp conectado también envía y reintenta los mensajes, y atiende los que quedaron sin atender. Falta su prueba en tu computador. |
 | 7 · Gemini | — |
 | 8 · Producción | — |
 | 9 · Piloto en el local | — |
@@ -97,6 +97,67 @@ Fuera del horario o con el bot apagado no da turnos, pero sí muestra la fila y 
 | `avisos.py` | Cómo dice el bot cada aviso de la fila. |
 | `sesiones.py` | Las conversaciones sin respuesta que vencen (las limpia el reloj). |
 
+## WhatsApp
+
+Así viaja cada mensaje:
+
+1. El cliente escribe y Meta le avisa al servidor en `/webhook/whatsapp` (el *webhook*).
+2. El servidor revisa la firma de Meta (si el aviso no viene de Meta, lo descarta), guarda el mensaje y le contesta a Meta de una vez. Si Meta manda el mismo mensaje dos veces, el repetido se ignora.
+3. Enseguida, aparte, el bot lo atiende: decide qué contestar y deja las respuestas en la bandeja de salida, en la misma transacción de lo que hizo (pedir el turno, cancelarlo...). Los mensajes de un mismo cliente se atienden de a uno y en orden.
+4. Las respuestas salen por la API de WhatsApp. Si WhatsApp falla un momento, el reloj las reintenta, y a cada cliente sus mensajes le llegan en el orden en que el bot los escribió.
+
+Los avisos de la fila (te llamamos, tu vehículo está listo...) salen por el mismo camino. WhatsApp solo deja escribirle libremente a quien le escribió al negocio en las últimas 24 horas; si no, el aviso no sale y queda anotado por qué. Si el servidor se apaga a mitad de camino no se pierde nada: lo que se guardó se atiende o se envía cuando vuelve.
+
+La pantalla **Mensajes de WhatsApp** (en Configuración, o <http://localhost:8000/mensajes>) muestra lo último que entró y salió, si WhatsApp está conectado y, cuando un mensaje no salió, por qué. El celular se ve a medias (300 \*\*\* 4567).
+
+| Archivo de `integraciones/` | Qué tiene |
+|---|---|
+| `whatsapp.py` | La API de WhatsApp de Meta: la firma, leer lo que llega y enviar (texto, botones o lista). Sabe qué errores de Meta vale la pena reintentar. |
+| `bandeja_entrada.py` | Guarda cada mensaje que llega y lo atiende con el bot, de a uno por cliente. |
+| `bandeja_salida.py` | Deja cada mensaje por enviar y lo envía con reintentos, en orden para cada cliente. |
+| `tablas.py` | Las dos bandejas: `mensaje_entrante` y `mensaje_saliente`. |
+
+Es lo que en sistemas grandes se llama *inbox* y *outbox*: primero se guarda y después se atiende o se envía, como cuando en Java se separa recibir de procesar con una cola.
+
+### Conectar WhatsApp (cuando llegue la SIM)
+
+Se hace en tu app de [Meta for Developers](https://developers.facebook.com/apps) y en el [Administrador de WhatsApp](https://business.facebook.com/wa/manage/). Cada dato va en tu `.env`, que nunca se sube a GitHub. El token, la clave secreta y el PIN no se pegan en ningún chat ni salen en capturas.
+
+1. **Agrega el número.** Pon la SIM en un celular; ese número no puede tener WhatsApp instalado (si lo tiene, borra primero esa cuenta de WhatsApp). En el Administrador de WhatsApp: *Números de teléfono > Agregar número*. Escribe el nombre que verán los clientes (Auto Ibaguer) y confirma con el código que llega por SMS o por llamada.
+2. **Agrega un método de pago** a la cuenta de WhatsApp (en la *Configuración del negocio*, la cuenta de WhatsApp > *Pagos*): sin él, Meta no entrega los mensajes.
+3. **El identificador del número:** en la app, *WhatsApp > Configuración de la API* (*API Setup*), elige el número nuevo y copia su *identificador del número de teléfono* en `WHATSAPP_ID_NUMERO`.
+4. **Un token que no vence:** en la *Configuración del negocio > Usuarios del sistema*, crea uno con rol de administrador, asígnale la app y la cuenta de WhatsApp, y genera un token sin vencimiento con los permisos `whatsapp_business_messaging` y `whatsapp_business_management`. Cópialo en `WHATSAPP_TOKEN`: es la llave para enviar mensajes a nombre del negocio.
+5. **La clave secreta de la app:** en la app, *Configuración de la app > Básica > Clave secreta de la app*. Cópiala en `WHATSAPP_SECRETO_APP`. Con ella el servidor sabe que un aviso viene de Meta.
+6. **Un token de verificación**, inventado por ti: `python3 -c "import secrets; print(secrets.token_urlsafe(24))"` y lo copias en `WHATSAPP_TOKEN_VERIFICACION`.
+7. **Registra el número** con un PIN de 6 dígitos que inventas (la verificación en dos pasos de WhatsApp). Meta solo deja hacerlo por la API:
+
+   ```bash
+   uv run auto-ibaguer registrar-whatsapp
+   ```
+
+   Te pide el PIN sin mostrarlo y no lo guarda. Anótalo en un lugar seguro: WhatsApp lo vuelve a pedir si el número se registra otra vez.
+8. **Enciende el servidor** (`uv run fastapi dev app/main.py`; si ya estaba encendido, apágalo con Ctrl+C y vuelve a encenderlo, porque el `.env` se lee al arrancar). La terminal debe decir `Reloj: WhatsApp conectado` y la pantalla **Mensajes de WhatsApp**, que está conectado.
+9. **Una dirección pública** para que Meta llegue a tu computador. En otra terminal: `cloudflared tunnel --url http://localhost:8000` (cómo instalarlo, abajo) y copia la dirección `https://….trycloudflare.com` que muestra. Cambia cada vez que lo enciendes; en el hito 8 queda una fija en la nube.
+10. **Registra el webhook:** en la app, *WhatsApp > Configuración*: URL de devolución de llamada `https://….trycloudflare.com/webhook/whatsapp` y el token de verificación del paso 6; *Verificar y guardar*. Después, en *Campos del webhook*, suscríbete a **messages**.
+11. **Pon la app en modo Live** (arriba, en el panel de la app): en modo de desarrollo Meta no manda todos los avisos. Para pasarla, Meta pide la dirección de una política de privacidad; la armamos ese día.
+12. **Pruébalo:** desde otro celular, escríbele "hola" al número del bot. Debe contestar con el menú, y en **Mensajes de WhatsApp** aparecen los dos mensajes.
+
+Instalar `cloudflared` en Ubuntu (WSL), una sola vez:
+
+```bash
+curl -L -o cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared.deb && rm cloudflared.deb
+```
+
+Si no llegan los mensajes, mira la terminal del servidor y la pantalla **Mensajes de WhatsApp**:
+
+| Lo que ves | Qué revisar |
+|---|---|
+| `sin una firma válida` en la terminal | `WHATSAPP_SECRETO_APP` no es la clave secreta de esta app. |
+| Meta no verifica la URL del webhook | Que el servidor y el túnel estén encendidos y que el token de verificación sea el mismo del `.env`. |
+| No aparece nada al escribirle al bot | Que el webhook esté suscrito a **messages**, la app en modo Live y el túnel encendido (si lo apagaste, la dirección cambió). |
+| Llegan los mensajes pero las respuestas dicen *No salió* | El motivo sale debajo del mensaje. `error 190`: el token venció o no es ese; `error 131042`: falta el método de pago o tiene un problema; `error 131047`: el cliente no ha escrito en 24 horas. |
+
 ## El reloj
 
 El servidor trae un reloj que cada 30 segundos revisa lo que vence con el tiempo, sin que nadie toque nada:
@@ -105,7 +166,8 @@ El servidor trae un reloj que cada 30 segundos revisa lo que vence con el tiempo
 |---|---|
 | Llamados que no llegaron en su tiempo de gracia (15 minutos) | La primera vez el turno pasa al final de la fila; la segunda, pierde el turno. La fila avanza, se llama al siguiente y el dashboard se actualiza solo. |
 | Sesiones del bot sin respuesta (30 minutos) | El bot vuelve al menú y olvida lo que el cliente iba escribiendo. Si la persona nunca aceptó el aviso de datos, se borra también su celular. |
-| Avisos de WhatsApp que no salieron | Se reintentan cada vez más tarde (30 segundos, 1, 2, 5 y 10 minutos) y después se dejan. Un aviso que ya no sirve (por ejemplo, el cliente ya llegó) no se envía. Empieza a funcionar cuando WhatsApp esté conectado (hito 5); mientras tanto los avisos esperan en la bandeja de salida. |
+| Mensajes de WhatsApp que no salieron | Se reintentan cada vez más tarde (30 segundos, 1, 2, 5 y 10 minutos) y después se dejan. Un aviso que ya no sirve (por ejemplo, el cliente ya llegó) no se envía. Mientras WhatsApp no esté conectado, esperan en la bandeja de salida. |
+| Mensajes de clientes que nadie atendió (más de 1 minuto) | Si el servidor se apagó justo después de recibir un mensaje, el reloj lo atiende y le contesta al cliente. |
 
 Lo que hace queda escrito en la terminal del servidor, sin nombres ni celulares:
 
@@ -166,7 +228,7 @@ app/
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores
 ├── reloj/          lo que pasa solo cada 30 segundos (gracias, sesiones del bot, avisos)
 ├── db/             conexión a la base de datos
-├── cli.py          comandos de la terminal (preparar-base, crear-admin, simular-turno)
+├── cli.py          comandos de la terminal (preparar-base, crear-admin, simular-turno, registrar-whatsapp)
 ├── config.py       configuración técnica, leída del archivo .env
 ├── errores.py      el error base de las reglas del negocio
 ├── formato.py      pesos, horas y fechas a la colombiana ($40.000, 5:30 a.m.)
@@ -195,7 +257,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Archivo | Qué tiene |
 |---|---|
 | `comun.py` | Lo que comparten las pantallas: plantillas, la sesión del administrador y las respuestas. |
-| `entrar.py`, `fila.py`, `clientes.py`, `configuracion.py` | Las rutas de cada pantalla. Llaman a los casos de uso; no tienen reglas propias. |
+| `entrar.py`, `fila.py`, `clientes.py`, `configuracion.py`, `mensajes.py` | Las rutas de cada pantalla. Llaman a los casos de uso; no tienen reglas propias. |
+| `webhook.py` | La dirección a la que Meta avisa cada mensaje de WhatsApp. No pide la sesión del administrador: la protege la firma de Meta. |
 | `tablero.py` | Arma lo que muestra la fila en vivo. Solo lee. |
 | `en_vivo.py` | Le avisa al navegador cuando una fila cambia (PostgreSQL `LISTEN/NOTIFY` y Server-Sent Events). |
 | `sesiones.py` | La cookie firmada de la sesión y el freno a quien intenta adivinar contraseñas. |
@@ -231,7 +294,9 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Ver los mensajes de PostgreSQL | `docker compose logs postgres` |
 | Pedir un turno como si fuera por WhatsApp | `uv run auto-ibaguer simular-turno` |
 | Conversar con el bot sin WhatsApp | <http://localhost:8000/probar-bot> |
-| Ver los avisos que esperan en la bandeja de salida (dentro de psql) | `SELECT id, tipo, estado, intentos, creado_en FROM mensaje_saliente ORDER BY id DESC LIMIT 10;` |
+| Ver lo que entró y salió por WhatsApp | <http://localhost:8000/mensajes> |
+| Registrar el número del bot en WhatsApp (el día de la SIM) | `uv run auto-ibaguer registrar-whatsapp` |
+| Ver los mensajes que esperan en la bandeja de salida (dentro de psql) | `SELECT id, tipo, estado, intentos, creado_en FROM mensaje_saliente ORDER BY id DESC LIMIT 10;` |
 | Borrar la base y empezar de cero | `docker compose down -v`, luego `docker compose up -d` y `uv run auto-ibaguer preparar-base` |
 
 ## Si algo falla

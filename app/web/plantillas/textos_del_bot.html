@@ -1,0 +1,31 @@
+{% extends "pagina.html" %}
+{% import "_iconos.html" as iconos %}
+
+{% block titulo %}Textos del bot · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla">
+  <a class="boton-texto boton-volver" href="/configuracion#bot">{{ iconos.icono("volver", 18, 2.2) }}Configuración</a>
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Textos del bot</h1>
+      <p>Lo que el bot les dice a los clientes. Abre un texto, cámbialo, mira cómo le llega al cliente y guárdalo: el bot lo usa desde el siguiente mensaje. Los datos entre llaves, como {numero}, los llena el bot.</p>
+    </div>
+  </div>
+
+  <nav class="indice" aria-label="Grupos de textos">
+    {% for g in grupos %}
+    <a href="#grupo-{{ g.grupo.id }}">{{ g.grupo.titulo }}{% if g.cambiados %} <span class="indice__cuenta">{{ g.cambiados }}</span>{% endif %}</a>
+    {% endfor %}
+  </nav>
+
+  <p class="nota nota--info"><span>Los botones (Pedir turno, Confirmar turno...) no se cambian aquí: el bot también los reconoce cuando el cliente los escribe. El aviso de datos personales se cambia en <a href="/configuracion#datos">Configuración &gt; Datos personales</a>.{% if en_desarrollo() %} Para probar un texto en una charla completa, usa <a href="/probar-bot">Probar el bot</a>.{% endif %}</span></p>
+
+  {% for g in grupos %}
+  <section id="grupo-{{ g.grupo.id }}" class="panel textos-bot" aria-labelledby="t-grupo-{{ g.grupo.id }}">
+    <h2 id="t-grupo-{{ g.grupo.id }}">{{ g.grupo.titulo }}</h2>
+    {% for t in g.textos %}{% include "_texto_del_bot.html" %}{% endfor %}
+  </section>
+  {% endfor %}
+</main>
+{% endblock %}

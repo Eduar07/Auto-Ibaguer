@@ -1,0 +1,57 @@
+{#- Un texto del bot: cerrado muestra cómo va; abierto, el campo, sus datos y la vista previa. -#}
+{% set e = t.editable %}
+<details class="texto-bot" id="texto-{{ e.clave }}" {% if t.abierto %}open{% endif %}>
+  <summary class="texto-bot__resumen">
+    <span class="texto-bot__titulo">
+      <strong>{{ e.titulo }}</strong>
+      {% if t.roto %}<span class="insignia insignia--rojo">No se puede usar</span>
+      {% elif t.cambiado %}<span class="insignia insignia--azul">Cambiado</span>{% endif %}
+    </span>
+    <span class="texto-bot__cuando">{{ e.cuando }}</span>
+    <span class="texto-bot__extracto">{{ t.texto|truncate(120, killwords=True) }}</span>
+  </summary>
+
+  <form class="texto-bot__editor" hx-post="/configuracion/textos/{{ e.clave }}"
+        hx-target="#texto-{{ e.clave }}" hx-swap="outerHTML" hx-disabled-elt="find button[type='submit']"
+        hx-disinherit="hx-disabled-elt" autocomplete="off">
+    {% if t.roto %}
+    <p class="error" role="alert">Este texto cambiado ya no sirve, así que el bot está usando el original. Corrígelo o vuelve al original.</p>
+    {% endif %}
+    <div class="texto-bot__columnas">
+      <div class="campo texto-bot__campo">
+        <label for="campo-{{ e.clave }}">Texto</label>
+        <textarea id="campo-{{ e.clave }}" name="texto" rows="6" maxlength="{{ e.maximo * 2 }}"
+                  hx-post="/configuracion/textos/{{ e.clave }}/vista-previa" hx-trigger="input changed delay:400ms"
+                  hx-target="#vista-{{ e.clave }}" hx-swap="innerHTML" hx-sync="closest form:abort"
+                  aria-describedby="error-{{ e.clave }} datos-{{ e.clave }}"
+                  {% if t.error %}aria-invalid="true"{% endif %}>{{ t.texto }}</textarea>
+        <p class="error-campo" id="error-{{ e.clave }}" {% if not t.error %}hidden{% endif %}>{{ t.error or "" }}</p>
+        {% if e.datos %}
+        <div class="texto-bot__datos" id="datos-{{ e.clave }}">
+          <span class="ayuda">Datos que llena el bot. Toca uno para ponerlo donde está el cursor:</span>
+          <ul>
+            {% for dato in e.datos %}
+            <li>
+              <button type="button" class="dato" data-insertar="{{ '{' ~ dato ~ '}' }}" data-campo="campo-{{ e.clave }}">{{ '{' ~ dato ~ '}' }}</button>
+              <span>{{ DATOS[dato] }}{% if dato in e.obligatorios %} <em class="dato__obligatorio">(no se puede quitar)</em>{% endif %}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% else %}
+        <p class="ayuda" id="datos-{{ e.clave }}">Este mensaje no lleva datos: es siempre igual.</p>
+        {% endif %}
+        <p class="ayuda">*así* sale en negrilla y _así_ en cursiva, como en WhatsApp.</p>
+      </div>
+      <div class="texto-bot__vista" id="vista-{{ e.clave }}" aria-live="polite">
+        {% include "_vista_previa_texto.html" %}
+      </div>
+    </div>
+    <div class="texto-bot__acciones">
+      {% if t.cambiado or t.texto != e.original %}
+      <button type="button" class="boton boton--borde" data-original="{{ e.original }}" data-campo="campo-{{ e.clave }}">Volver al original</button>
+      {% endif %}
+      <button type="submit" class="boton">Guardar</button>
+    </div>
+  </form>
+</details>

@@ -316,6 +316,28 @@
     formulario.querySelector("input[name='texto']").focus();
   });
 
+  // --- Textos del bot ----------------------------------------------------------------------
+
+  // Un dato ({numero}...) va donde está el cursor, y "Volver al original" pone el texto
+  // original en el campo. En los dos casos la vista previa se actualiza sola.
+  function cambiarCampo(campo, texto, desde, hasta) {
+    campo.focus();
+    campo.setRangeText(texto, desde, hasta, "end");
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  document.addEventListener("click", (evento) => {
+    const boton = evento.target.closest("[data-insertar], [data-original]");
+    if (!boton) return;
+    const campo = document.getElementById(boton.dataset.campo);
+    if (!campo) return;
+    if ("insertar" in boton.dataset) {
+      cambiarCampo(campo, boton.dataset.insertar, campo.selectionStart, campo.selectionEnd);
+    } else {
+      cambiarCampo(campo, boton.dataset.original, 0, campo.value.length);
+    }
+  });
+
   // --- Al abrir la página ------------------------------------------------------------------
 
   marcarClienteElegido();

@@ -1,11 +1,20 @@
 """Lo que dice el bot. Los textos son propios: siempre iguales, nunca los inventa una IA.
 
 Cada texto tiene un nombre y huecos entre llaves ({numero}, {hora}...) que el bot llena
-con los datos del sistema. *así* sale en negrilla en WhatsApp. En una parte siguiente del
-hito 5 estos textos se podrán cambiar desde Configuración sin tocar el código.
+con los datos del sistema. *así* sale en negrilla en WhatsApp.
+
+Estos son los originales. Los más importantes se pueden cambiar desde el dashboard
+(Configuración > Textos del bot, app.bot.textos_editables): el cambio se guarda en la
+tabla `configuracion` y `Textos` lo usa en lugar del original.
 """
 
+import logging
+import string
+from collections.abc import Mapping
+
 from app.bot.mensajes import Opcion
+
+logger = logging.getLogger(__name__)
 
 TEXTOS: dict[str, str] = {
     # --- Saludo y menú ---
@@ -145,11 +154,60 @@ BOTONES: dict[str, str] = {
 }
 
 
-def texto(clave: str, /, **datos: object) -> str:
-    """El texto `clave` con sus huecos llenos."""
-    lleno = TEXTOS[clave].format_map(datos)
+def huecos(plantilla: str) -> list[str]:
+    """Los nombres de los huecos de un texto: "Tu turno {numero}" -> ["numero"].
+
+    Solo vale el nombre de un dato entre llaves. Si las llaves están mal cerradas, o entre
+    ellas va algo más (un punto, una conversión...), lanza ValueError.
+    """
+    nombres = []
+    for _, nombre, formato, conversion in string.Formatter().parse(plantilla):
+        if nombre is None:
+            continue
+        if not nombre.isidentifier() or formato or conversion:
+            raise ValueError(f"hueco no permitido: {{{nombre}}}")
+        nombres.append(nombre)
+    return nombres
+
+
+def llenar(plantilla: str, datos: Mapping[str, object]) -> str:
+    """El texto con sus huecos llenos. Si le falta un dato o tiene un hueco raro, falla."""
+    faltan = set(huecos(plantilla)) - datos.keys()
+    if faltan:
+        raise KeyError(", ".join(sorted(faltan)))
+    lleno = plantilla.format_map(datos)
     # Una hora al final de una frase no lleva dos puntos: "hasta las 7:30 p.m."
     return lleno.replace("a.m..", "a.m.").replace("p.m..", "p.m.")
+
+
+class Textos:
+    """Lo que dice el bot: los textos que cambió el administrador y, los demás, los originales.
+
+    Se usa como una función: `texto("saludo", negocio=..., horario=...)`. Si un texto
+    cambiado no se puede llenar (le falta un dato que el bot ya no tiene, por ejemplo),
+    el bot usa el original y lo anota en el registro: el cliente nunca se queda sin
+    respuesta por un texto mal escrito.
+    """
+
+    def __init__(self, cambiados: Mapping[str, str] | None = None) -> None:
+        self.cambiados = dict(cambiados or {})
+
+    def __call__(self, clave: str, /, **datos: object) -> str:
+        cambiado = self.cambiados.get(clave)
+        if cambiado is not None:
+            try:
+                return llenar(cambiado, datos)
+            except (KeyError, IndexError, ValueError):
+                logger.warning(
+                    "El texto del bot «%s» cambiado en Configuración no se pudo usar: "
+                    "el bot usó el original.",
+                    clave,
+                )
+        return llenar(TEXTOS[clave], datos)
+
+
+# Los textos originales, para lo que no depende de lo que cambió el administrador.
+texto = Textos()
 
 
 def adelante(cantidad: int) -> str:

@@ -14,7 +14,7 @@ Sistema de turnos para el lavadero de carros y motos **Auto Ibaguer**:
 | 2 · Base de datos | Listo: 16 tablas, reglas dentro de la base y datos iniciales del lavadero. |
 | 3 · Reglas del negocio | Listo: la fila completa (pedir turno, llamados, avisos, gracia, puestos, cobro y correcciones), con sus pruebas y sin choques. |
 | 4 · Dashboard | Construido: entrar, la fila en vivo con sus botones, nuevo turno en el local, cobrar, clientes (buscar, ficha, editar y borrar datos) y configuración (negocio, horario, bot, puestos, menú y precios). Falta la prueba final desde el celular. |
-| 5 · Bot con botones | En construcción: la conversación con botones funciona en **Probar el bot** y ya está conectada a WhatsApp (recibe, contesta, reintenta y a cada cliente le llegan sus mensajes en orden), probada con mensajes de Meta de mentira. Falta conectar el número cuando llegue la SIM y poder editar los textos desde Configuración. |
+| 5 · Bot con botones | Construido: la conversación con botones funciona en **Probar el bot**, ya está conectada a WhatsApp (recibe, contesta, reintenta y a cada cliente le llegan sus mensajes en orden) y sus textos se cambian en **Configuración > Textos del bot**. Falta la prueba desde tu celular cuando llegue la SIM. |
 | 6 · Reloj | Construido: cada 30 segundos pasa al final a quien no llegó a tiempo, vence las sesiones del bot y marca los lavados demorados. Con WhatsApp conectado también envía y reintenta los mensajes, y atiende los que quedaron sin atender. Falta su prueba en tu computador. |
 | 7 · Gemini | — |
 | 8 · Producción | — |
@@ -64,7 +64,7 @@ Para revisar solo el servidor, <http://localhost:8000/salud> debe decir `{"estad
 | Menú ⋯ de cada turno | Marcar llegada, corregir datos (tipo de vehículo, placa, servicio) y cancelar. |
 | **Nuevo turno** | Para el cliente que llega sin escribir por WhatsApp. Muestra antes qué número le toca y cuánto esperaría. |
 | **Clientes** | Buscar por nombre, celular o placa; la ficha con sus vehículos y visitas; dar turno, editar datos y borrarlos si el cliente lo pide (Ley 1581). |
-| **Configuración** | Negocio y horario, bot de WhatsApp, puestos (prender, apagar y agregar), menú y precios, y el aviso de datos personales. Se guarda todo junto, y si algo está mal no se guarda nada. |
+| **Configuración** | Negocio y horario, bot de WhatsApp, puestos (prender, apagar y agregar), menú y precios, y el aviso de datos personales. Se guarda todo junto, y si algo está mal no se guarda nada. Desde ahí se abren **Textos del bot** (cada texto se guarda por separado) y **Mensajes de WhatsApp**. |
 | Lavado **Demorado** | Cuando un lavado pasa su duración estimada, su puesto se pone naranja y arriba se cuenta. En el celular, la pestaña de esa fila muestra un punto naranja aunque estés viendo la otra. Casi siempre quiere decir que ya está listo y falta marcarlo: mientras tanto el cliente no recibe el aviso y la espera de la fila se calcula mal. |
 
 En el celular se ve una fila a la vez (pestañas **Carros** y **Motos**) y las secciones quedan en la barra de abajo. Para ver cómo queda en el celular sin salir del computador: en Chrome, `F12` y luego `Ctrl+Shift+M`. Desde el celular de verdad se usará cuando esté en la nube (hito 8).
@@ -89,10 +89,13 @@ Fuera del horario o con el bot apagado no da turnos, pero sí muestra la fila y 
 
 **Probar el bot**: en Configuración, botón **Probar el bot** (o <http://localhost:8000/probar-bot>). Es la misma conversación que tendrá WhatsApp, con los mismos botones, y los avisos de la fila (te llamamos, tu vehículo está listo...) llegan a la charla. Lo que pidas ahí entra a la fila de verdad de tu computador. Solo existe en desarrollo.
 
+**Textos del bot**: en Configuración, botón **Textos del bot** (o <http://localhost:8000/configuracion/textos>). Ahí se cambian los 38 textos que más leen los clientes (el saludo, el turno confirmado, los avisos de la fila...), agrupados como la conversación. Al abrir uno ves el texto, los datos que llena el bot ({numero}, {hora}...) y, al lado, cómo le llega al cliente mientras escribes. Cada texto se guarda por separado y el bot lo usa desde el siguiente mensaje; **Volver al original** lo deja como venía. Antes de guardar se revisa que no le falte un dato que el cliente necesita (por ejemplo, la hora límite del llamado), que no use datos que ese mensaje no tiene y que quepa en WhatsApp. Los botones y los demás textos (errores al escribir una placa, por ejemplo) siguen en `app/bot/textos.py`.
+
 | Archivo de `bot/` | Qué tiene |
 |---|---|
 | `mensajes.py` | Lo que entra (texto o botón tocado) y lo que sale (texto con hasta 3 botones o una lista), con los límites de WhatsApp. |
-| `textos.py` | Todo lo que dice el bot, en un solo lugar. |
+| `textos.py` | Todo lo que dice el bot, en un solo lugar: los originales. Si un texto cambiado en Configuración no se puede usar, el bot usa el original. |
+| `textos_editables.py` | Los textos que se cambian en Configuración: de qué datos se arma cada uno, cuáles no se pueden quitar, cuánto puede medir, la vista previa y guardarlos. |
 | `conversacion.py` | Qué contesta a cada mensaje y en qué paso va cada cliente. Llama a los mismos casos de uso que el dashboard. |
 | `avisos.py` | Cómo dice el bot cada aviso de la fila. |
 | `sesiones.py` | Las conversaciones sin respuesta que vencen (las limpia el reloj). |
@@ -257,7 +260,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Archivo | Qué tiene |
 |---|---|
 | `comun.py` | Lo que comparten las pantallas: plantillas, la sesión del administrador y las respuestas. |
-| `entrar.py`, `fila.py`, `clientes.py`, `configuracion.py`, `mensajes.py` | Las rutas de cada pantalla. Llaman a los casos de uso; no tienen reglas propias. |
+| `entrar.py`, `fila.py`, `clientes.py`, `configuracion.py`, `textos_del_bot.py`, `mensajes.py` | Las rutas de cada pantalla. Llaman a los casos de uso; no tienen reglas propias. |
 | `webhook.py` | La dirección a la que Meta avisa cada mensaje de WhatsApp. No pide la sesión del administrador: la protege la firma de Meta. |
 | `tablero.py` | Arma lo que muestra la fila en vivo. Solo lee. |
 | `en_vivo.py` | Le avisa al navegador cuando una fila cambia (PostgreSQL `LISTEN/NOTIFY` y Server-Sent Events). |
@@ -271,7 +274,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 |---|---|
 | Horario, tiempo de gracia, cuándo avisar, nombre y teléfono del negocio, aviso de datos | Pantalla **Configuración** del dashboard (se guarda en la tabla `configuracion`). No se toca el código. |
 | Servicios, precios y puestos | Pantalla **Configuración**. Un precio nuevo apaga el viejo y crea otro en `servicio_precio`; así los cobros pasados no cambian. De la duración estimada de cada servicio dependen la espera de la fila y la alerta de lavado demorado. |
-| Lo que dice el bot | Por ahora en `app/bot/textos.py`; en la siguiente parte del hito 5 se cambiará desde **Configuración**. El aviso de datos ya se cambia ahí. |
+| Lo que dice el bot | **Configuración > Textos del bot** para los 38 que más leen los clientes, y **Configuración > Datos personales** para el aviso de datos. Cada texto cambiado es una fila `texto_bot.<nombre>` en la tabla `configuracion`. Los botones y los demás textos, en `app/bot/textos.py`. |
 | Colores, letras y tamaños del dashboard | `app/web/estaticos/css/dashboard.css`. Los colores del diseño están al comienzo, con nombre. |
 | Conexión a la base, claves de Meta y Gemini, reloj encendido o apagado | Archivo `.env`, que nunca se sube a GitHub. `.env.example` solo trae los nombres. |
 

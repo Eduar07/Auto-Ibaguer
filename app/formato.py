@@ -80,6 +80,11 @@ def dias_de_atencion(dias: Iterable[int]) -> str:
     return "los " + ", ".join(plurales[:-1]) + " y " + plurales[-1]
 
 
+def horario(dias: Iterable[int], apertura: time, cierre: time) -> str:
+    """ "todos los días de 5:30 a.m. a 7:30 p.m.": cuándo da turnos el bot."""
+    return f"{dias_de_atencion(dias)} de {hora(apertura)} a {hora(cierre)}"
+
+
 def telefono(numero: str) -> str:
     """ "573227556850" -> "322 755 6850": como se dice un celular en Colombia."""
     local = numero.removeprefix("57") if len(numero) == 12 else numero

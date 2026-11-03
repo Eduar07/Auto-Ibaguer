@@ -11,13 +11,15 @@ from typing import Any
 from app import tiempo
 from app.bot import textos
 from app.bot.mensajes import Mensaje, Opcion
-from app.bot.textos import BOTONES, texto
+from app.bot.textos import BOTONES, Textos
 from app.catalogo.parametros import Parametros
 from app.formato import hora_con_articulo
 from app.turnos.estados import TipoAviso
 
 
 def mensaje_del_aviso(tipo: str, contenido: dict[str, Any], parametros: Parametros) -> Mensaje:
+    # Con lo que el administrador cambió en Configuración > Textos del bot.
+    texto = Textos(parametros.textos_bot)
     turno = contenido.get("turno", "")
     adelante = int(contenido.get("adelante", 0))
     match TipoAviso(tipo):

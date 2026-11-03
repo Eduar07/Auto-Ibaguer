@@ -5,7 +5,8 @@ usan las reglas (una hora, minutos, un conjunto de días). Si a alguien se le bo
 clave, se usa el valor inicial del documento en vez de fallar.
 """
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import time, timedelta
 from typing import Any
 
@@ -16,6 +17,10 @@ from app.catalogo.datos_iniciales import CONFIGURACION_INICIAL
 from app.catalogo.tablas import Configuracion
 
 _VALORES_INICIALES: dict[str, Any] = {clave: valor for clave, valor, _ in CONFIGURACION_INICIAL}
+
+# Cada texto del bot que el administrador cambió es una fila con esta clave adelante
+# ("texto_bot.saludo"). Los que no tienen fila usan el original (app.bot.textos).
+PREFIJO_TEXTO_DEL_BOT = "texto_bot."
 
 
 @dataclass(frozen=True)
@@ -32,6 +37,8 @@ class Parametros:
     turnos_activos_por_telefono: int
     bot_activo: bool
     aviso_datos: str
+    # Los textos del bot que cambió el administrador: nombre del texto -> cómo quedó.
+    textos_bot: Mapping[str, str] = field(default_factory=dict, hash=False)
 
 
 def leer_parametros(sesion: Session) -> Parametros:
@@ -39,6 +46,12 @@ def leer_parametros(sesion: Session) -> Parametros:
 
     def valor(clave: str) -> Any:
         return guardados.get(clave, _VALORES_INICIALES[clave])
+
+    textos_bot = {
+        clave.removeprefix(PREFIJO_TEXTO_DEL_BOT): texto
+        for clave, texto in guardados.items()
+        if clave.startswith(PREFIJO_TEXTO_DEL_BOT) and isinstance(texto, str)
+    }
 
     return Parametros(
         nombre_negocio=str(valor("nombre_negocio")),
@@ -53,4 +66,5 @@ def leer_parametros(sesion: Session) -> Parametros:
         turnos_activos_por_telefono=int(valor("turnos_activos_por_telefono")),
         bot_activo=bool(valor("bot_activo")),
         aviso_datos=str(valor("aviso_datos")),
+        textos_bot=textos_bot,
     )

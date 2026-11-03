@@ -29,7 +29,7 @@ from app.bot import textos
 from app.bot.mensajes import Entrada, Lista, Mensaje, Opcion, recortar
 from app.bot.sesiones import PASO_INICIAL
 from app.bot.tablas import SesionBot
-from app.bot.textos import BOTONES, texto
+from app.bot.textos import BOTONES, Textos
 from app.catalogo.parametros import Parametros, leer_parametros
 from app.catalogo.tablas import Fila, Servicio, ServicioPrecio, TipoVehiculo
 from app.clientes import servicio as clientes
@@ -37,7 +37,7 @@ from app.clientes.errores import NombreInvalido, PlacaDeOtroCliente, PlacaInvali
 from app.clientes.reglas import nombre_bonito, normalizar_telefono, validar_placa
 from app.clientes.tablas import Cliente, TipoConsulta, Vehiculo
 from app.errores import ReglaDelNegocio
-from app.formato import DIAS, dias_de_atencion, duracion, hora, hora_con_articulo, pesos
+from app.formato import DIAS, duracion, hora_con_articulo, horario, pesos
 from app.formato import telefono as telefono_legible
 from app.turnos import casos_de_uso as casos
 from app.turnos import consultas, reglas
@@ -161,6 +161,8 @@ class _Atencion:
         self.entrada = entrada
         self.ahora = ahora
         self.parametros: Parametros = leer_parametros(sesion)
+        # Con lo que el administrador cambió en Configuración > Textos del bot.
+        self.texto = Textos(self.parametros.textos_bot)
         self.telefono = normalizar_telefono(entrada.telefono)
         self.conversacion, self.empieza = _abrir_conversacion(sesion, self.telefono, ahora)
         try:
@@ -240,7 +242,7 @@ class _Atencion:
             return self._en_camino()
         if DESPEDIDAS & set(palabras) and len(palabras) <= 4:
             self._volver_al_menu()
-            return [Mensaje(texto("despedida"))]
+            return [Mensaje(self.texto("despedida"))]
         return None
 
     def _respuesta_escrita(self, normal: str) -> list[Mensaje]:
@@ -260,7 +262,7 @@ class _Atencion:
             elegida = si if normal in SI else no if normal in NO else None
         if elegida is not None:
             return self._boton(elegida)
-        return [_con_nota(texto("toca_una_opcion"), pregunta)]
+        return [_con_nota(self.texto("toca_una_opcion"), pregunta)]
 
     def _boton(self, id_del_boton: str) -> list[Mensaje]:
         prefijo, _, resto = id_del_boton.partition(".")
@@ -295,7 +297,7 @@ class _Atencion:
 
     def _mensaje_del_menu(self, nombre_del_texto: str, **datos: object) -> Mensaje:
         return Mensaje(
-            texto(nombre_del_texto, **datos),
+            self.texto(nombre_del_texto, **datos),
             botones=(
                 Opcion("menu.pedir", BOTONES["pedir"]),
                 Opcion("menu.fila", BOTONES["fila"]),
@@ -330,7 +332,7 @@ class _Atencion:
         """La pregunta del paso en que va la conversación (para repetirla si hace falta)."""
         preguntas = {
             Paso.AVISO_DATOS: self._pregunta_aviso_de_datos,
-            Paso.NOMBRE: lambda: Mensaje(texto("pedir_nombre")),
+            Paso.NOMBRE: lambda: Mensaje(self.texto("pedir_nombre")),
             Paso.VEHICULO: self._pregunta_vehiculo,
             Paso.PLACA: self._pregunta_placa,
             Paso.SERVICIO: self._pregunta_servicio,
@@ -338,7 +340,7 @@ class _Atencion:
             Paso.SEGUNDO_TURNO: self._pregunta_segundo_turno,
             Paso.PRECIOS: self._pregunta_precios,
             Paso.CANCELAR: self._pregunta_cancelar,
-            Paso.NUMERO_DE_TURNO: lambda: Mensaje(texto("pedir_numero_de_turno")),
+            Paso.NUMERO_DE_TURNO: lambda: Mensaje(self.texto("pedir_numero_de_turno")),
         }
         pregunta = preguntas.get(self.paso)
         return pregunta() if pregunta is not None else self._mensaje_del_menu("menu")
@@ -347,10 +349,7 @@ class _Atencion:
 
     def _horario(self) -> str:
         p = self.parametros
-        return (
-            f"{dias_de_atencion(p.dias_atencion)} de {hora(p.hora_apertura)} "
-            f"a {hora(p.hora_cierre)}"
-        )
+        return horario(p.dias_atencion, p.hora_apertura, p.hora_cierre)
 
     def _en_horario(self) -> bool:
         p = self.parametros
@@ -385,7 +384,7 @@ class _Atencion:
         self._volver_al_menu()
         return [
             Mensaje(
-                texto(nombre, **datos),
+                self.texto(nombre, **datos),
                 botones=(
                     Opcion("menu.fila", BOTONES["fila"]),
                     Opcion("menu.precios", BOTONES["precios"]),
@@ -423,7 +422,7 @@ class _Atencion:
             self._volver_al_menu()
             return [
                 Mensaje(
-                    texto("datos_no"),
+                    self.texto("datos_no"),
                     botones=(
                         Opcion("menu.fila", BOTONES["fila"]),
                         Opcion("menu.precios", BOTONES["precios"]),
@@ -439,7 +438,7 @@ class _Atencion:
         try:
             self.datos["nombre"] = nombre_bonito(escrito)
         except NombreInvalido:
-            return [Mensaje(texto("nombre_invalido"))]
+            return [Mensaje(self.texto("nombre_invalido"))]
         return self._preguntar_vehiculo()
 
     # --- Pedir turno: vehículo y placa --------------------------------------------------------
@@ -472,12 +471,12 @@ class _Atencion:
                 for vehiculo, tipo in conocidos[:2]
             ]
             botones.append(Opcion("vehiculo.otro", BOTONES["otro_vehiculo"]))
-            return Mensaje(texto("pedir_vehiculo_conocido"), botones=tuple(botones))
+            return Mensaje(self.texto("pedir_vehiculo_conocido"), botones=tuple(botones))
         tipos = list(self.sesion.scalars(select(TipoVehiculo).order_by(TipoVehiculo.id)))
         opciones = tuple(Opcion(f"vehiculo.tipo.{tipo.id}", tipo.nombre) for tipo in tipos)
         if len(opciones) <= 3:
-            return Mensaje(texto("pedir_vehiculo"), botones=opciones)
-        return Mensaje(texto("pedir_vehiculo"), lista=Lista("Ver vehículos", opciones[:10]))
+            return Mensaje(self.texto("pedir_vehiculo"), botones=opciones)
+        return Mensaje(self.texto("pedir_vehiculo"), lista=Lista("Ver vehículos", opciones[:10]))
 
     def _eligio_vehiculo(self, eleccion: str) -> list[Mensaje]:
         if eleccion == "otro":
@@ -486,7 +485,7 @@ class _Atencion:
         if eleccion.startswith("tipo."):
             tipo = self.sesion.get(TipoVehiculo, _entero(eleccion.removeprefix("tipo.")))
             if tipo is None:
-                return [_con_nota(texto("toca_una_opcion"), self._pregunta())]
+                return [_con_nota(self.texto("toca_una_opcion"), self._pregunta())]
             for clave in ("vehiculo_id", "placa"):
                 self.datos.pop(clave, None)
             self.datos["tipo_vehiculo_id"] = tipo.id
@@ -521,7 +520,7 @@ class _Atencion:
 
     def _pregunta_placa(self) -> Mensaje:
         return Mensaje(
-            texto("pedir_placa", vehiculo=self._tipo().nombre.lower()),
+            self.texto("pedir_placa", vehiculo=self._tipo().nombre.lower()),
             botones=(Opcion("placa.no", BOTONES["ahora_no"]),),
         )
 
@@ -533,12 +532,14 @@ class _Atencion:
         except PlacaInvalida as error:
             ejemplo = "ABC12D" if tipo.nombre == "Moto" else "ABC123"
             return [
-                Mensaje(texto("placa_invalida", error=error, ejemplo=ejemplo), botones=ahora_no)
+                Mensaje(
+                    self.texto("placa_invalida", error=error, ejemplo=ejemplo), botones=ahora_no
+                )
             ]
         duenio = self.sesion.scalars(select(Vehiculo).where(Vehiculo.placa == placa)).one_or_none()
         if duenio is not None:
             if self.cliente is None or duenio.cliente_id != self.cliente.id:
-                return [Mensaje(texto("placa_de_otro", placa=placa), botones=ahora_no)]
+                return [Mensaje(self.texto("placa_de_otro", placa=placa), botones=ahora_no)]
             # Es un vehículo que el cliente ya tenía registrado: se usa ese.
             return self._usar_vehiculo(
                 duenio, self.sesion.get(TipoVehiculo, duenio.tipo_vehiculo_id)
@@ -580,7 +581,7 @@ class _Atencion:
             Opcion("servicio.local", BOTONES["en_el_local"], BOTONES["en_el_local_descripcion"])
         )
         return Mensaje(
-            texto("pedir_servicio", vehiculo=tipo.nombre.lower()),
+            self.texto("pedir_servicio", vehiculo=tipo.nombre.lower()),
             lista=Lista(BOTONES["ver_servicios"], tuple(opciones)),
         )
 
@@ -591,7 +592,7 @@ class _Atencion:
             disponibles = {servicio.id for servicio, _ in self._servicios(self._tipo())}
             servicio_id = _entero(eleccion)
             if servicio_id not in disponibles:
-                return [_con_nota(texto("servicio_no_disponible"), self._pregunta())]
+                return [_con_nota(self.texto("servicio_no_disponible"), self._pregunta())]
             self.datos["servicio_id"] = servicio_id
         self.paso = Paso.CONFIRMAR
         return [self._pregunta()]
@@ -610,7 +611,7 @@ class _Atencion:
             servicio = f"{nombre} · {pesos(precio)}" if precio is not None else nombre
         fila = self.sesion.get(Fila, tipo.fila_id)
         return Mensaje(
-            texto(
+            self.texto(
                 "resumen",
                 nombre=self.cliente.nombre if self.cliente else self.datos.get("nombre", ""),
                 vehiculo=_nombre_del_vehiculo(tipo.nombre, placa, pendiente=", placa pendiente"),
@@ -630,7 +631,7 @@ class _Atencion:
     def _confirmar(self, respuesta: str) -> list[Mensaje]:
         if respuesta == "no":
             self._volver_al_menu()
-            return [Mensaje(texto("mejor_no"))]
+            return [Mensaje(self.texto("mejor_no"))]
         if respuesta == "cambiar":
             for clave in ("vehiculo_id", "tipo_vehiculo_id", "placa", "servicio_id"):
                 self.datos.pop(clave, None)
@@ -667,16 +668,20 @@ class _Atencion:
             return self._no_hay_turnos() or self._menu("menu")
         except ServicioNoDisponible:
             self.paso = Paso.SERVICIO
-            return [_con_nota(texto("servicio_no_disponible"), self._pregunta())]
+            return [_con_nota(self.texto("servicio_no_disponible"), self._pregunta())]
         except PlacaDeOtroCliente:
             self.paso = Paso.PLACA
             return [
-                _con_nota(texto("placa_de_otro", placa=self.datos.get("placa")), self._pregunta())
+                _con_nota(
+                    self.texto("placa_de_otro", placa=self.datos.get("placa")), self._pregunta()
+                )
             ]
         except ReglaDelNegocio as error:
             self._volver_al_menu()
             return [
-                Mensaje(texto("no_se_pudo", motivo=error, telefono=self._telefono_del_negocio()))
+                Mensaje(
+                    self.texto("no_se_pudo", motivo=error, telefono=self._telefono_del_negocio())
+                )
             ]
         self.cliente = cliente
         self._vincular(cliente)
@@ -701,13 +706,13 @@ class _Atencion:
     def _turno_confirmado(self, nuevo: casos.TurnoNuevo) -> Mensaje:
         botones: tuple[Opcion, ...] = ()
         if nuevo.llamado and nuevo.gracia_hasta is not None:
-            situacion = texto("confirmado_llamado", hora=_hora_limite(nuevo.gracia_hasta))
+            situacion = self.texto("confirmado_llamado", hora=_hora_limite(nuevo.gracia_hasta))
             botones = textos.botones_del_llamado()
         elif nuevo.salir_ya:
-            situacion = texto("confirmado_cerca", adelante=textos.adelante(nuevo.adelante))
+            situacion = self.texto("confirmado_cerca", adelante=textos.adelante(nuevo.adelante))
         else:
             delante = textos.adelante(nuevo.adelante)
-            situacion = texto(
+            situacion = self.texto(
                 "confirmado_en_fila",
                 adelante_mayuscula=delante[:1].upper() + delante[1:],
                 espera=f"; entras en aprox. {duracion(nuevo.espera_min)}"
@@ -716,7 +721,7 @@ class _Atencion:
                 avisar=self.parametros.avisar_cuando_falten,
             )
         return Mensaje(
-            texto(
+            self.texto(
                 "turno_confirmado",
                 nombre=_primer_nombre(self.cliente),
                 numero=nuevo.numero,
@@ -733,7 +738,7 @@ class _Atencion:
             self.sesion, self.datos["turno_id"], ahora=self.ahora
         )
         return Mensaje(
-            texto(
+            self.texto(
                 "segundo_turno",
                 numero=posicion.numero,
                 fila=posicion.fila.lower(),
@@ -750,7 +755,7 @@ class _Atencion:
         if eleccion == "cancelar" and turno_id is not None:
             return self._cancelar_turno(turno_id)
         self._volver_al_menu()
-        return [Mensaje(texto("mantener"))]
+        return [Mensaje(self.texto("mantener"))]
 
     # --- La fila y los precios -------------------------------------------------------------
 
@@ -767,13 +772,13 @@ class _Atencion:
         """Solo cantidades: el bot nunca muestra nombres ni placas de otros clientes."""
         espera = f"en aprox. {duracion(resumen.espera_min)}" if resumen.espera_min else "pronto"
         if resumen.puestos_activos == 0:
-            return texto("fila_cerrada")
+            return self.texto("fila_cerrada")
         if resumen.puede_venir_ya:
-            return texto("fila_libre")
+            return self.texto("fila_libre")
         if resumen.en_espera == 0:
-            return texto("fila_sin_espera", espera=espera)
+            return self.texto("fila_sin_espera", espera=espera)
         vehiculos = f"{resumen.en_espera} vehículo{'s' if resumen.en_espera != 1 else ''}"
-        return texto("fila_con_espera", vehiculos=vehiculos, espera=espera)
+        return self.texto("fila_con_espera", vehiculos=vehiculos, espera=espera)
 
     def _ver_la_fila(self) -> list[Mensaje]:
         self._registrar_consulta(TipoConsulta.FILA)
@@ -785,7 +790,7 @@ class _Atencion:
         ]
         return [
             Mensaje(
-                texto("fila", filas="\n".join(lineas)),
+                self.texto("fila", filas="\n".join(lineas)),
                 botones=(
                     Opcion("menu.pedir", BOTONES["pedir"]),
                     Opcion("menu.precios", BOTONES["precios"]),
@@ -802,13 +807,13 @@ class _Atencion:
         opciones = tuple(Opcion(f"precios.{tipo.id}", tipo.nombre) for tipo in tipos)
         nombre = "precios_carro" if self.datos.get("solo_carros") else "precios_tipo"
         if len(opciones) <= 3:
-            return Mensaje(texto(nombre), botones=opciones)
-        return Mensaje(texto(nombre), lista=Lista("Ver vehículos", opciones[:10]))
+            return Mensaje(self.texto(nombre), botones=opciones)
+        return Mensaje(self.texto(nombre), lista=Lista("Ver vehículos", opciones[:10]))
 
     def _eligio_precios(self, eleccion: str) -> list[Mensaje]:
         tipo = self.sesion.get(TipoVehiculo, _entero(eleccion))
         if tipo is None:
-            return [_con_nota(texto("toca_una_opcion"), self._pregunta())]
+            return [_con_nota(self.texto("toca_una_opcion"), self._pregunta())]
         self._registrar_consulta(TipoConsulta.PRECIOS, tipo.id)
         self._volver_al_menu()
         servicios = self._servicios(tipo)
@@ -824,7 +829,7 @@ class _Atencion:
                 for servicio, precio in servicios
             ]
             separador = "\n\n" if con_descripcion else "\n"
-            mensaje = texto(
+            mensaje = self.texto(
                 "precios", vehiculo=tipo.nombre.lower(), servicios=separador.join(bloques)
             )
             if len(mensaje) <= 1024:
@@ -850,7 +855,7 @@ class _Atencion:
         if not posiciones:
             return [
                 Mensaje(
-                    texto("sin_turno"),
+                    self.texto("sin_turno"),
                     botones=(
                         Opcion("menu.pedir", BOTONES["pedir"]),
                         Opcion("menu.fila", BOTONES["fila"]),
@@ -860,7 +865,7 @@ class _Atencion:
         llamados = [p for p in posiciones if p.estado == E.LLAMADO]
         return [
             Mensaje(
-                "\n\n".join(_como_va_el_turno(posicion) for posicion in posiciones),
+                "\n\n".join(_como_va_el_turno(posicion, self.texto) for posicion in posiciones),
                 botones=textos.botones_del_llamado() if len(llamados) == 1 else (),
             )
         ]
@@ -872,13 +877,15 @@ class _Atencion:
         if not posiciones:
             return [
                 Mensaje(
-                    texto("sin_turno_para_cancelar"),
+                    self.texto("sin_turno_para_cancelar"),
                     botones=(Opcion("menu.pedir", BOTONES["pedir"]),),
                 )
             ]
         cancelables = [p for p in posiciones if p.estado in (E.EN_FILA, E.LLAMADO)]
         if not cancelables:
-            return [Mensaje(texto("cancelar_en_el_local", telefono=self._telefono_del_negocio()))]
+            return [
+                Mensaje(self.texto("cancelar_en_el_local", telefono=self._telefono_del_negocio()))
+            ]
         self.paso = Paso.CANCELAR
         self.datos = {"cancelables": {str(p.turno_id): p.numero for p in cancelables[:2]}}
         return [self._pregunta()]
@@ -888,7 +895,7 @@ class _Atencion:
         if len(cancelables) == 1:
             [(turno_id, numero)] = cancelables.items()
             return Mensaje(
-                texto("cancelar_confirmar", numero=numero),
+                self.texto("cancelar_confirmar", numero=numero),
                 botones=(
                     Opcion(f"cancelar.{turno_id}", BOTONES["si_cancelar"]),
                     Opcion("cancelar.no", BOTONES["no_cancelar"]),
@@ -899,12 +906,12 @@ class _Atencion:
             for turno_id, numero in cancelables.items()
         ]
         botones.append(Opcion("cancelar.no", "No cancelar"))
-        return Mensaje(texto("cancelar_cual"), botones=tuple(botones))
+        return Mensaje(self.texto("cancelar_cual"), botones=tuple(botones))
 
     def _cancelar(self, eleccion: str) -> list[Mensaje]:
         if eleccion not in self.datos.get("cancelables", {}):
             self._volver_al_menu()
-            return [Mensaje(texto("no_cancelado"))]
+            return [Mensaje(self.texto("no_cancelado"))]
         return self._cancelar_turno(int(eleccion))
 
     def _cancelar_turno(self, turno_id: int) -> list[Mensaje]:
@@ -914,10 +921,10 @@ class _Atencion:
             with self.sesion.begin_nested():
                 casos.cancelar(self.sesion, turno_id, actor=Actor.CLIENTE, ahora=self.ahora)
         except CambioNoPermitido:
-            return [Mensaje(texto("ya_no_se_puede_cancelar", numero=numero))]
+            return [Mensaje(self.texto("ya_no_se_puede_cancelar", numero=numero))]
         return [
             Mensaje(
-                texto("cancelado", numero=numero),
+                self.texto("cancelado", numero=numero),
                 botones=(Opcion("menu.pedir", BOTONES["pedir"]),),
             )
         ]
@@ -935,12 +942,12 @@ class _Atencion:
         numeros = ", ".join(p.numero for p in esperando)
         por_marcar = [p for p in esperando if p.estado != E.LLEGO]
         if not por_marcar:
-            return [Mensaje(texto("ya_llego", numeros=numeros))]
+            return [Mensaje(self.texto("ya_llego", numeros=numeros))]
         for posicion in por_marcar:
             casos.marcar_llegada(
                 self.sesion, posicion.turno_id, actor=Actor.CLIENTE, ahora=self.ahora
             )
-        return [Mensaje(texto("llegada", numeros=numeros))]
+        return [Mensaje(self.texto("llegada", numeros=numeros))]
 
     def _en_camino(self) -> list[Mensaje]:
         self._volver_al_menu()
@@ -951,8 +958,10 @@ class _Atencion:
             casos.marcar_en_camino(self.sesion, posicion.turno_id)
         llamado = next((p for p in en_espera if p.gracia_hasta is not None), None)
         if llamado is not None:
-            return [Mensaje(texto("en_camino_llamado", hora=_hora_limite(llamado.gracia_hasta)))]
-        return [Mensaje(texto("en_camino"))]
+            return [
+                Mensaje(self.texto("en_camino_llamado", hora=_hora_limite(llamado.gracia_hasta)))
+            ]
+        return [Mensaje(self.texto("en_camino"))]
 
     # --- Código QR del mostrador -------------------------------------------------------------
 
@@ -969,14 +978,14 @@ class _Atencion:
         posiciones = self._activos()
         if not posiciones:
             return self._mi_turno()
-        return [Mensaje(texto("vinculado", numero=", ".join(p.numero for p in posiciones)))]
+        return [Mensaje(self.texto("vinculado", numero=", ".join(p.numero for p in posiciones)))]
 
     def _escribio_numero_de_turno(self, escrito: str) -> list[Mensaje]:
         encontrado = re.fullmatch(
             r"([a-z])\s*-?\s*0*(\d{1,3})", normalizar(escrito).replace(" ", "")
         )
         if encontrado is None:
-            return [Mensaje(texto("numero_invalido"))]
+            return [Mensaje(self.texto("numero_invalido"))]
         prefijo, consecutivo = encontrado.group(1).upper(), int(encontrado.group(2))
         numero = reglas.numero_de_turno(prefijo, consecutivo)
         turno = self.sesion.scalars(
@@ -990,11 +999,11 @@ class _Atencion:
             )
         ).one_or_none()
         if turno is None:
-            return [Mensaje(texto("numero_no_existe", numero=numero))]
+            return [Mensaje(self.texto("numero_no_existe", numero=numero))]
         self._volver_al_menu()
         cliente = self.sesion.get(Cliente, turno.cliente_id)
         if cliente.telefono is not None and cliente.telefono != self.telefono:
-            return [Mensaje(texto("numero_otro_celular"))]
+            return [Mensaje(self.texto("numero_otro_celular"))]
         # El cliente lo registró el administrador sin celular: desde ahora es este. Ya
         # aceptó el aviso de datos en el mostrador. La respuesta no dice su nombre: quien
         # escribe solo dio un número de turno.
@@ -1002,7 +1011,7 @@ class _Atencion:
         self.sesion.flush()
         self.cliente = cliente
         self._vincular(cliente)
-        return [Mensaje(texto("vinculado", numero=numero))]
+        return [Mensaje(self.texto("vinculado", numero=numero))]
 
 
 # --- Piezas pequeñas ----------------------------------------------------------------------------
@@ -1038,7 +1047,7 @@ def _estado_corto(posicion: PosicionDelTurno) -> str:
     return NOMBRE_DEL_ESTADO[posicion.estado].lower()
 
 
-def _como_va_el_turno(posicion: PosicionDelTurno) -> str:
+def _como_va_el_turno(posicion: PosicionDelTurno, texto: Textos) -> str:
     datos = {"numero": posicion.numero, "fila": posicion.fila.lower()}
     if posicion.estado == E.LLAMADO and posicion.gracia_hasta is not None:
         return texto("mi_turno_llamado", hora=_hora_limite(posicion.gracia_hasta), **datos)

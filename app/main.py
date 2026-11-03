@@ -29,6 +29,7 @@ from app.web import (
     fila,
     mensajes,
     probar_bot,
+    textos_del_bot,
     webhook,
 )
 
@@ -65,7 +66,16 @@ app.mount(
     StaticFiles(directory=Path(__file__).parent / "web" / "estaticos"),
     name="estaticos",
 )
-for modulo in (entrar, fila, clientes, configuracion, mensajes, probar_bot, webhook):
+for modulo in (
+    entrar,
+    fila,
+    clientes,
+    configuracion,
+    textos_del_bot,
+    mensajes,
+    probar_bot,
+    webhook,
+):
     app.include_router(modulo.router)
 app.add_exception_handler(comun.NecesitaEntrar, comun.responder_sin_sesion)
 

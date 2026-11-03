@@ -1,6 +1,7 @@
 """Comandos de Auto Ibaguer para la terminal.
 
 uv run auto-ibaguer preparar-base             crea las tablas y carga los datos iniciales
+uv run auto-ibaguer revisar-base              dice si las tablas están al día y cuánto hay
 uv run auto-ibaguer crear-admin --usuario X   crea un administrador del dashboard
 uv run auto-ibaguer simular-turno             pide un turno como lo hará el bot (pruebas)
 uv run auto-ibaguer registrar-whatsapp        registra el número del bot (el día de la SIM)
@@ -17,8 +18,9 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import select
-from sqlalchemy.exc import OperationalError
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, select
+from sqlalchemy.exc import ArgumentError, OperationalError
 from sqlalchemy.orm import Session
 
 from app import tiempo
@@ -29,10 +31,11 @@ from app.catalogo.datos_iniciales import cargar_datos_iniciales
 from app.catalogo.parametros import leer_parametros
 from app.catalogo.tablas import TipoVehiculo
 from app.clientes import servicio as clientes
-from app.config import obtener_entorno
+from app.config import con_psycopg, obtener_entorno
+from app.db.revision import Revision, revisar
 from app.db.sesion import obtener_motor
 from app.errores import ReglaDelNegocio
-from app.formato import duracion, hora_con_articulo
+from app.formato import duracion, hora, hora_con_articulo, miles
 from app.integraciones import gemini, whatsapp
 from app.turnos import casos_de_uso as casos
 from app.turnos.errores import FueraDeHorario
@@ -47,6 +50,10 @@ MENSAJE_SIN_BASE = (
     "No hay conexión con PostgreSQL. Lo más probable es que Docker o la base estén apagados.\n"
     "Enciéndela con: docker compose up -d\n"
     "y revisa que diga (healthy) con: docker compose ps"
+)
+MENSAJE_SIN_BASE_EN_LA_NUBE = (
+    "No hay conexión con PostgreSQL. En el dashboard de Render revisa que la base\n"
+    "auto-ibaguer-base diga Available y que el servicio tenga DATABASE_URL en Environment."
 )
 
 
@@ -76,6 +83,74 @@ def preparar_base() -> int:
         print(f"      {NOMBRES_PARA_MOSTRAR.get(tipo, tipo)}: {cantidad}")
     print("Listo: la base de datos está preparada.")
     return 0
+
+
+def revisar_base(url: str | None) -> int:
+    """Dice en qué versión están las tablas y cuánto hay, sin mostrar ningún dato.
+
+    Con `url` revisa otra base, por ejemplo una copia de seguridad recién restaurada.
+    """
+    migraciones = ScriptDirectory.from_config(configuracion_alembic(configurar_logs=False))
+    if url is None:
+        with Session(obtener_motor()) as sesion:
+            revision = revisar(sesion.connection(), migraciones)
+    else:
+        try:
+            motor = create_engine(
+                con_psycopg(url), hide_parameters=True, connect_args={"connect_timeout": 10}
+            )
+        except ArgumentError:
+            print(
+                "Esa URL no se entiende. Tiene esta forma: "
+                "postgresql://usuario:contraseña@servidor:puerto/base",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            with Session(motor) as sesion:
+                revision = revisar(sesion.connection(), migraciones)
+        except OperationalError:
+            print(
+                "No hay conexión con la base de esa URL. Revisa el servidor, el puerto, "
+                "el nombre de la base, el usuario y la contraseña.",
+                file=sys.stderr,
+            )
+            return 1
+        finally:
+            motor.dispose()
+    print("\n".join(_informe(revision)))
+    return 0 if revision.al_dia else 1
+
+
+def _informe(revision: Revision) -> list[str]:
+    lineas = [f"Base de datos {revision.base_de_datos} (PostgreSQL {revision.postgresql})"]
+    if revision.version is None:
+        return lineas + [
+            "Tablas: no hay, la base está vacía. Prepárala con: auto-ibaguer preparar-base"
+        ]
+    if not revision.conocida:
+        lineas.append(
+            f"Tablas: versión {revision.version}, que este código no conoce (la última que "
+            f"conoce es la {revision.ultima}). ¿Viene de una versión más nueva del sistema?"
+        )
+    elif not revision.al_dia:
+        lineas.append(
+            f"Tablas: desactualizadas (versión {revision.version}; la última es la "
+            f"{revision.ultima}). Actualízalas con: auto-ibaguer preparar-base"
+        )
+    else:
+        lineas.append(f"Tablas: al día (versión {revision.version})")
+    for nombre, cantidad in revision.cantidades.items():
+        detalle = ""
+        if nombre == "turnos" and revision.ultimo_turno is not None:
+            local = tiempo.hora_local(revision.ultimo_turno)
+            detalle = f" (el último: {local:%Y-%m-%d} {hora(local)})"
+        lineas.append(f"  {nombre}: {miles(cantidad)}{detalle}")
+    if revision.cantidades.get("administradores") == 0:
+        lineas.append(
+            "Todavía no hay administradores. Crea uno con: auto-ibaguer crear-admin --usuario eduar"
+        )
+    return lineas
 
 
 def crear_admin(usuario: str) -> int:
@@ -245,6 +320,14 @@ def main(argv: list[str] | None = None) -> int:
     comandos.add_parser(
         "preparar-base", help="Crea o actualiza las tablas y carga los datos iniciales."
     )
+    revisar_comando = comandos.add_parser(
+        "revisar-base",
+        help="Dice si las tablas están al día y cuántos datos hay (sin mostrar ninguno).",
+    )
+    revisar_comando.add_argument(
+        "--url",
+        help="Revisa otra base, por ejemplo una copia restaurada (si no, la de DATABASE_URL)",
+    )
     admin = comandos.add_parser(
         "crear-admin", help="Crea un administrador del dashboard o le cambia la contraseña."
     )
@@ -281,6 +364,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if argumentos.comando == "preparar-base":
             return preparar_base()
+        if argumentos.comando == "revisar-base":
+            return revisar_base(argumentos.url)
         if argumentos.comando == "simular-turno":
             return simular_turno(argumentos.vehiculo, argumentos.nombre, argumentos.celular)
         if argumentos.comando == "registrar-whatsapp":
@@ -289,7 +374,8 @@ def main(argv: list[str] | None = None) -> int:
             return probar_gemini(argumentos.modelo, argumentos.pausa)
         return crear_admin(argumentos.usuario)
     except OperationalError:
-        print(MENSAJE_SIN_BASE, file=sys.stderr)
+        en_la_nube = obtener_entorno().es_produccion
+        print(MENSAJE_SIN_BASE_EN_LA_NUBE if en_la_nube else MENSAJE_SIN_BASE, file=sys.stderr)
         return 1
 
 

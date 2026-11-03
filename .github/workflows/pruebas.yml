@@ -1,6 +1,8 @@
 # Cada vez que se abre o actualiza un pull request (y cada vez que algo entra a main),
 # GitHub prende un PostgreSQL de verdad, instala el proyecto y corre todas las pruebas.
-# Si algo falla, el pull request queda en rojo y no se debe unir.
+# Además arma la imagen de la nube y la enciende como lo hará Render.
+# Si algo falla, el pull request queda en rojo y no se debe unir. Render tampoco publica
+# un cambio de main mientras esto no esté en verde (render.yaml, autoDeployTrigger).
 name: Pruebas
 
 on:
@@ -57,3 +59,75 @@ jobs:
 
       - name: Correr las pruebas
         run: uv run pytest
+
+  imagen:
+    name: Imagen de la nube
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Una base vacía, como la de Render el primer día.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: auto
+          POSTGRES_PASSWORD: auto
+          POSTGRES_DB: auto_ibaguer
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U auto -d auto_ibaguer"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Como las entrega Render: la URL con postgresql:// (sin el +psycopg) y en producción.
+      DATABASE_URL: postgresql://auto:auto@localhost:5432/auto_ibaguer
+      ENTORNO: produccion
+      # Solo para esta prueba. En la nube la inventa Render (render.yaml).
+      CLAVE_SECRETA: clave-solo-para-probar-la-imagen-en-github-actions
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Armar la imagen, como Render
+        run: |
+          docker build --tag auto-ibaguer .
+          docker image ls auto-ibaguer
+
+      - name: Preparar la base, como antes de cada publicación
+        run: >-
+          docker run --rm --network host -e DATABASE_URL -e ENTORNO -e CLAVE_SECRETA
+          auto-ibaguer auto-ibaguer preparar-base
+
+      - name: Encender el servidor y esperar a que esté sano
+        run: |
+          docker run --detach --name servidor --network host \
+            -e DATABASE_URL -e ENTORNO -e CLAVE_SECRETA -e PORT=10000 auto-ibaguer
+          for _ in $(seq 30); do
+            if salud=$(curl --silent --fail-with-body http://localhost:10000/salud); then
+              break
+            fi
+            sleep 1
+          done
+          echo "/salud respondió: $salud"
+          jq --exit-status '.estado == "ok" and .reloj == "ok"' <<< "$salud"
+
+      - name: Revisar lo que va a recibir Render
+        run: |
+          # Las tablas quedaron al día.
+          docker exec servidor auto-ibaguer revisar-base
+          # Corre con un usuario sin permisos de administrador.
+          test "$(docker exec servidor id -u)" = 10001
+          # Las pruebas y la historia de git no viajan a la nube (.dockerignore).
+          docker exec servidor sh -c 'test ! -e pruebas && test ! -e .git'
+          # En la nube: siempre HTTPS, y sin anunciar con qué está hecho el servidor.
+          cabeceras=$(curl --silent --dump-header - --output /dev/null http://localhost:10000/entrar)
+          echo "$cabeceras"
+          grep --quiet --ignore-case '^strict-transport-security: max-age=31536000' <<< "$cabeceras"
+          if grep --quiet --ignore-case '^server:' <<< "$cabeceras"; then exit 1; fi
+
+      - name: Lo que anotó el servidor
+        if: always()
+        run: docker logs servidor || true

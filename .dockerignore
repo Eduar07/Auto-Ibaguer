@@ -1,0 +1,15 @@
+# Lo que no entra a la imagen de la nube.
+.git
+.github
+.venv
+.env
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.vscode
+.idea
+pruebas
+*.dump
+*.dump.gpg
+respaldos

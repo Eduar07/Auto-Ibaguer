@@ -17,7 +17,7 @@ Sistema de turnos para el lavadero de carros y motos **Auto Ibaguer**:
 | 5 · Bot con botones | Construido: la conversación con botones funciona en **Probar el bot**, ya está conectada a WhatsApp (recibe, contesta, reintenta y a cada cliente le llegan sus mensajes en orden) y sus textos se cambian en **Configuración > Textos del bot**. Falta la prueba desde tu celular cuando llegue la SIM. |
 | 6 · Reloj | Construido: cada 30 segundos pasa al final a quien no llegó a tiempo, vence las sesiones del bot y marca los lavados demorados. Con WhatsApp conectado también envía y reintenta los mensajes, y atiende los que quedaron sin atender. Falta su prueba en tu computador. |
 | 7 · Gemini | Construido: el bot entiende lo que el cliente escribe con sus palabras ("cuánto vale lavar la camionetica", "ya no voy a poder ir") y, si Gemini falla o tarda más de 5 segundos, sigue con botones. Probado con un Gemini de mentira. Falta correr las frases de prueba con tu clave: `uv run auto-ibaguer probar-gemini`. |
-| 8 · Producción | — |
+| 8 · Producción | Listo para subir: la imagen de la nube, Render con su base de datos (`render.yaml`), la revisión de salud con el reloj, los avisos de caída por correo y la copia de seguridad diaria, cifrada y fuera de Render. Probado como lo hará Render, en GitHub. Falta crear la cuenta y subirlo: [Poner el sistema en la nube](#poner-el-sistema-en-la-nube). |
 | 9 · Piloto en el local | — |
 
 ## Qué necesitas en tu computador
@@ -53,7 +53,7 @@ uv run fastapi dev app/main.py
 
 Abre <http://localhost:8000> en el navegador y entra con el usuario del paso 5.
 
-Para revisar solo el servidor, <http://localhost:8000/salud> debe decir `{"estado": "ok", "base_de_datos": "ok"}`. En <http://localhost:8000/docs> FastAPI muestra todas las rutas.
+Para revisar solo el servidor, <http://localhost:8000/salud> debe decir `{"estado":"ok","base_de_datos":"ok","reloj":"ok"}` (sin la parte del reloj si lo apagaste con `RELOJ_ACTIVO=false`). En <http://localhost:8000/docs> FastAPI muestra todas las rutas.
 
 ## El dashboard
 
@@ -67,11 +67,11 @@ Para revisar solo el servidor, <http://localhost:8000/salud> debe decir `{"estad
 | **Configuración** | Negocio y horario, bot de WhatsApp, puestos (prender, apagar y agregar), menú y precios, y el aviso de datos personales. Se guarda todo junto, y si algo está mal no se guarda nada. Desde ahí se abren **Textos del bot** (cada texto se guarda por separado) y **Mensajes de WhatsApp**. |
 | Lavado **Demorado** | Cuando un lavado pasa su duración estimada, su puesto se pone naranja y arriba se cuenta. En el celular, la pestaña de esa fila muestra un punto naranja aunque estés viendo la otra. Casi siempre quiere decir que ya está listo y falta marcarlo: mientras tanto el cliente no recibe el aviso y la espera de la fila se calcula mal. |
 
-En el celular se ve una fila a la vez (pestañas **Carros** y **Motos**) y las secciones quedan en la barra de abajo. Para ver cómo queda en el celular sin salir del computador: en Chrome, `F12` y luego `Ctrl+Shift+M`. Desde el celular de verdad se usará cuando esté en la nube (hito 8).
+En el celular se ve una fila a la vez (pestañas **Carros** y **Motos**) y las secciones quedan en la barra de abajo. Para ver cómo queda en el celular sin salir del computador: en Chrome, `F12` y luego `Ctrl+Shift+M`. Desde el celular de verdad, cuando esté en la nube: [Poner el sistema en la nube](#poner-el-sistema-en-la-nube).
 
 ## El bot
 
-El bot conversa con botones y unas pocas palabras; el texto libre lo entenderá Gemini en el hito 7.
+El bot conversa con botones y unas pocas palabras; lo que el cliente escribe con sus palabras lo entiende Gemini ([más abajo](#gemini)).
 
 | El cliente | El bot |
 |---|---|
@@ -143,7 +143,7 @@ Se hace en tu app de [Meta for Developers](https://developers.facebook.com/apps)
 
    Te pide el PIN sin mostrarlo y no lo guarda. Anótalo en un lugar seguro: WhatsApp lo vuelve a pedir si el número se registra otra vez.
 8. **Enciende el servidor** (`uv run fastapi dev app/main.py`; si ya estaba encendido, apágalo con Ctrl+C y vuelve a encenderlo, porque el `.env` se lee al arrancar). La terminal debe decir `Reloj: WhatsApp conectado` y la pantalla **Mensajes de WhatsApp**, que está conectado.
-9. **Una dirección pública** para que Meta llegue a tu computador. En otra terminal: `cloudflared tunnel --url http://localhost:8000` (cómo instalarlo, abajo) y copia la dirección `https://….trycloudflare.com` que muestra. Cambia cada vez que lo enciendes; en el hito 8 queda una fija en la nube.
+9. **Una dirección pública** para que Meta llegue a tu computador. En otra terminal: `cloudflared tunnel --url http://localhost:8000` (cómo instalarlo, abajo) y copia la dirección `https://….trycloudflare.com` que muestra. Cambia cada vez que lo enciendes. Con el sistema en la nube no hace falta: [El día de la SIM, con el sistema en la nube](#el-día-de-la-sim-con-el-sistema-en-la-nube).
 10. **Registra el webhook:** en la app, *WhatsApp > Configuración*: URL de devolución de llamada `https://….trycloudflare.com/webhook/whatsapp` y el token de verificación del paso 6; *Verificar y guardar*. Después, en *Campos del webhook*, suscríbete a **messages**.
 11. **Pon la app en modo Live** (arriba, en el panel de la app): en modo de desarrollo Meta no manda todos los avisos. Para pasarla, Meta pide la dirección de una política de privacidad; la armamos ese día.
 12. **Pruébalo:** desde otro celular, escríbele "hola" al número del bot. Debe contestar con el menú, y en **Mensajes de WhatsApp** aparecen los dos mensajes.
@@ -225,6 +225,105 @@ Si hay un puesto libre, el turno queda **Llamado** y, si nadie lo marca, a los 1
 
 Para mirar algo sin que el reloj mueva la fila, pon `RELOJ_ACTIVO=false` en tu `.env` y vuelve a encender el servidor.
 
+## Poner el sistema en la nube
+
+En la nube el sistema vive en [Render](https://render.com): el servidor y la base de datos quedan encendidos todo el día, con una dirección fija y con HTTPS (`https://….onrender.com`) a la que entran el dashboard, desde cualquier celular, y los mensajes de WhatsApp. Todo está escrito en archivos del repositorio, así Render lo arma igual cada vez:
+
+| Archivo | Qué tiene |
+|---|---|
+| `Dockerfile` | La *imagen*: el sistema con Python y sus librerías, sin las herramientas de desarrollo. Como un `.jar` que trae todo lo que necesita para correr. |
+| `render.yaml` | Lo que Render crea: el servidor (siempre encendido, porque el reloj corre adentro) y la base PostgreSQL 17, con sus variables. |
+| `.github/workflows/pruebas.yml` | Además de las pruebas, arma la imagen y la enciende como lo hará Render. Render solo publica un cambio de `main` cuando esto sale en verde. |
+| `.github/workflows/respaldo.yml` | La copia de seguridad diaria, cifrada y guardada fuera de Render. |
+
+**Cuánto cuesta:** unos 13 dólares al mes: el servidor 7, la base 6 y 0,30 por su GB de disco. La cuenta de Render (plan *Hobby*) no cuesta; Render le cobra a una tarjeta por los días de uso.
+
+### Subirlo la primera vez
+
+1. Crea la cuenta en Render entrando con tu GitHub y agrega la tarjeta en **Billing**.
+2. **New > Blueprint**. Dale acceso a Render solo al repositorio `auto-ibaguer` y elígelo (rama `main`). Render lee `render.yaml` y muestra lo que va a crear: `auto-ibaguer` (el servidor) y `auto-ibaguer-base` (la base).
+3. Te pide los secretos de WhatsApp y Gemini. Si todavía no los tienes, déjalos vacíos: el sistema funciona sin ellos y se llenan después ([el día de la SIM](#el-día-de-la-sim-con-el-sistema-en-la-nube)). `CLAVE_SECRETA` la inventa Render.
+4. **Apply**. Render crea la base, arma la imagen, prepara las tablas (corre `preparar-base` antes de cada publicación) y enciende el servidor. La primera vez tarda unos minutos; cuando el servidor dice **Live**, está listo.
+5. Crea tu usuario del dashboard. En el servidor, pestaña **Shell** (ahí no se escribe `uv run`):
+
+   ```bash
+   auto-ibaguer crear-admin --usuario eduar
+   auto-ibaguer revisar-base          # debe decir "Tablas: al día"
+   ```
+
+6. Abre desde el celular la dirección que Render muestra arriba (`https://auto-ibaguer.onrender.com` o parecida) y entra. `…/salud` debe decir `{"estado":"ok","base_de_datos":"ok","reloj":"ok"}`.
+7. **Avisos por correo:** en Render, **Integrations > Notifications**: destino **Email** y **Only failure notifications**. Te llega un correo si una publicación falla o si el servidor deja de estar sano. Render revisa `/salud` todo el tiempo: si la base no responde o el reloj lleva 15 minutos sin dar una vuelta, `/salud` dice que no, Render reinicia el servidor y te avisa.
+8. Activa la [copia de seguridad diaria](#copias-de-seguridad).
+
+Desde ese día, **cada cambio que unes a `main` se publica solo**: Render espera a que las pruebas de GitHub salgan en verde, arma la imagen nueva, actualiza las tablas y cambia de versión sin apagar el servicio. Si algo falla (las pruebas, la imagen o las tablas), sigue la versión anterior y te llega el correo. Durante el cambio hay unos segundos con dos servidores encendidos; los mismos bloqueos de la base que evitan choques entre dos celulares evitan que el reloj haga algo dos veces.
+
+Los secretos de la nube no van en un `.env`: van en el servidor de Render, pestaña **Environment**. Al guardar un cambio ahí, Render vuelve a encender el servidor con el valor nuevo. Lo que escribe el servidor (lo que en tu computador sale en la terminal) está en la pestaña **Logs**.
+
+### El día de la SIM, con el sistema en la nube
+
+Son los pasos de [Conectar WhatsApp](#conectar-whatsapp-cuando-llegue-la-sim), con estos cambios:
+
+- Los datos de los pasos 3 a 6 van en **Environment** del servidor de Render, no en el `.env`.
+- El paso 7 se corre en la **Shell** del servidor: `auto-ibaguer registrar-whatsapp`.
+- En el paso 8, `Reloj: WhatsApp conectado` sale en **Logs**. El paso 9 (el túnel) no hace falta: la URL del webhook del paso 10 es la de Render, `https://auto-ibaguer.onrender.com/webhook/whatsapp` (o la dirección que muestre Render).
+
+Con Gemini, igual: `GEMINI_CLAVE` en **Environment**, y `GEMINI_PLAN_DE_PAGO=true` solo cuando el proyecto de Google tenga facturación.
+
+### Copias de seguridad
+
+| Copia | Dónde queda | Cuánto dura | Para qué |
+|---|---|---|---|
+| La automática de Render | En Render | Cualquier momento de los últimos 3 días | Deshacer un error reciente, por ejemplo algo que se borró hoy. |
+| La diaria de GitHub (`respaldo.yml`) | En GitHub, cifrada | Una por día, por 14 días | Si se pierde la base o la cuenta de Render. |
+
+Para activar la de GitHub, una sola vez:
+
+1. En Render, la base `auto-ibaguer-base` > **Connect** > **External**: copia la *External Database URL*.
+2. Inventa la contraseña de las copias: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`. **Guárdala en tu gestor de contraseñas**: sin ella ninguna copia se puede abrir, y no queda en ningún otro lado.
+3. En GitHub, el repositorio > **Settings > Secrets and variables > Actions > New repository secret**: `RESPALDO_DATABASE_URL` con la URL del paso 1 y `RESPALDO_CLAVE` con la contraseña del paso 2.
+4. **Actions > Copia de seguridad > Run workflow**. En un par de minutos sale en verde. Abre la corrida: el resumen dice cuánto pesa la copia y qué había en la base de prueba donde se restauró (la versión de las tablas, cuántos clientes y turnos). El archivo está abajo, en **Artifacts**.
+
+Desde ahí corre sola cada madrugada (3:17 a. m.), y si una falla GitHub te manda un correo. GitHub gratis guarda hasta 500 MB entre todas las copias: el resumen avisa cuando ya no van a caber.
+
+**Abrir una copia en tu computador**, para revisar algo o como ensayo (vale la pena hacerlo una vez, antes de necesitarlo):
+
+```bash
+# 1. Descarga la copia (Actions > Copia de seguridad > la corrida > Artifacts) y pásala a
+#    la carpeta respaldos/ del proyecto, que nunca se sube a GitHub (.gitignore).
+mkdir -p respaldos
+mv /mnt/c/Users/TU_USUARIO/Downloads/auto-ibaguer-*.dump.gpg respaldos/
+
+# 2. Descifrarla (te pide la contraseña de las copias)
+gpg --pinentry-mode loopback --output respaldos/copia.dump --decrypt respaldos/auto-ibaguer-AAAA-MM-DD-HHMM.dump.gpg
+
+# 3. Restaurarla en una base aparte del PostgreSQL de Docker y revisarla
+docker compose exec postgres createdb -U auto restaurada
+docker compose exec -T postgres pg_restore -U auto -d restaurada --no-owner --no-privileges --exit-on-error < respaldos/copia.dump
+uv run auto-ibaguer revisar-base --url postgresql://auto:auto@localhost:5433/restaurada
+
+# 4. Al terminar, bórrala: tiene los datos de los clientes
+docker compose exec postgres dropdb -U auto restaurada
+rm respaldos/copia.dump
+```
+
+**Si se pierde la base de Render:** en el Blueprint, **Manual Sync** crea otra `auto-ibaguer-base`, vacía. Suspende el servidor (**Suspend**: así nadie escribe en la base nueva mientras tanto), descifra la última copia (paso 2 de arriba) y restáurala:
+
+```bash
+read -rs URL_DE_RENDER && export URL_DE_RENDER   # pega la External Database URL de la base nueva y Enter (no se ve)
+docker run --rm -i -e URL_DE_RENDER -e PGSSLMODE=require postgres:17-alpine \
+  sh -c 'exec pg_restore --clean --if-exists --no-owner --no-privileges --single-transaction --dbname="$URL_DE_RENDER"' \
+  < respaldos/copia.dump
+unset URL_DE_RENDER
+```
+
+Después, en el servidor: **Resume**, **Manual Deploy > Deploy latest commit** (así arranca con la dirección de la base nueva) y `auto-ibaguer revisar-base` en su **Shell**. Por último, actualiza el secreto `RESPALDO_DATABASE_URL` de GitHub con la URL nueva.
+
+**Para deshacer algo de los últimos 3 días:** en Render, la base > **Recovery** > el momento que quieres. Render crea una base **nueva** con los datos de ese momento; la actual no se toca. Para que el servidor la use hay que cambiar también `render.yaml`: pide ayuda antes de hacerlo la primera vez.
+
+### Los datos de los clientes en la nube
+
+En la nube, los datos de los clientes (nombre, celular, placas, turnos) quedan en servidores de Estados Unidos: la base en Render (Virginia) y las copias cifradas en GitHub. Los mensajes pasan además por Meta (WhatsApp) y, con el plan de pago, por Google (Gemini, con las placas y los celulares tapados). Antes de abrir al público, pídele a tu abogado que lo revise con la Ley 1581 y que la política de privacidad y el aviso de datos del bot lo digan.
+
 ## El día a día
 
 ```bash
@@ -251,7 +350,7 @@ uv run ruff check .      # busca errores comunes
 uv run pytest
 ```
 
-GitHub corre lo mismo en cada pull request (pestaña **Actions**). Si sale en rojo, el cambio no se une a `main`.
+GitHub corre lo mismo en cada pull request (pestaña **Actions**) y, además, arma la imagen de la nube y la enciende como lo hará Render. Si sale en rojo, el cambio no se une a `main`.
 
 ## Cómo está organizado
 
@@ -264,8 +363,8 @@ app/
 ├── integraciones/  mensajes que entran y salen de WhatsApp (bandejas y reintentos)
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores
 ├── reloj/          lo que pasa solo cada 30 segundos (gracias, sesiones del bot, avisos)
-├── db/             conexión a la base de datos
-├── cli.py          comandos de la terminal (preparar-base, crear-admin, simular-turno, registrar-whatsapp, probar-gemini)
+├── db/             conexión a la base de datos y lo que mira revisar-base
+├── cli.py          comandos de la terminal (preparar-base, revisar-base, crear-admin, simular-turno, registrar-whatsapp, probar-gemini)
 ├── config.py       configuración técnica, leída del archivo .env
 ├── errores.py      el error base de las reglas del negocio
 ├── formato.py      pesos, horas y fechas a la colombiana ($40.000, 5:30 a.m.)
@@ -273,6 +372,9 @@ app/
 └── main.py         servidor web
 migraciones/        cambios de la base de datos, numerados y en orden (Alembic)
 pruebas/            pruebas automáticas
+Dockerfile          la imagen de la nube
+render.yaml         lo que Render crea: el servidor y la base de datos
+.github/workflows/  las pruebas de cada pull request y la copia de seguridad diaria
 ```
 
 Cada módulo se arma por capas, de la más pura a la que toca la base de datos. En `turnos/`:
@@ -299,6 +401,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | `tablero.py` | Arma lo que muestra la fila en vivo. Solo lee. |
 | `en_vivo.py` | Le avisa al navegador cuando una fila cambia (PostgreSQL `LISTEN/NOTIFY` y Server-Sent Events). |
 | `sesiones.py` | La cookie firmada de la sesión y el freno a quien intenta adivinar contraseñas. |
+| `cabeceras.py` | Las cabeceras de seguridad de cada respuesta: en la nube, siempre HTTPS, y ninguna otra página puede mostrar el dashboard dentro de la suya. |
+| `registro.py` | Que el registro de peticiones del servidor no guarde lo que se busca ni la palabra secreta del webhook. |
 | `plantillas/` | El HTML de cada pantalla y diálogo (Jinja2). |
 | `estaticos/` | Estilos, el JavaScript de la página, HTMX y las letras del diseño. |
 
@@ -310,7 +414,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Servicios, precios y puestos | Pantalla **Configuración**. Un precio nuevo apaga el viejo y crea otro en `servicio_precio`; así los cobros pasados no cambian. De la duración estimada de cada servicio dependen la espera de la fila y la alerta de lavado demorado. |
 | Lo que dice el bot | **Configuración > Textos del bot** para los 39 que más leen los clientes, y **Configuración > Datos personales** para el aviso de datos. Cada texto cambiado es una fila `texto_bot.<nombre>` en la tabla `configuracion`. Los botones y los demás textos, en `app/bot/textos.py`. |
 | Colores, letras y tamaños del dashboard | `app/web/estaticos/css/dashboard.css`. Los colores del diseño están al comienzo, con nombre. |
-| Conexión a la base, claves de Meta y Gemini, reloj encendido o apagado | Archivo `.env`, que nunca se sube a GitHub. `.env.example` solo trae los nombres. |
+| Conexión a la base, claves de Meta y Gemini, reloj encendido o apagado | Archivo `.env`, que nunca se sube a GitHub. `.env.example` solo trae los nombres. En la nube, en Render: el servidor > **Environment**. |
+| El servidor y la base de la nube (plan, región, versión de PostgreSQL) | `render.yaml`. Render aplica los cambios al unirlos a `main`. |
 
 ## Cambiar una tabla
 
@@ -335,6 +440,9 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Registrar el número del bot en WhatsApp (el día de la SIM) | `uv run auto-ibaguer registrar-whatsapp` |
 | Probar un modelo de Gemini con las frases de prueba | `uv run auto-ibaguer probar-gemini` (o `--modelo nombre`; `--pausa 0` con el plan de pago) |
 | Ver los mensajes que esperan en la bandeja de salida (dentro de psql) | `SELECT id, tipo, estado, intentos, creado_en FROM mensaje_saliente ORDER BY id DESC LIMIT 10;` |
+| Ver si las tablas están al día y cuánto hay, sin mostrar datos | `uv run auto-ibaguer revisar-base` (en la Shell de Render, sin `uv run`) |
+| Probar la imagen de la nube en tu computador | `docker build -t auto-ibaguer .` y luego `docker run --rm --network host -e ENTORNO=desarrollo auto-ibaguer` |
+| Sacar una copia de seguridad ya (antes de un cambio grande) | GitHub > **Actions > Copia de seguridad > Run workflow** |
 | Borrar la base y empezar de cero | `docker compose down -v`, luego `docker compose up -d` y `uv run auto-ibaguer preparar-base` |
 
 ## Si algo falla
@@ -351,15 +459,22 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Olvidaste la contraseña del dashboard | `uv run auto-ibaguer crear-admin --usuario eduar` y escribe una nueva. Las sesiones abiertas se cierran solas. |
 | `simular-turno` dice `No se dio el turno: Los turnos por WhatsApp se dan de...` | Es la regla del horario. Para probar a esa hora, amplía el horario en **Configuración** y después déjalo como estaba. |
 | Un llamado se queda en `Llamado · tiempo vencido` | El reloj lo pasa al final en menos de 30 segundos. Si no pasa, mira en la terminal del servidor si dice `Reloj encendido` y que `RELOJ_ACTIVO` no esté en `false`. |
+| En Render, una publicación falla en **Pre-deploy** | `preparar-base` no pudo con la base: el motivo está en el registro de esa publicación (**Events**). Sigue funcionando la versión anterior. |
+| Te llega el correo de Render de que el servidor no está sano | Abre `https://…/salud`: dice si es la base de datos o el reloj. Render ya reinició el servidor; si sigue igual, mira **Logs** y que la base diga **Available**. |
+| Un cambio ya está en `main` y Render no lo publica | Render espera a que GitHub termine las pruebas (pestaña **Actions**); si alguna sale en rojo, no lo publica. |
+| La copia de seguridad sale en rojo | Abre la corrida en **Actions**: si no pudo conectarse, revisa `RESPALDO_DATABASE_URL` (cambia si la base de Render se crea de nuevo). |
 
 ## Seguridad
 
 - El repositorio es privado y debe seguir así.
-- El archivo `.env` nunca se sube. Ahí irán las claves de Meta y Gemini.
+- El archivo `.env` nunca se sube. Ahí van las claves de Meta y Gemini de tu computador; las de la nube van en Render (**Environment**) y las de la copia de seguridad, en los secretos de GitHub.
 - Nunca compartas el token de Meta ni el PIN de 6 dígitos del número, tampoco en capturas de pantalla.
 - Las contraseñas del dashboard se guardan cifradas con Argon2; ni siquiera quien tenga la base de datos puede leerlas.
 - La sesión del dashboard vive en una cookie firmada con `CLAVE_SECRETA`. Vence tras `SESION_HORAS` (12) sin usar el dashboard, y se cierra sola si cambian la contraseña o desactivan al usuario.
 - En producción, `CLAVE_SECRETA` es obligatoria: el servidor no arranca sin una clave larga y aleatoria. `.env.example` dice cómo generarla.
 - Después de 5 contraseñas equivocadas, ese usuario queda bloqueado 15 minutos.
 - Ninguna otra página puede enviar formularios al dashboard: el servidor revisa de dónde viene cada envío.
-- Lo que el reloj escribe en la terminal no lleva nombres ni celulares: en la nube, esos registros los pueden ver otras personas.
+- Lo que el reloj escribe en la terminal no lleva nombres ni celulares: en la nube, esos registros los pueden ver otras personas. El registro de peticiones tampoco guarda lo que va después del `?` en cada dirección: ahí viajan las búsquedas del dashboard y la palabra secreta del webhook.
+- En la nube todo va por HTTPS, y el navegador ya no intenta entrar sin él. Ninguna otra página puede mostrar el dashboard dentro de la suya.
+- El servidor de la nube corre con un usuario sin permisos de administrador, y la imagen no lleva el `.env`, las pruebas ni la historia de git.
+- Las copias de seguridad salen cifradas (AES-256) con una contraseña que solo tú tienes, y nunca se suben al repositorio (`.gitignore`).

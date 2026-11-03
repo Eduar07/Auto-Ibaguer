@@ -9,7 +9,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -32,6 +32,8 @@ from app.web import (
     textos_del_bot,
     webhook,
 )
+from app.web.cabeceras import CabecerasDeSeguridad
+from app.web.registro import proteger_el_registro_de_peticiones
 
 
 def mostrar_registro_de_la_app() -> None:
@@ -48,19 +50,23 @@ def mostrar_registro_de_la_app() -> None:
 
 
 @asynccontextmanager
-async def ciclo_de_vida(_: FastAPI) -> AsyncIterator[None]:
+async def ciclo_de_vida(servidor: FastAPI) -> AsyncIterator[None]:
     """Lo que pasa al arrancar el servidor y al apagarlo."""
     en_vivo.cerrar_al_apagar()
     mostrar_registro_de_la_app()
+    proteger_el_registro_de_peticiones()  # sin búsquedas ni secretos en los logs
     async with AsyncExitStack() as al_apagar:
         if obtener_entorno().reloj_activo:
             # Con WhatsApp conectado, el reloj también envía y reintenta los mensajes.
-            enviador = whatsapp.del_entorno()
-            await al_apagar.enter_async_context(reloj.encendido(reloj.del_servidor(enviador)))
+            el_reloj = reloj.del_servidor(whatsapp.del_entorno())
+            await al_apagar.enter_async_context(reloj.encendido(el_reloj))
+            servidor.state.reloj = el_reloj  # /salud revisa que siga dando vueltas
+            al_apagar.callback(delattr, servidor.state, "reloj")
         yield
 
 
 app = FastAPI(title="Auto Ibaguer", version="0.1.0", lifespan=ciclo_de_vida)
+app.add_middleware(CabecerasDeSeguridad)
 app.mount(
     "/estaticos",
     StaticFiles(directory=Path(__file__).parent / "web" / "estaticos"),
@@ -83,10 +89,10 @@ SesionBD = Annotated[Session, Depends(obtener_sesion)]
 
 
 @app.get("/salud")
-def salud(sesion: SesionBD) -> JSONResponse:
-    """Dice si el servidor y la base de datos están funcionando.
+def salud(request: Request, sesion: SesionBD) -> JSONResponse:
+    """Dice si el servidor, la base de datos y el reloj están funcionando.
 
-    Lo usa la alerta de la nube (hito 8) para avisar si el sistema se cae.
+    Lo revisan Render (si no responde bien, reinicia el servidor) y la alerta de caídas.
     """
     try:
         sesion.execute(text("SELECT 1"))
@@ -94,4 +100,11 @@ def salud(sesion: SesionBD) -> JSONResponse:
         return JSONResponse(
             status_code=503, content={"estado": "con problemas", "base_de_datos": "sin conexión"}
         )
-    return JSONResponse(content={"estado": "ok", "base_de_datos": "ok"})
+    contenido = {"estado": "ok", "base_de_datos": "ok"}
+    el_reloj: reloj.Reloj | None = getattr(request.app.state, "reloj", None)
+    if el_reloj is not None:
+        if el_reloj.se_detuvo():
+            contenido = {"estado": "con problemas", "base_de_datos": "ok", "reloj": "detenido"}
+            return JSONResponse(status_code=503, content=contenido)
+        contenido["reloj"] = "ok"
+    return JSONResponse(content=contenido)

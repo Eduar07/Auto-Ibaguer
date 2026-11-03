@@ -14,6 +14,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 CLAVE_DE_DESARROLLO = "solo-para-desarrollo-no-usar-en-produccion"
 
 
+def con_psycopg(url: str) -> str:
+    """Los servicios en la nube entregan la URL como postgres:// o postgresql://.
+
+    SQLAlchemy necesita saber con qué conector hablar; aquí siempre es psycopg.
+    """
+    for prefijo in ("postgres://", "postgresql://"):
+        if url.startswith(prefijo):
+            return "postgresql+psycopg://" + url.removeprefix(prefijo)
+    return url
+
+
 class ConfiguracionEntorno(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -73,14 +84,7 @@ class ConfiguracionEntorno(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def usar_psycopg(cls, url: str) -> str:
-        """Los servicios en la nube entregan la URL como postgres:// o postgresql://.
-
-        SQLAlchemy necesita saber con qué conector hablar; aquí siempre es psycopg.
-        """
-        for prefijo in ("postgres://", "postgresql://"):
-            if url.startswith(prefijo):
-                return "postgresql+psycopg://" + url.removeprefix(prefijo)
-        return url
+        return con_psycopg(url)
 
 
 @lru_cache

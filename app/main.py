@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.config import obtener_entorno
 from app.db.sesion import obtener_sesion
 from app.reloj import proceso as reloj
-from app.web import clientes, comun, configuracion, en_vivo, entrar, fila
+from app.web import clientes, comun, configuracion, en_vivo, entrar, fila, probar_bot
 
 
 def mostrar_registro_de_la_app() -> None:
@@ -54,7 +54,7 @@ app.mount(
     StaticFiles(directory=Path(__file__).parent / "web" / "estaticos"),
     name="estaticos",
 )
-for modulo in (entrar, fila, clientes, configuracion):
+for modulo in (entrar, fila, clientes, configuracion, probar_bot):
     app.include_router(modulo.router)
 app.add_exception_handler(comun.NecesitaEntrar, comun.responder_sin_sesion)
 

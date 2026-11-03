@@ -24,7 +24,7 @@ from app.clientes.errores import (
     TieneTurnoActivo,
 )
 from app.clientes.reglas import nombre_bonito, normalizar_telefono, validar_placa
-from app.clientes.tablas import Cliente, Consulta, Vehiculo
+from app.clientes.tablas import Cliente, Consulta, TipoConsulta, Vehiculo
 from app.integraciones.tablas import MensajeEntrante, MensajeSaliente
 from app.turnos.estados import ESTADOS_ACTIVOS
 from app.turnos.reglas import numero_de_turno
@@ -71,6 +71,27 @@ def registrar_cliente(
     sesion.add(cliente)
     sesion.flush()
     return cliente
+
+
+def registrar_consulta(
+    sesion: Session,
+    *,
+    tipo: TipoConsulta,
+    cliente_id: int | None = None,
+    tipo_vehiculo_id: int | None = None,
+    ahora: datetime | None = None,
+) -> Consulta:
+    """Alguien preguntó precios o cómo va la fila. Sirve para medir cuántos preguntan y no
+    vienen. Sin aviso de datos aceptado se guarda sin cliente: solo cuenta."""
+    consulta = Consulta(
+        cliente_id=cliente_id,
+        tipo=tipo,
+        tipo_vehiculo_id=tipo_vehiculo_id,
+        fecha_hora=ahora or tiempo.ahora(),
+    )
+    sesion.add(consulta)
+    sesion.flush()
+    return consulta
 
 
 def _tipo_de_vehiculo(sesion: Session, tipo_vehiculo_id: int) -> TipoVehiculo:

@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 from sqlalchemy.orm import Session
 
 from app import formato, tiempo
@@ -67,8 +68,21 @@ def _huella(archivo: Path, _modificado: int) -> str:
     return hashlib.sha256(archivo.read_bytes()).hexdigest()[:10]
 
 
+def _como_en_whatsapp(texto: str) -> Markup:
+    """Un texto del bot como lo muestra WhatsApp: *negrilla*, _cursiva_ y saltos de línea.
+
+    Primero se escapa todo (nadie puede meter HTML) y después se ponen las marcas.
+    """
+    seguro = str(escape(texto))
+    seguro = re.sub(r"\*([^*\n]+)\*", r"<strong>\1</strong>", seguro)
+    seguro = re.sub(r"(?<!\w)_([^_\n]+)_(?!\w)", r"<em>\1</em>", seguro)
+    return Markup(seguro.replace("\n", "<br>"))
+
+
 plantillas.env.filters.update(
     pesos=formato.pesos,
+    telefono=formato.telefono,
+    whatsapp=_como_en_whatsapp,
     miles=lambda valor: "" if valor is None else formato.miles(valor),
     hora=_hora_local,
     duracion=formato.duracion,
@@ -96,6 +110,8 @@ plantillas.env.globals.update(
     segundos_hasta=_segundos_hasta,
     fecha_larga=lambda momento: formato.fecha_larga(tiempo.hora_local(momento).date()),
     estatico=_estatico,
+    # Lo que solo aparece en tu computador (por ejemplo, la página para probar el bot).
+    en_desarrollo=lambda: not obtener_entorno().es_produccion,
 )
 
 # --- Sesión del administrador ----------------------------------------------------------

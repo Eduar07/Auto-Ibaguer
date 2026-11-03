@@ -1,0 +1,59 @@
+{% extends "pagina.html" %}
+
+{% block titulo %}Probar el bot · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Probar el bot</h1>
+      <p>La conversación de WhatsApp, aquí mismo y con los mismos botones. Lo que pidas entra a la fila de verdad de tu computador.</p>
+    </div>
+  </div>
+
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+  <div class="probar-bot">
+    <section class="chat-bot" aria-label="Conversación con el bot">
+      <header class="chat-bot__cabeza">
+        <span class="chat-bot__marca" aria-hidden="true"></span>
+        <div>
+          <strong>Auto Ibaguer</strong>
+          <span>Hablas como {{ telefono|telefono }}{% if inventado %} (celular inventado){% endif %}</span>
+        </div>
+      </header>
+      <div id="charla" class="chat-bot__charla" aria-live="polite">
+        <p class="chat-bot__nota">Escribe <strong>hola</strong> para empezar. Los avisos de la fila (te llamamos, tu vehículo está listo...) también llegan aquí.</p>
+      </div>
+      {% include "_avisos_del_bot.html" %}
+      <form class="chat-bot__escribir" data-chat-bot hx-post="/probar-bot/mensaje" hx-target="#charla"
+            hx-swap="beforeend" hx-disabled-elt="find button" autocomplete="off">
+        <input type="hidden" name="telefono" value="{{ telefono }}">
+        <label class="solo-lector" for="mensaje-al-bot">Mensaje</label>
+        <input id="mensaje-al-bot" name="texto" placeholder="Escribe un mensaje" maxlength="500" required autofocus>
+        <button type="submit" class="boton">Enviar</button>
+      </form>
+    </section>
+
+    <aside class="panel probar-bot__ayuda">
+      <h2>Qué probar</h2>
+      <ul class="probar-bot__lista">
+        <li><strong>Precios y fila:</strong> toca los botones del saludo; escribe <em>carro</em> cuando te pregunte el vehículo.</li>
+        <li><strong>Un turno sin placa ni servicio:</strong> Pedir turno, Ahora no y Lo decido en el local. Míralo en la fila en vivo.</li>
+        <li><strong>Mi turno y cancelar:</strong> escribe <em>mi turno</em>, o <em>no cancelo el turno</em> para ver que pregunta antes.</li>
+        <li><strong>Avisos:</strong> con el turno en la fila, pásalo a puesto y márcalo listo en el dashboard.</li>
+        <li><strong>El código QR:</strong> crea un turno en el local con un celular y escribe <em>Hola, ya estoy en la fila</em> hablando como ese celular.</li>
+        <li><strong>Fuera de horario y bot apagado:</strong> cámbialos en Configuración y vuelve a pedir turno.</li>
+      </ul>
+      <a class="boton boton--borde" href="/probar-bot">Hablar como otra persona</a>
+      <form class="probar-bot__celular" method="get" action="/probar-bot">
+        <label for="celular">O como un cliente que ya existe</label>
+        <div class="probar-bot__fila">
+          <input id="celular" name="celular" type="tel" inputmode="tel" placeholder="300 000 0000" maxlength="20" required>
+          <button type="submit" class="boton boton--borde">Usar</button>
+        </div>
+      </form>
+    </aside>
+  </div>
+</main>
+{% endblock %}

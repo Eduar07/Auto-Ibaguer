@@ -298,6 +298,24 @@
     if (destino === "lista-clientes") marcarClienteElegido();
   });
 
+  // --- Probar el bot ----------------------------------------------------------------------
+
+  // La charla siempre muestra lo último, como en WhatsApp.
+  const charla = document.getElementById("charla");
+  if (charla) {
+    new MutationObserver(() => {
+      charla.scrollTop = charla.scrollHeight;
+    }).observe(charla, { childList: true });
+  }
+
+  // Después de enviar un mensaje, el campo queda vacío y listo para el siguiente.
+  document.body.addEventListener("htmx:afterRequest", (evento) => {
+    const formulario = evento.detail.elt;
+    if (!evento.detail.successful || !formulario.matches("form[data-chat-bot]")) return;
+    formulario.reset();
+    formulario.querySelector("input[name='texto']").focus();
+  });
+
   // --- Al abrir la página ------------------------------------------------------------------
 
   marcarClienteElegido();

@@ -1,0 +1,29 @@
+{#- Un mensaje del bot como se ve en WhatsApp: el texto y, debajo, sus botones o su lista.
+    Los botones de mensajes viejos se pueden seguir tocando, como en WhatsApp. -#}
+{% macro opcion_tocable(opcion, telefono, clase) -%}
+<button type="button" class="{{ clase }}" hx-post="/probar-bot/mensaje" hx-target="#charla"
+        hx-swap="beforeend" hx-disabled-elt="this"
+        hx-vals='{{ {"telefono": telefono, "opcion": opcion.id, "titulo": opcion.titulo}|tojson }}'>
+  {%- if opcion.descripcion %}<strong>{{ opcion.titulo }}</strong><span>{{ opcion.descripcion }}</span>
+  {%- else %}{{ opcion.titulo }}{% endif -%}
+</button>
+{%- endmacro %}
+
+{% macro del_bot(mensaje, telefono, etiqueta=None) %}
+<div class="burbuja burbuja--bot">
+  {% if etiqueta %}<span class="burbuja__etiqueta">{{ etiqueta }}</span>{% endif %}
+  <p>{{ mensaje.texto|whatsapp }}</p>
+  {% if mensaje.botones %}
+  <div class="burbuja__botones">
+    {% for opcion in mensaje.botones %}{{ opcion_tocable(opcion, telefono, "burbuja__boton") }}{% endfor %}
+  </div>
+  {% elif mensaje.lista %}
+  <details class="burbuja__lista">
+    <summary class="burbuja__boton">{{ mensaje.lista.boton }}</summary>
+    <div class="burbuja__opciones">
+      {% for opcion in mensaje.lista.opciones %}{{ opcion_tocable(opcion, telefono, "burbuja__opcion") }}{% endfor %}
+    </div>
+  </details>
+  {% endif %}
+</div>
+{% endmacro %}

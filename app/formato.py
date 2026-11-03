@@ -1,5 +1,6 @@
 """Cómo se escriben pesos, horas, fechas y teléfonos, a la colombiana."""
 
+from collections.abc import Iterable
 from datetime import date, datetime, time, timedelta
 
 DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
@@ -60,6 +61,31 @@ def duracion(minutos: int) -> str:
     if resto == 0:
         return f"{horas} h"
     return f"{horas} h {resto:02d} min"
+
+
+def dias_de_atencion(dias: Iterable[int]) -> str:
+    """{1..7} -> "todos los días"; {1..6} -> "de lunes a sábado"; {1, 3, 6} -> "los lunes,
+    miércoles y sábados". Usa 1 = lunes ... 7 = domingo."""
+    elegidos = sorted(set(dias))
+    if elegidos == list(range(1, 8)):
+        return "todos los días"
+    if not elegidos:
+        return "ningún día"
+    if len(elegidos) >= 3 and elegidos == list(range(elegidos[0], elegidos[-1] + 1)):
+        return f"de {DIAS[elegidos[0] - 1]} a {DIAS[elegidos[-1] - 1]}"
+    # Sábado y domingo cambian en plural; los demás días se escriben igual.
+    plurales = [DIAS[dia - 1] + ("s" if dia >= 6 else "") for dia in elegidos]
+    if len(plurales) == 1:
+        return f"los {plurales[0]}"
+    return "los " + ", ".join(plurales[:-1]) + " y " + plurales[-1]
+
+
+def telefono(numero: str) -> str:
+    """ "573227556850" -> "322 755 6850": como se dice un celular en Colombia."""
+    local = numero.removeprefix("57") if len(numero) == 12 else numero
+    if len(local) != 10:
+        return local
+    return f"{local[:3]} {local[3:6]} {local[6:]}"
 
 
 def telefono_oculto(telefono: str | None) -> str:

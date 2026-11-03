@@ -78,6 +78,9 @@
       {% endfor %}
     </div>
     <p class="ayuda">Gemini solo entiende lo que escribe el cliente; los textos que responde el bot se editan con el hito 5.</p>
+    {% if en_desarrollo() %}
+    <a class="boton boton--borde probar-bot__enlace" href="/probar-bot">Probar el bot</a>
+    {% endif %}
   </section>
 
   <section id="puestos" class="panel seccion-configuracion" aria-labelledby="t-puestos">

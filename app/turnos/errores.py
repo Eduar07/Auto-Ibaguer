@@ -47,3 +47,7 @@ class FaltaServicio(ReglaDelNegocio):
 
 class PrecioInvalido(ReglaDelNegocio):
     """Precio negativo, o distinto al del menú sin escribir el motivo."""
+
+
+class PuestoOcupado(ReglaDelNegocio):
+    """Un puesto con un vehículo lavándose no se apaga."""

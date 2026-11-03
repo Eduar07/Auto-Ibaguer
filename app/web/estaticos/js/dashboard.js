@@ -43,7 +43,8 @@
   document.body.addEventListener("error", (evento) => avisar(evento.detail.value, true));
 
   function refrescarFila() {
-    htmx.trigger("#refrescar", "refrescar");
+    const refrescar = document.getElementById("refrescar");
+    if (refrescar) htmx.trigger(refrescar, "refrescar"); // solo existe en la fila en vivo
   }
 
   document.body.addEventListener("htmx:responseError", (evento) => {
@@ -67,6 +68,9 @@
 
   document.body.addEventListener("htmx:afterSwap", (evento) => {
     if (evento.detail.target !== contenido) return;
+    // Una respuesta que no cambia nada (la que solo cierra el diálogo y avisa) no lo abre.
+    if (evento.detail.xhr && evento.detail.xhr.getResponseHeader("HX-Reswap") === "none") return;
+    if (!contenido.firstElementChild) return;
     if (!dialogo.open) {
       dialogo.showModal();
     } else {
@@ -271,7 +275,32 @@
     if (formulario) actualizarCobro(formulario, false);
   });
 
+  // --- Clientes ---------------------------------------------------------------------------
+
+  function marcarClienteElegido() {
+    const ficha = document.querySelector("#ficha-cliente .ficha");
+    const elegido = ficha ? ficha.dataset.cliente : null;
+    for (const boton of document.querySelectorAll(".tabla-clientes__cliente")) {
+      if (boton.dataset.cliente === elegido) boton.setAttribute("aria-current", "true");
+      else boton.removeAttribute("aria-current");
+    }
+  }
+
+  document.body.addEventListener("htmx:afterSwap", (evento) => {
+    const destino = evento.detail.target.id;
+    if (destino === "ficha-cliente") {
+      marcarClienteElegido();
+      // En el celular la ficha queda debajo de la lista: se baja hasta ella.
+      if (window.matchMedia("(max-width: 1011px)").matches && evento.detail.requestConfig?.verb === "get") {
+        evento.detail.target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+    if (destino === "lista-clientes") marcarClienteElegido();
+  });
+
   // --- Al abrir la página ------------------------------------------------------------------
+
+  marcarClienteElegido();
 
   aplicarPestana();
   prepararCuentas();

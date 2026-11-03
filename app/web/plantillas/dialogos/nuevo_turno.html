@@ -4,14 +4,24 @@
       hx-post="/turnos" hx-target="#dialogo-contenido"
       hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
   <div class="dialogo__cabeza">
-    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver a la fila</button>
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}{{ texto_volver(request) }}</button>
     <h2 id="dialogo-titulo">Nuevo turno en el local</h2>
-    <p>Para clientes que llegan sin haber escrito por WhatsApp. Entran a la misma fila.</p>
+    <p>{% if formulario.cliente_id %}Para un cliente que ya está registrado. Entra a la misma fila.{% else %}Para clientes que llegan sin haber escrito por WhatsApp. Entran a la misma fila.{% endif %}</p>
   </div>
 
   <div class="dialogo__cuerpo">
     {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 
+    {% if formulario.cliente_id %}
+    {#- Cliente que ya existe ("Dar turno" desde su ficha): ya aceptó el aviso de datos. -#}
+    <input type="hidden" name="cliente_id" value="{{ formulario.cliente_id }}">
+    <input type="hidden" name="acepta_datos" value="si">
+    <div class="tarjeta-dato">
+      <span>Cliente</span>
+      <strong>{{ formulario.nombre }}</strong>
+      <span>{{ formulario.celular|telefono_oculto }}</span>
+    </div>
+    {% else %}
     <div class="campos-juntos">
       <div class="dos-columnas">
         <div class="campo">
@@ -27,6 +37,7 @@
       </div>
       <p class="ayuda">Para recibir avisos por WhatsApp, el cliente escanea el código QR del mostrador y envía el mensaje; el bot lo reconoce por este celular.</p>
     </div>
+    {% endif %}
 
     <fieldset hx-get="/turnos/nuevo/vista-previa" hx-trigger="change" hx-include="this"
               hx-target="#vista-previa" hx-swap="outerHTML">
@@ -76,11 +87,13 @@
     </fieldset>
     {% endfor %}
 
+    {% if not formulario.cliente_id %}
     <div class="autorizacion">
       <input id="acepta-datos" type="checkbox" name="acepta_datos" value="si" required
              {% if formulario.acepta_datos %}checked{% endif %}>
       <label for="acepta-datos">El cliente autoriza el tratamiento de sus datos personales para gestionar su turno (Ley 1581 de 2012). Obligatorio.</label>
     </div>
+    {% endif %}
   </div>
 
   <div class="dialogo__pie">

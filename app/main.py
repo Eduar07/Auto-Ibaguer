@@ -16,7 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.sesion import obtener_sesion
-from app.web import dashboard, en_vivo
+from app.web import clientes, comun, configuracion, en_vivo, entrar, fila
 
 
 @asynccontextmanager
@@ -32,8 +32,9 @@ app.mount(
     StaticFiles(directory=Path(__file__).parent / "web" / "estaticos"),
     name="estaticos",
 )
-app.include_router(dashboard.router)
-app.add_exception_handler(dashboard.NecesitaEntrar, dashboard.responder_sin_sesion)
+for modulo in (entrar, fila, clientes, configuracion):
+    app.include_router(modulo.router)
+app.add_exception_handler(comun.NecesitaEntrar, comun.responder_sin_sesion)
 
 SesionBD = Annotated[Session, Depends(obtener_sesion)]
 

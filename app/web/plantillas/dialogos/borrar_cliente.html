@@ -1,0 +1,33 @@
+{% import "_iconos.html" as iconos %}
+<form class="dialogo__caja" hx-post="/clientes/{{ ficha.id }}/borrar" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Borrar los datos de {{ ficha.nombre }}</h2>
+    <p>Derecho del cliente por la Ley 1581 de 2012.</p>
+  </div>
+
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <div class="ficha__bloque">
+      <h3>Se borra</h3>
+      <ul class="lista-simple">
+        <li>Su nombre y su celular{% if ficha.vehiculos|selectattr("placa")|list %}, y las placas {{ ficha.vehiculos|selectattr("placa")|map(attribute="placa")|join(", ") }}{% endif %}.</li>
+        <li>Sus mensajes de WhatsApp y su conversación con el bot.</li>
+        <li>Lo que esté escrito con esos datos en las notas de sus turnos y cobros.</li>
+      </ul>
+    </div>
+    <div class="ficha__bloque">
+      <h3>Queda, sin datos personales</h3>
+      <ul class="lista-simple">
+        <li>Sus {{ ficha.visitas }} visita{{ "s" if ficha.visitas != 1 }} y lo que pagó ({{ ficha.total_pagado|pesos }}), para que la contabilidad siga cuadrando.</li>
+      </ul>
+    </div>
+    <p class="nota nota--suelta">{{ iconos.icono("info", 18) }}<span>No se puede deshacer. Si vuelve, se registra como un cliente nuevo.</span></p>
+  </div>
+
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande boton--peligro">Sí, borrar sus datos</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>No, volver</button>
+  </div>
+</form>

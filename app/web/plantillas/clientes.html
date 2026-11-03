@@ -1,0 +1,34 @@
+{% extends "pagina.html" %}
+{% import "_iconos.html" as iconos %}
+
+{% block titulo %}Clientes · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Clientes</h1>
+      <p>{{ total }} cliente{{ "s" if total != 1 }} registrado{{ "s" if total != 1 }}, todos con autorización de datos</p>
+    </div>
+  </div>
+
+  <div class="buscador campo">
+    <label for="buscar-clientes">Buscar cliente</label>
+    <div class="buscador__campo">
+      {{ iconos.icono("buscar", 20) }}
+      <input id="buscar-clientes" name="q" type="search" value="{{ q }}" placeholder="Nombre, celular o placa"
+             autocomplete="off" spellcheck="false"
+             hx-get="/clientes/lista" hx-trigger="input changed delay:300ms, search" hx-target="#lista-clientes">
+    </div>
+  </div>
+
+  <div class="clientes">
+    <section class="panel clientes__lista" id="lista-clientes" aria-label="Lista de clientes">
+      {% include "_lista_clientes.html" %}
+    </section>
+    <section class="panel clientes__ficha" id="ficha-cliente" aria-label="Ficha del cliente">
+      {% if ficha %}{% include "_ficha_cliente.html" %}{% else %}{% include "_sin_ficha.html" %}{% endif %}
+    </section>
+  </div>
+</main>
+{% endblock %}

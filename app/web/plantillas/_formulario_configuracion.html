@@ -1,0 +1,149 @@
+{#- Toda la configuración en un solo formulario: se guarda junta o no se guarda nada. -#}
+{% import "_iconos.html" as iconos %}
+{% macro error_de(campo) -%}
+{% if errores.get(campo) %}<p class="error-campo" id="error-{{ campo }}">{{ errores[campo] }}</p>{% endif %}
+{%- endmacro %}
+{% macro invalido(campo) -%}
+{% if errores.get(campo) %}aria-invalid="true" aria-describedby="error-{{ campo }}"{% endif %}
+{%- endmacro %}
+
+<form id="formulario-configuracion" class="configuracion" hx-post="/configuracion"
+      hx-target="this" hx-swap="outerHTML" hx-disabled-elt="find .barra-guardar button" autocomplete="off">
+  {% if errores %}
+  <p class="error" role="alert">No se guardó nada: revisa los campos marcados en rojo.</p>
+  {% endif %}
+
+  <section id="negocio" class="panel seccion-configuracion" aria-labelledby="t-negocio">
+    <h2 id="t-negocio">Negocio y horario</h2>
+    <div class="dos-columnas">
+      <div class="campo">
+        <label for="nombre_negocio">Nombre del lavadero</label>
+        <input id="nombre_negocio" name="nombre_negocio" value="{{ valores.nombre_negocio }}" maxlength="60" {{ invalido("nombre_negocio") }}>
+        {{ error_de("nombre_negocio") }}
+      </div>
+      <div class="campo">
+        <label for="telefono_contacto">Teléfono que da el bot</label>
+        <input id="telefono_contacto" name="telefono_contacto" type="tel" inputmode="tel" value="{{ valores.telefono_contacto }}" maxlength="20" {{ invalido("telefono_contacto") }}>
+        {{ error_de("telefono_contacto") }}
+      </div>
+      <div class="campo">
+        <label for="hora_apertura">Abre</label>
+        <input id="hora_apertura" name="hora_apertura" type="time" value="{{ valores.hora_apertura }}" {{ invalido("hora_apertura") }}>
+        {{ error_de("hora_apertura") }}
+      </div>
+      <div class="campo">
+        <label for="hora_cierre">Cierra (deja de dar turnos)</label>
+        <input id="hora_cierre" name="hora_cierre" type="time" value="{{ valores.hora_cierre }}" {{ invalido("hora_cierre") }}>
+        {{ error_de("hora_cierre") }}
+      </div>
+    </div>
+    <fieldset {{ invalido("dias_atencion") }}>
+      <legend>Días de atención</legend>
+      <div class="dias">
+        {% for numero, letra, nombre in [(1, "L", "Lunes"), (2, "M", "Martes"), (3, "X", "Miércoles"), (4, "J", "Jueves"), (5, "V", "Viernes"), (6, "S", "Sábado"), (7, "D", "Domingo")] %}
+        <label class="dia" title="{{ nombre }}">
+          <input type="checkbox" name="dias_atencion" value="{{ numero }}" aria-label="{{ nombre }}" {% if numero in valores.dias_atencion %}checked{% endif %}>
+          <span aria-hidden="true">{{ letra }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {{ error_de("dias_atencion") }}
+    </fieldset>
+    <p class="ayuda">Los vehículos que ya están en la fila a la hora de cierre se atienden igual; el cierre solo frena los turnos nuevos por WhatsApp.</p>
+  </section>
+
+  <section id="bot" class="panel seccion-configuracion" aria-labelledby="t-bot">
+    <h2 id="t-bot">Bot de WhatsApp</h2>
+    <label class="interruptor interruptor--grande">
+      <span>
+        <strong>Bot encendido</strong>
+        <span class="ayuda">Apágalo si cierras por un día: el bot avisa que hoy no hay turnos.</span>
+      </span>
+      <input type="checkbox" role="switch" name="bot_activo" value="si" {% if valores.bot_activo %}checked{% endif %}>
+      <span class="interruptor__control" aria-hidden="true"></span>
+    </label>
+    <div class="tres-columnas">
+      {% for campo, etiqueta, unidad, minimo, maximo in [
+           ("gracia_minutos", "Tiempo de gracia", "minutos", 5, 60),
+           ("avisar_cuando_falten", "Avisar cuando falten", "turnos", 1, 5),
+           ("sesion_bot_minutos", "Charla sin respuesta vence a los", "minutos", 10, 120)] %}
+      <div class="campo">
+        <label for="{{ campo }}">{{ etiqueta }}</label>
+        <span class="campo-con-unidad">
+          <input id="{{ campo }}" name="{{ campo }}" type="number" inputmode="numeric" min="{{ minimo }}" max="{{ maximo }}" value="{{ valores[campo] }}" {{ invalido(campo) }}>
+          <span>{{ unidad }}</span>
+        </span>
+        {{ error_de(campo) }}
+      </div>
+      {% endfor %}
+    </div>
+    <p class="ayuda">Gemini solo entiende lo que escribe el cliente; los textos que responde el bot se editan con el hito 5.</p>
+  </section>
+
+  <section id="puestos" class="panel seccion-configuracion" aria-labelledby="t-puestos">
+    <h2 id="t-puestos">Puestos</h2>
+    <div class="puestos-configuracion">
+      {% for fila in filas %}
+      <div class="puestos-configuracion__fila">
+        <h3>{{ fila.nombre }} · {{ fila.puestos|selectattr("activo")|list|length }} prendidos</h3>
+        <div id="puestos-{{ fila.id }}" class="lista-interruptores">
+          {% for puesto in fila.puestos %}{% include "_puesto_en_configuracion.html" %}{% endfor %}
+        </div>
+        <button type="button" class="boton-texto" hx-post="/configuracion/puestos" hx-vals='{"fila_id": "{{ fila.id }}"}'
+                hx-target="#puestos-{{ fila.id }}" hx-swap="beforeend" hx-disabled-elt="this">{{ iconos.icono("mas", 18, 2.5) }}Agregar puesto de {{ fila.nombre|lower }}</button>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="ayuda">Apagar un puesto lo saca de la fila (por ejemplo, si se daña la hidrolavadora). No se borra. Al prender uno, se llama de una vez al siguiente de la fila.</p>
+  </section>
+
+  <section id="menu" class="panel seccion-configuracion" aria-labelledby="t-menu">
+    <h2 id="t-menu">Menú y precios</h2>
+    {% for fila in filas %}
+    <div class="menu-de-la-fila">
+      <div class="menu-de-la-fila__cabeza">
+        <h3>{{ fila.nombre }}</h3>
+        {#- hx-swap propio: si no, hereda el "outerHTML" del formulario. -#}
+        <button type="button" class="boton-texto" hx-get="/configuracion/servicios/nuevo?fila_id={{ fila.id }}"
+                hx-target="#dialogo-contenido" hx-swap="innerHTML" hx-disabled-elt="this">{{ iconos.icono("mas", 18, 2.5) }}Agregar servicio</button>
+      </div>
+      <div class="tabla-desplazable">
+        <table class="tabla-menu">
+          <thead>
+            <tr>
+              <th scope="col">Servicio</th>
+              {% for tipo in fila.tipos %}<th scope="col">{{ tipo.nombre }}</th>{% endfor %}
+              <th scope="col">Duración estimada</th>
+              <th scope="col">Real promedio</th>
+            </tr>
+          </thead>
+          <tbody id="servicios-{{ fila.id }}">
+            {% for servicio in fila.servicios %}{% include "_servicio_en_configuracion.html" %}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% for servicio in fila.servicios %}
+        {% set campo_duracion = "duracion-%d"|format(servicio.id) %}
+        {% for tipo in fila.tipos %}{{ error_de("precio-%d-%d"|format(servicio.id, tipo.id)) }}{% endfor %}
+        {{ error_de(campo_duracion) }}
+      {% endfor %}
+    </div>
+    {% endfor %}
+    <p class="ayuda">Un precio nuevo aplica a los cobros de ahora en adelante; los cobros anteriores no cambian. Con la duración estimada se calcula la espera de la fila; la real es el promedio de los últimos {{ dias_de_duracion_real }} días.</p>
+  </section>
+
+  <section id="datos" class="panel seccion-configuracion" aria-labelledby="t-datos">
+    <h2 id="t-datos">Datos personales</h2>
+    <div class="campo">
+      <label for="aviso_datos">Aviso que el bot muestra a un cliente nuevo</label>
+      <textarea id="aviso_datos" name="aviso_datos" rows="4" maxlength="600" {{ invalido("aviso_datos") }}>{{ valores.aviso_datos }}</textarea>
+      {{ error_de("aviso_datos") }}
+      <span class="ayuda">Ley 1581 de 2012. Conviene que un abogado o contador revise este texto antes del primer cliente real.</span>
+    </div>
+  </section>
+
+  <div class="barra-guardar">
+    <a class="boton boton--borde" href="/configuracion">Descartar</a>
+    <button type="submit" class="boton">Guardar cambios</button>
+  </div>
+</form>

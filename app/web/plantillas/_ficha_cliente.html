@@ -1,0 +1,63 @@
+{#- La ficha de un cliente. Se vuelve a pedir sola cuando cambian sus datos (por ejemplo,
+    al darle un turno). -#}
+{% import "_iconos.html" as iconos %}
+{% set f = ficha %}
+<div class="ficha" data-cliente="{{ f.id }}"
+     hx-get="/clientes/{{ f.id }}/ficha" hx-trigger="datos-cambiados from:body" hx-target="#ficha-cliente">
+  <a class="boton-texto solo-celular" href="#lista-clientes">{{ iconos.icono("volver", 18, 2.2) }}Volver a la lista</a>
+  <div class="ficha__cabeza">
+    <h2>{{ f.nombre }}</h2>
+    <p>
+      {{ f.telefono|telefono_oculto }} ·
+      {% if f.escribio_por_whatsapp %}escribe por WhatsApp
+      {%- elif f.telefono %}aún no escribe por WhatsApp: no recibe avisos
+      {%- else %}no recibe avisos{% endif %}
+      {%- if f.fecha_aceptacion %} · datos autorizados el {{ f.fecha_aceptacion|fecha }}{% endif %}
+    </p>
+  </div>
+
+  <div class="ficha__cifras">
+    <div><span>Visitas</span><strong class="numero">{{ f.visitas }}</strong></div>
+    <div><span>Total pagado</span><strong class="numero">{{ f.total_pagado|pesos }}</strong></div>
+    <div><span>Pide casi siempre</span><strong>{{ f.servicio_frecuente or "—" }}</strong></div>
+  </div>
+
+  <div class="ficha__bloque">
+    <h3>Vehículos</h3>
+    {% if f.vehiculos %}
+    <ul class="ficha__vehiculos">
+      {% for v in f.vehiculos %}
+      <li>{{ iconos.icono_de_tipo(v.tipo, 22) }}<strong>{{ v.tipo }}</strong> · {% if v.placa %}{{ v.placa }}{% else %}<span class="suave">placa pendiente</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="suave">Sin vehículos.</p>{% endif %}
+  </div>
+
+  <div class="ficha__bloque">
+    <h3>Últimas visitas</h3>
+    {% if f.ultimas_visitas %}
+    <ol class="ficha__visitas">
+      {% for v in f.ultimas_visitas %}
+      <li>
+        <span><strong>{{ dia_relativo(v.fecha) }}</strong> · {{ v.numero }} · {{ v.servicio or "servicio por definir" }} · {{ v.placa or v.tipo_vehiculo }}</span>
+        <span class="ficha__estado ficha__estado--{{ v.estado.value }}">
+          {%- if v.estado == EstadoTurno.PAGADO %}{{ v.cobrado|pesos }}
+          {%- elif v.estado == EstadoTurno.LISTO %}Por cobrar
+          {%- else %}{{ nombre_del_estado[v.estado] }}{% endif -%}
+        </span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}<p class="suave">Todavía no tiene visitas.</p>{% endif %}
+  </div>
+
+  <div class="ficha__acciones">
+    <button type="button" class="boton" hx-get="/turnos/nuevo?cliente_id={{ f.id }}" hx-target="#dialogo-contenido">Dar turno</button>
+    <button type="button" class="boton boton--borde" hx-get="/clientes/{{ f.id }}/editar" hx-target="#dialogo-contenido">Editar datos</button>
+  </div>
+
+  <div class="ficha__borrar">
+    <button type="button" class="boton-texto peligro" hx-get="/clientes/{{ f.id }}/borrar" hx-target="#dialogo-contenido">Borrar datos del cliente</button>
+    <p class="ayuda">Derecho del cliente por la Ley 1581. Se borran su nombre, celular y placas; los cobros quedan en la contabilidad sin datos personales.</p>
+  </div>
+</div>

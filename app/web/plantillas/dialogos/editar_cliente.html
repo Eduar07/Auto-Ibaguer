@@ -1,0 +1,28 @@
+{% import "_iconos.html" as iconos %}
+<form class="dialogo__caja" hx-post="/clientes/{{ ficha.id }}/editar" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Editar datos</h2>
+    <p>{{ ficha.nombre }}</p>
+  </div>
+
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <div class="campo">
+      <label for="nombre">Nombre</label>
+      <input id="nombre" name="nombre" value="{{ formulario.nombre }}" required maxlength="80" autocapitalize="words" autofocus>
+    </div>
+    <div class="campo">
+      <label for="celular">Celular</label>
+      <input id="celular" name="celular" type="tel" inputmode="tel" value="{{ formulario.celular }}" placeholder="300 000 0000" maxlength="20">
+      <span class="ayuda">Es lo que identifica al cliente en WhatsApp. Si lo dejas vacío, no recibe avisos.</span>
+    </div>
+    <p class="ayuda">Las placas se corrigen desde el turno, en la fila (Corregir datos) o al cobrar.</p>
+  </div>
+
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande">Guardar cambios</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

@@ -13,7 +13,7 @@ Sistema de turnos para el lavadero de carros y motos **Auto Ibaguer**:
 | 1 · Todo conectado | Estructura del proyecto y PostgreSQL listos. WhatsApp pendiente hasta tener el número del bot. |
 | 2 · Base de datos | Listo: 16 tablas, reglas dentro de la base y datos iniciales del lavadero. |
 | 3 · Reglas del negocio | Listo: la fila completa (pedir turno, llamados, avisos, gracia, puestos, cobro y correcciones), con sus pruebas y sin choques. |
-| 4 · Dashboard | Parte 1 lista: entrar, la fila en vivo, nuevo turno en el local, pasar a puesto, marcar listo, cobrar, corregir y cancelar. Sigue la parte 2: clientes y configuración. |
+| 4 · Dashboard | Construido: entrar, la fila en vivo con sus botones, nuevo turno en el local, cobrar, clientes (buscar, ficha, editar y borrar datos) y configuración (negocio, horario, bot, puestos, menú y precios). Falta la prueba final desde el celular. |
 | 5 · Bot con botones | — |
 | 6 · Reloj | — |
 | 7 · Gemini | — |
@@ -63,8 +63,10 @@ Para revisar solo el servidor, <http://localhost:8000/salud> debe decir `{"estad
 | Botón principal de cada turno | **Marcar llegada** (llamado), **Pasar a puesto** (ya llegó), **Marcar listo** (en el puesto) y **Cobrar** (listo). |
 | Menú ⋯ de cada turno | Marcar llegada, corregir datos (tipo de vehículo, placa, servicio) y cancelar. |
 | **Nuevo turno** | Para el cliente que llega sin escribir por WhatsApp. Muestra antes qué número le toca y cuánto esperaría. |
+| **Clientes** | Buscar por nombre, celular o placa; la ficha con sus vehículos y visitas; dar turno, editar datos y borrarlos si el cliente lo pide (Ley 1581). |
+| **Configuración** | Negocio y horario, bot de WhatsApp, puestos (prender, apagar y agregar), menú y precios, y el aviso de datos personales. Se guarda todo junto, y si algo está mal no se guarda nada. |
 
-En el celular se ve una fila a la vez (pestañas **Carros** y **Motos**). Para ver cómo queda en el celular sin salir del computador: en Chrome, `F12` y luego `Ctrl+Shift+M`. Desde el celular de verdad se usará cuando esté en la nube (hito 8).
+En el celular se ve una fila a la vez (pestañas **Carros** y **Motos**) y las secciones quedan en la barra de abajo. Para ver cómo queda en el celular sin salir del computador: en Chrome, `F12` y luego `Ctrl+Shift+M`. Desde el celular de verdad se usará cuando esté en la nube (hito 8).
 
 ## El día a día
 
@@ -132,7 +134,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 
 | Archivo | Qué tiene |
 |---|---|
-| `dashboard.py` | Las rutas: entrar, la fila y el botón de cada acción. Llama a los casos de uso; no tiene reglas propias. |
+| `comun.py` | Lo que comparten las pantallas: plantillas, la sesión del administrador y las respuestas. |
+| `entrar.py`, `fila.py`, `clientes.py`, `configuracion.py` | Las rutas de cada pantalla. Llaman a los casos de uso; no tienen reglas propias. |
 | `tablero.py` | Arma lo que muestra la fila en vivo. Solo lee. |
 | `en_vivo.py` | Le avisa al navegador cuando una fila cambia (PostgreSQL `LISTEN/NOTIFY` y Server-Sent Events). |
 | `sesiones.py` | La cookie firmada de la sesión y el freno a quien intenta adivinar contraseñas. |
@@ -143,16 +146,16 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 
 | Qué | Dónde |
 |---|---|
-| Horario, tiempo de gracia, cuándo avisar, nombre y teléfono del negocio | Tabla `configuracion` de la base de datos (más adelante, desde el dashboard). No se toca el código. |
-| Servicios y precios | Tablas `servicio` y `servicio_precio`. Para cambiar un precio se desactiva el viejo y se crea el nuevo; así los cobros pasados no cambian. |
+| Horario, tiempo de gracia, cuándo avisar, nombre y teléfono del negocio, aviso de datos | Pantalla **Configuración** del dashboard (se guarda en la tabla `configuracion`). No se toca el código. |
+| Servicios, precios y puestos | Pantalla **Configuración**. Un precio nuevo apaga el viejo y crea otro en `servicio_precio`; así los cobros pasados no cambian. |
 | Colores, letras y tamaños del dashboard | `app/web/estaticos/css/dashboard.css`. Los colores del diseño están al comienzo, con nombre. |
 | Conexión a la base, claves de Meta y Gemini | Archivo `.env`, que nunca se sube a GitHub. `.env.example` solo trae los nombres. |
 
 ## Cambiar una tabla
 
 1. Cambia el modelo en el `tablas.py` del módulo.
-2. Crea la migración con el siguiente número (la última es la 0002):
-   `uv run alembic revision --autogenerate --rev-id 0003 -m "que cambio"`
+2. Crea la migración con el siguiente número (la última es la 0003):
+   `uv run alembic revision --autogenerate --rev-id 0004 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
 4. Aplícala: `uv run auto-ibaguer preparar-base`
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.

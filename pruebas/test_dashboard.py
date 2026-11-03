@@ -4,23 +4,18 @@ Estas pruebas hablan con el servidor como lo haría el navegador (TestClient), p
 la base de pruebas que se deshace sola. La hora queda fija en el lunes a las 8:00 a.m.
 """
 
-import json
 import time
-from collections.abc import AsyncIterator, Iterator
-from datetime import datetime
+from collections.abc import AsyncIterator
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import tiempo
-from app.db.sesion import obtener_sesion
 from app.main import app
 from app.turnos.estados import EstadoTurno
 from app.turnos.tablas import Pago, Turno
-from app.web import dashboard, en_vivo, sesiones
+from app.web import comun, en_vivo, fila, sesiones
 from app.web.administradores import guardar_administrador
 from app.web.tablas import Administrador
 from pruebas.fabricas import (
@@ -36,71 +31,7 @@ from pruebas.fabricas import (
     tipo_vehiculo,
     turno_listo,
 )
-
-CLAVE = "clave-larga-del-lavadero"
-HTMX = {"HX-Request": "true"}
-
-
-@pytest.fixture
-def reloj(monkeypatch: pytest.MonkeyPatch) -> dict[str, datetime]:
-    """La hora del sistema queda fija. Para adelantarla: reloj["ahora"] += minutos(5)."""
-    hora = {"ahora": LUNES_8AM}
-    monkeypatch.setattr(tiempo, "ahora", lambda: hora["ahora"])
-    return hora
-
-
-@pytest.fixture
-def web(sesion: Session, reloj: dict, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    """Un navegador sin sesión. Cada prueba empieza sin intentos fallidos guardados."""
-    app.dependency_overrides[obtener_sesion] = lambda: sesion
-    monkeypatch.setattr(dashboard, "LIMITE_DE_INTENTOS", sesiones.LimiteDeIntentos())
-    yield TestClient(app)
-    app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def admin(sesion: Session) -> Administrador:
-    return guardar_administrador(sesion, "eduar", CLAVE)[0]
-
-
-@pytest.fixture
-def adentro(web: TestClient, admin: Administrador) -> TestClient:
-    """Un navegador que ya entró con el usuario del administrador."""
-    respuesta = web.post(
-        "/entrar", data={"usuario": "eduar", "clave": CLAVE}, follow_redirects=False
-    )
-    assert respuesta.status_code == 303
-    return web
-
-
-def poner_cookie(web: TestClient, valor: str) -> None:
-    """Pone a mano la cookie de sesión, como si el navegador la tuviera guardada."""
-    web.cookies.clear()
-    web.cookies.set(sesiones.NOMBRE_COOKIE, valor, domain="testserver.local")
-
-
-def guardar(sesion: Session) -> None:
-    """Confirma lo preparado, como si ya estuviera guardado de antes.
-
-    Cuando una regla no se cumple, el dashboard deshace solo esa acción (rollback). En la
-    vida real lo anterior ya estaba guardado; en la prueba hay que confirmarlo primero.
-    Igual se borra al final: la prueba entera corre dentro de una transacción.
-    """
-    sesion.commit()
-
-
-def eventos(respuesta: Response) -> dict:
-    """Lo que el servidor le pide a la página después de una acción (HX-Trigger)."""
-    return json.loads(respuesta.headers.get("HX-Trigger", "{}"))
-
-
-def aviso(respuesta: Response) -> str:
-    return eventos(respuesta).get("aviso", "")
-
-
-def error(respuesta: Response) -> str:
-    return eventos(respuesta).get("error", "")
-
+from pruebas.navegador import CLAVE, HTMX, aviso, error, eventos, guardar, poner_cookie
 
 # --- Entrar y salir --------------------------------------------------------------------
 
@@ -165,13 +96,13 @@ def test_cinco_intentos_fallidos_bloquean_al_usuario(web: TestClient, admin: Adm
 
 
 def test_la_cookie_hecha_por_el_servidor_sirve(web: TestClient, admin: Administrador):
-    poner_cookie(web, dashboard._valor_de_cookie(admin))
+    poner_cookie(web, comun.valor_de_cookie(admin))
 
     assert web.get("/fila", follow_redirects=False).status_code == 200
 
 
 def test_una_cookie_alterada_no_sirve(web: TestClient, admin: Administrador):
-    contenido, firma = dashboard._valor_de_cookie(admin).rsplit(".", 1)
+    contenido, firma = comun.valor_de_cookie(admin).rsplit(".", 1)
     otra_letra = "A" if firma[0] != "A" else "B"
     poner_cookie(web, f"{contenido}.{otra_letra}{firma[1:]}")
 
@@ -184,7 +115,7 @@ def test_una_sesion_vencida_pide_entrar_otra_vez(web: TestClient, admin: Adminis
         huella=sesiones.huella_de_la_clave(admin.clave_cifrada),
         vence=int(time.time()) - 1,
     )
-    poner_cookie(web, sesiones.crear_valor(vencida, dashboard.obtener_entorno().clave_secreta))
+    poner_cookie(web, sesiones.crear_valor(vencida, comun.obtener_entorno().clave_secreta))
 
     assert web.get("/fila", follow_redirects=False).status_code == 303
 
@@ -262,7 +193,7 @@ def test_la_fila_muestra_puestos_espera_y_lo_que_falta_cobrar(adentro: TestClien
     assert "Pasar a puesto C2" in pagina
     assert "Encerado · $60.000" in pagina
     # Por cobrar
-    numero_listo = dashboard._numero(sesion, listo)
+    numero_listo = fila._numero(sesion, listo)
     assert numero_listo in pagina and "Cobrar" in pagina
     assert f'hx-get="/turnos/{listo}/cobrar"' in pagina
     assert lavando and "Caja de hoy" in pagina
@@ -548,7 +479,7 @@ def test_los_eventos_le_pasan_cada_cambio_al_navegador(
             yield fila_id
 
     monkeypatch.setattr(en_vivo, "cambios", cambios_de_prueba)
-    app.dependency_overrides[dashboard._administrador_para_eventos] = lambda: 1
+    app.dependency_overrides[fila._administrador_para_eventos] = lambda: 1
 
     with web.stream("GET", "/eventos") as respuesta:
         cuerpo = "".join(respuesta.iter_text())

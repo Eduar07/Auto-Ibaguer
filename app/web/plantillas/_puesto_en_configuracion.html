@@ -1,0 +1,12 @@
+{#- Un puesto con su interruptor. Lo usa el formulario y la respuesta de "Agregar puesto". -#}
+{% set campo = "puesto-%d"|format(puesto.id) %}
+<div class="interruptor-fila">
+  <input type="hidden" name="puestos_en_pantalla" value="{{ puesto.id }}">
+  <label class="interruptor">
+    <span>Puesto {{ puesto.nombre }}</span>
+    <input type="checkbox" role="switch" name="{{ campo }}" value="si" {% if valores.get(campo) %}checked{% endif %}
+           {% if errores.get(campo) %}aria-invalid="true" aria-describedby="error-{{ campo }}"{% endif %}>
+    <span class="interruptor__control" aria-hidden="true"></span>
+  </label>
+  {% if errores.get(campo) %}<p class="error-campo" id="error-{{ campo }}">{{ errores[campo] }}</p>{% endif %}
+</div>

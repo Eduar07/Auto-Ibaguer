@@ -118,6 +118,13 @@ CONFIGURACION_INICIAL: tuple[tuple[str, Any, str], ...] = (
         "Turnos activos que puede pedir un mismo teléfono por WhatsApp en cada fila",
     ),
     ("bot_activo", True, "Si está apagado, el bot avisa que hoy no hay turnos"),
+    (
+        "aviso_datos",
+        "Para darte turno guardamos tu nombre, tu celular y la placa de tu vehículo. Los "
+        "usamos solo para atenderte y avisarte. Puedes pedir que los borremos cuando "
+        "quieras. ¿Aceptas?",
+        "Aviso de tratamiento de datos (Ley 1581) que el bot le muestra a un cliente nuevo",
+    ),
 )
 
 

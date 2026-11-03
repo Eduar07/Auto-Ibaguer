@@ -34,6 +34,10 @@ class Cliente(Base):
         CheckConstraint(
             "NOT acepta_datos OR fecha_aceptacion IS NOT NULL", name="aceptacion_con_fecha"
         ),
+        # Ley 1581: a quien pidió borrar sus datos no le queda celular guardado.
+        CheckConstraint(
+            "datos_borrados_en IS NULL OR telefono IS NULL", name="borrado_sin_telefono"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
@@ -42,6 +46,9 @@ class Cliente(Base):
     acepta_datos: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     fecha_aceptacion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Cuándo se borraron sus datos a pedido suyo. El registro queda, sin nombre real, sin
+    # celular y sin placas, para que sus turnos y cobros sigan cuadrando en la contabilidad.
+    datos_borrados_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Vehiculo(Base):

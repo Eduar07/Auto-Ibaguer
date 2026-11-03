@@ -1,0 +1,42 @@
+{#- La lista de clientes. Se vuelve a pedir al buscar, al cambiar de página y cuando cambian
+    los datos de alguien. -#}
+<div class="lista-clientes" hx-get="/clientes/lista?q={{ q|urlencode }}&numero={{ lista.pagina }}"
+     hx-trigger="datos-cambiados from:body, lista-cambiada from:body" hx-target="#lista-clientes">
+  <h2>{% if q %}Resultados para “{{ q }}”{% else %}Más recientes{% endif %}</h2>
+  {% if lista.clientes %}
+  <table class="tabla-clientes">
+    <thead>
+      <tr><th scope="col">Cliente</th><th scope="col">Placas</th><th scope="col">Visitas</th><th scope="col">Última visita</th></tr>
+    </thead>
+    <tbody>
+      {% for c in lista.clientes %}
+      <tr>
+        <td>
+          <button type="button" class="tabla-clientes__cliente" data-cliente="{{ c.id }}"
+                  hx-get="/clientes/{{ c.id }}/ficha" hx-target="#ficha-cliente">
+            {{ c.nombre }}<span>{{ c.telefono|telefono_oculto }}</span>
+          </button>
+        </td>
+        <td class="tabla-clientes__placas">{% if c.placas %}{{ c.placas|join(", ") }}{% else %}<span class="suave">Placa pendiente</span>{% endif %}</td>
+        <td class="tabla-clientes__visitas"><span class="solo-celular">Visitas: </span>{{ c.visitas }}</td>
+        <td class="tabla-clientes__ultima">{{ dia_relativo(c.ultima_visita) if c.ultima_visita else "Sin visitas" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% set desde = (lista.pagina - 1) * lista.por_pagina + 1 %}
+  <div class="paginacion">
+    <span class="suave">Mostrando {{ desde }} a {{ desde + lista.clientes|length - 1 }} de {{ lista.total }}</span>
+    <div class="paginacion__botones">
+      <button type="button" class="boton boton--borde" {% if not lista.hay_anterior %}disabled{% endif %}
+              hx-get="/clientes/lista?q={{ q|urlencode }}&numero={{ lista.pagina - 1 }}" hx-target="#lista-clientes">Anterior</button>
+      <button type="button" class="boton boton--borde" {% if not lista.hay_siguiente %}disabled{% endif %}
+              hx-get="/clientes/lista?q={{ q|urlencode }}&numero={{ lista.pagina + 1 }}" hx-target="#lista-clientes">Siguiente</button>
+    </div>
+  </div>
+  {% elif q %}
+  <p class="suave">Ningún cliente coincide con “{{ q }}”. Busca por nombre, celular o placa.</p>
+  {% else %}
+  <p class="suave">Todavía no hay clientes. Aparecen aquí cuando piden su primer turno.</p>
+  {% endif %}
+</div>

@@ -7,6 +7,7 @@ fila solo trae cantidades.
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import tiempo
@@ -16,7 +17,7 @@ from app.clientes.tablas import Vehiculo
 from app.turnos import datos, reglas
 from app.turnos.errores import TurnoNoExiste
 from app.turnos.estados import EstadoTurno
-from app.turnos.tablas import Turno
+from app.turnos.tablas import Turno, TurnoHistorial
 
 
 @dataclass(frozen=True)
@@ -170,3 +171,33 @@ def siguiente_para_puesto(sesion: Session, fila_id: int) -> int | None:
     return reglas.elegir_siguiente_para_puesto(
         [reglas.TurnoEnEspera(t.id, t.estado, t.aviso_anticipado_en is not None) for t in espera]
     )
+
+
+def duracion_real_por_servicio(sesion: Session, *, desde: datetime) -> dict[int, tuple[int, int]]:
+    """Cuánto duraron de verdad los lavados de cada servicio desde `desde`.
+
+    Devuelve {servicio_id: (minutos en promedio, cuántos lavados)}. Se mide desde que el
+    vehículo entra al puesto hasta que se marca listo. Sirve para ajustar la duración
+    estimada en Configuración (con ella se calcula la espera de la fila).
+    """
+    listos = (
+        select(TurnoHistorial.turno_id, func.min(TurnoHistorial.fecha_hora).label("listo_en"))
+        .where(TurnoHistorial.estado_nuevo == EstadoTurno.LISTO)
+        .group_by(TurnoHistorial.turno_id)
+        .subquery()
+    )
+    segundos = func.extract("epoch", listos.c.listo_en - Turno.en_lavado_desde)
+    consulta = (
+        select(Turno.servicio_id, func.avg(segundos), func.count(Turno.id))
+        .join(listos, listos.c.turno_id == Turno.id)
+        .where(
+            Turno.servicio_id.is_not(None),
+            Turno.en_lavado_desde.is_not(None),
+            listos.c.listo_en >= desde,
+        )
+        .group_by(Turno.servicio_id)
+    )
+    return {
+        servicio_id: (round(float(promedio) / 60), cantidad)
+        for servicio_id, promedio, cantidad in sesion.execute(consulta)
+    }

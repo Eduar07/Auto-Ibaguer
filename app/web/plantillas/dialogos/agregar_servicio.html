@@ -1,0 +1,45 @@
+{% import "_iconos.html" as iconos %}
+{% macro error_de(campo) -%}
+{% if errores.get(campo) %}<p class="error-campo">{{ errores[campo] }}</p>{% endif %}
+{%- endmacro %}
+<form class="dialogo__caja" hx-post="/configuracion/servicios" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <input type="hidden" name="fila_id" value="{{ fila.id }}">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Agregar servicio de {{ fila.nombre|lower }}</h2>
+    <p>Queda en el menú del bot y del dashboard desde que lo guardes.</p>
+  </div>
+
+  <div class="dialogo__cuerpo">
+    {% if errores %}<p class="error" role="alert">No se guardó: revisa los campos marcados.</p>{% endif %}
+    <div class="campo">
+      <label for="nombre">Nombre</label>
+      <input id="nombre" name="nombre" value="{{ formulario.get('nombre', '') }}" maxlength="40" placeholder="Ej.: Lavado de motor" required autofocus>
+      {{ error_de("nombre") }}
+    </div>
+    <div class="campo">
+      <label for="descripcion">Qué incluye (opcional)</label>
+      <textarea id="descripcion" name="descripcion" rows="2" maxlength="200" placeholder="Lo que el bot le cuenta al cliente">{{ formulario.get('descripcion', '') }}</textarea>
+    </div>
+    <div class="dos-columnas">
+      {% for tipo in fila.tipos %}
+      <div class="campo">
+        <label for="precio-{{ tipo.id }}">Precio para {{ tipo.nombre|lower }}</label>
+        <span class="campo-pesos"><span aria-hidden="true">$</span><input id="precio-{{ tipo.id }}" name="precio-{{ tipo.id }}" inputmode="numeric" value="{{ formulario.get('precio-%d'|format(tipo.id), '') }}" maxlength="11" required></span>
+      </div>
+      {% endfor %}
+      <div class="campo">
+        <label for="duracion">Duración estimada</label>
+        <span class="campo-con-unidad"><input id="duracion" name="duracion" type="number" inputmode="numeric" min="5" max="600" value="{{ formulario.get('duracion', '') }}" required><span>minutos</span></span>
+        {{ error_de("duracion") }}
+      </div>
+    </div>
+    {{ error_de("precio") }}
+  </div>
+
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande">Agregar al menú</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

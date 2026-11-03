@@ -1,0 +1,8 @@
+<div class="ficha-vacia">
+  {% if borrado %}
+  <p><strong>Se borraron los datos de {{ borrado.rstrip('.') }}.</strong></p>
+  <p class="suave">Sus turnos y cobros siguen en la contabilidad, sin nombre, celular ni placas.</p>
+  {% else %}
+  <p class="suave">Elige un cliente de la lista para ver su ficha.</p>
+  {% endif %}
+</div>

@@ -30,6 +30,7 @@ from app.turnos.errores import (
     FaltaServicio,
     FueraDeHorario,
     PuestoNoDisponible,
+    PuestoOcupado,
     ServicioNoDisponible,
     VehiculoDeOtraFila,
     YaTieneTurnoActivo,
@@ -672,3 +673,49 @@ def cobrar(
     )
     sesion.flush()
     return pago
+
+
+# --- Puestos -----------------------------------------------------------------------------
+
+
+def cambiar_puesto(
+    sesion: Session, puesto_id: int, *, activo: bool, ahora: datetime | None = None
+) -> bool:
+    """Prende o apaga un puesto (por ejemplo, si se daña la hidrolavadora). Devuelve si cambió.
+
+    Un puesto apagado sale de la fila sin borrarse. No se apaga con un vehículo adentro.
+    Al prenderlo queda un puesto libre más, así que se llama de una vez al siguiente.
+    """
+    ahora = ahora or tiempo.ahora()
+    puesto = sesion.get(Puesto, puesto_id)
+    if puesto is None:
+        raise NoExiste(f"No existe el puesto {puesto_id}.")
+    fila = datos.bloquear_fila(sesion, puesto.fila_id)
+    if puesto.activo == activo:
+        return False
+    if not activo:
+        ocupante = datos.turno_en_el_puesto(sesion, puesto.id)
+        if ocupante is not None:
+            numero = reglas.numero_de_turno(fila.prefijo, ocupante.consecutivo)
+            raise PuestoOcupado(
+                f"En el puesto {puesto.nombre} se está lavando {numero}: "
+                "márcalo listo antes de apagarlo."
+            )
+    puesto.activo = activo
+    sesion.flush()
+    if activo:
+        _revisar_fila(sesion, fila, ahora, leer_parametros(sesion))
+    return True
+
+
+def agregar_puesto(sesion: Session, fila_id: int, *, ahora: datetime | None = None) -> Puesto:
+    """Un puesto nuevo en la fila (C3, M5...), ya prendido: se llama de una vez al siguiente."""
+    ahora = ahora or tiempo.ahora()
+    fila = datos.bloquear_fila(sesion, fila_id)
+    nombres = sesion.scalars(select(Puesto.nombre).where(Puesto.fila_id == fila.id))
+    numeros = [int(nombre[len(fila.prefijo) :]) for nombre in nombres if nombre[1:].isdigit()]
+    puesto = Puesto(fila_id=fila.id, nombre=f"{fila.prefijo}{max(numeros, default=0) + 1}")
+    sesion.add(puesto)
+    sesion.flush()
+    _revisar_fila(sesion, fila, ahora, leer_parametros(sesion))
+    return puesto

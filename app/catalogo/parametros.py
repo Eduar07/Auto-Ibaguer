@@ -31,6 +31,7 @@ class Parametros:
     servicio_por_defecto: str
     turnos_activos_por_telefono: int
     bot_activo: bool
+    aviso_datos: str
 
 
 def leer_parametros(sesion: Session) -> Parametros:
@@ -51,4 +52,5 @@ def leer_parametros(sesion: Session) -> Parametros:
         servicio_por_defecto=str(valor("servicio_por_defecto")),
         turnos_activos_por_telefono=int(valor("turnos_activos_por_telefono")),
         bot_activo=bool(valor("bot_activo")),
+        aviso_datos=str(valor("aviso_datos")),
     )

@@ -1,0 +1,22 @@
+{% extends "pagina.html" %}
+
+{% block titulo %}Configuración · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Configuración</h1>
+      <p>Al guardar, el bot y la fila usan los valores nuevos de inmediato. Nada de esto requiere programar.</p>
+    </div>
+  </div>
+  <nav class="indice" aria-label="Partes de la configuración">
+    <a href="#negocio">Negocio y horario</a>
+    <a href="#bot">Bot de WhatsApp</a>
+    <a href="#puestos">Puestos</a>
+    <a href="#menu">Menú y precios</a>
+    <a href="#datos">Datos personales</a>
+  </nav>
+  {% include "_formulario_configuracion.html" %}
+</main>
+{% endblock %}

@@ -470,9 +470,10 @@ def test_las_frases_de_prueba_hablan_del_menu_de_verdad(sesion: Session):
 
 
 def test_el_comando_corre_las_frases_y_dice_cuantas_salieron_bien(
-    monkeypatch: pytest.MonkeyPatch, entorno, capsys
+    monkeypatch: pytest.MonkeyPatch, entorno, conexion, capsys
 ):
     entorno(gemini_clave="clave")
+    monkeypatch.setattr(cli, "obtener_motor", lambda: conexion)  # la base de pruebas
     esperadas = {f.texto: Interpretacion(f.intencion, f.vehiculo, f.servicio) for f in FRASES}
     primera = FRASES[0].texto
     esperadas[primera] = Interpretacion(Q.OTRO)  # una sale mal

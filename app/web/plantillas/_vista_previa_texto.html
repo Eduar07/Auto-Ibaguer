@@ -1,0 +1,22 @@
+{#- Cómo le llega el mensaje al cliente, con datos de ejemplo. Mientras se escribe, también
+    trae el aviso de lo que está mal, que va debajo del campo (hx-swap-oob). -#}
+{% set e = t.editable %}
+<span class="texto-bot__vista-titulo">Así le llega al cliente</span>
+{% if t.vista %}
+<div class="burbuja burbuja--bot burbuja--vista">
+  <p>{{ t.vista.texto|whatsapp }}</p>
+  {% if t.vista.botones %}
+  <div class="burbuja__botones">
+    {% for opcion in t.vista.botones %}<span class="burbuja__boton">{{ opcion.titulo }}</span>{% endfor %}
+  </div>
+  {% elif t.vista.lista %}
+  <div class="burbuja__botones"><span class="burbuja__boton">{{ t.vista.lista.boton }}</span></div>
+  {% endif %}
+</div>
+{% else %}
+<p class="texto-bot__sin-vista">Cuando el texto sirva, aquí lo ves como le llega al cliente.</p>
+{% endif %}
+<span class="suave texto-bot__largo{% if t.largo > e.maximo %} texto-bot__largo--pasado{% endif %}">{{ t.largo }} de {{ e.maximo }} caracteres · con datos de ejemplo</span>
+{% if con_error_aparte %}
+<p class="error-campo" id="error-{{ e.clave }}" hx-swap-oob="true" {% if not t.error %}hidden{% endif %}>{{ t.error or "" }}</p>
+{% endif %}

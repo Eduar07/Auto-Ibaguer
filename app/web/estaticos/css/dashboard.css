@@ -731,6 +731,68 @@ legend { padding: 0; margin-bottom: 8px; }
 .tabla-mensajes__error { display: block; margin-top: 4px; color: var(--rojo-oscuro); font-size: 13px; }
 .tabla-mensajes__error--superado { color: var(--tinta-suave); }
 
+/* --- Textos del bot ----------------------------------------------------------------- */
+
+.indice__cuenta {
+  margin-left: 6px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--azul-claro); color: var(--azul-texto); font-size: 12px; font-weight: 700;
+}
+.nota--info { background: var(--azul-resalte); color: var(--tinta-gris); box-shadow: inset 0 0 0 1px var(--azul-resalte-borde); }
+.pantalla > .nota a { color: var(--azul-texto); font-weight: 700; }
+.pantalla > .boton-volver { margin-bottom: -8px; }
+.textos-bot { gap: 0; padding: 18px 0 4px; scroll-margin-top: 16px; }
+.textos-bot > h2 { padding: 0 18px 12px; }
+.texto-bot { border-top: 1px solid var(--linea); }
+.texto-bot__resumen {
+  position: relative; list-style: none; cursor: pointer; display: flex; flex-direction: column; gap: 4px;
+  min-height: 56px; padding: 14px 52px 14px 18px;
+}
+.texto-bot__resumen::-webkit-details-marker { display: none; }
+.texto-bot__resumen::after {
+  content: ""; position: absolute; right: 24px; top: 21px; width: 9px; height: 9px;
+  border-right: 2px solid var(--tinta-suave); border-bottom: 2px solid var(--tinta-suave); transform: rotate(45deg);
+}
+.texto-bot[open] > .texto-bot__resumen::after { top: 26px; transform: rotate(-135deg); }
+.texto-bot__resumen:hover { background: var(--azul-resalte); }
+.texto-bot__titulo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 16px; }
+.texto-bot__cuando { font-size: 14px; color: var(--tinta-suave); }
+.texto-bot__extracto {
+  margin-top: 2px; font-size: 14px; color: var(--tinta-gris); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.texto-bot[open] .texto-bot__extracto { display: none; }
+.texto-bot__editor { display: flex; flex-direction: column; gap: 14px; padding: 2px 18px 18px; }
+.texto-bot__columnas { display: grid; gap: 16px; }
+.texto-bot__campo textarea { min-height: 150px; }
+.texto-bot__datos { display: flex; flex-direction: column; gap: 8px; }
+.texto-bot__datos ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.texto-bot__datos li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 14px; color: var(--tinta-gris); }
+.dato {
+  min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--azul-resalte-borde);
+  background: var(--azul-resalte); color: var(--azul-texto); cursor: pointer;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 14px; font-weight: 600;
+}
+.dato:hover { background: var(--azul-claro); border-color: var(--azul); }
+.dato__obligatorio { font-style: normal; color: var(--tinta-suave); font-size: 13px; }
+.texto-bot__vista { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; background: #efeae2; }
+.texto-bot__vista-titulo { font-size: 13px; font-weight: 700; color: var(--tinta-gris); }
+.burbuja--vista { max-width: 92%; }
+.burbuja--vista .burbuja__boton { display: flex; align-items: center; justify-content: center; cursor: default; }
+.burbuja--vista .burbuja__boton:hover { background: #fff; }
+.texto-bot__sin-vista {
+  padding: 16px; border-radius: 12px; border: 1px dashed var(--borde-fuerte); background: rgba(255, 255, 255, 0.6);
+  color: var(--tinta-suave); font-size: 14px;
+}
+.texto-bot__largo { font-size: 13px; }
+.texto-bot__largo--pasado { color: var(--rojo); font-weight: 700; }
+.texto-bot__acciones { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.texto-bot__acciones .boton { min-height: 44px; padding: 0 20px; }
+
+@media (min-width: 1012px) {
+  .texto-bot__columnas { grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); align-items: start; }
+  .texto-bot__vista { position: sticky; top: 16px; }
+}
+
 /* --- Probar el bot ---------------------------------------------------------------- */
 
 .probar-bot { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }

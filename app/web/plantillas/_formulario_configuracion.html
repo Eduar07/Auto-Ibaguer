@@ -77,6 +77,23 @@
       </div>
       {% endfor %}
     </div>
+    <div class="gemini">
+      <label class="interruptor">
+        <span>
+          <strong>Entender lo que escriben (Gemini)</strong>
+          <span class="ayuda">Frases como "cuánto vale lavar la camionetica" o "ya no voy a poder ir" llevan al paso correcto. Si está apagado o Gemini no responde, el bot sigue con botones.</span>
+        </span>
+        <input type="checkbox" role="switch" name="gemini_activo" value="si" {% if valores.gemini_activo %}checked{% endif %}>
+        <span class="interruptor__control" aria-hidden="true"></span>
+      </label>
+      <div class="campo">
+        <label for="modelo_gemini">Modelo de Gemini</label>
+        <input id="modelo_gemini" name="modelo_gemini" value="{{ valores.modelo_gemini }}" maxlength="60" spellcheck="false" autocapitalize="off" {{ invalido("modelo_gemini") }}>
+        {{ error_de("modelo_gemini") }}
+        <span class="ayuda">Antes de cambiarlo, prueba el nuevo con las frases de prueba: <code>uv run auto-ibaguer probar-gemini --modelo nombre-del-modelo</code></span>
+      </div>
+      <p class="insignia insignia--{{ gemini.color }} gemini__estado">{{ gemini.texto }}</p>
+    </div>
     <p class="ayuda">Lo que el bot les contesta a los clientes se cambia en Textos del bot, sin programar.</p>
     <div class="enlaces-del-bot">
       <a class="boton boton--borde" href="/configuracion/textos">Textos del bot</a>

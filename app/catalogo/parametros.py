@@ -37,6 +37,8 @@ class Parametros:
     turnos_activos_por_telefono: int
     bot_activo: bool
     aviso_datos: str
+    gemini_activo: bool
+    modelo_gemini: str
     # Los textos del bot que cambió el administrador: nombre del texto -> cómo quedó.
     textos_bot: Mapping[str, str] = field(default_factory=dict, hash=False)
 
@@ -66,5 +68,7 @@ def leer_parametros(sesion: Session) -> Parametros:
         turnos_activos_por_telefono=int(valor("turnos_activos_por_telefono")),
         bot_activo=bool(valor("bot_activo")),
         aviso_datos=str(valor("aviso_datos")),
+        gemini_activo=bool(valor("gemini_activo")),
+        modelo_gemini=str(valor("modelo_gemini")),
         textos_bot=textos_bot,
     )

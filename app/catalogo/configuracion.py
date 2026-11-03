@@ -31,6 +31,8 @@ LIMITES = {
     "sesion_bot_minutos": (10, 120),
 }
 PRECIO_MAXIMO = 5_000_000
+# El nombre de un modelo de Gemini: "gemini-3.5-flash-lite", "gemini-flash-latest"...
+MODELO_GEMINI = re.compile(r"[a-z0-9][a-z0-9.\-]{2,59}")
 DURACION_MINIMA, DURACION_MAXIMA = 5, 600
 
 
@@ -96,6 +98,15 @@ def validar_parametros(formulario: Mapping[str, Any]) -> dict[str, Any]:
     limpios["dias_atencion"] = dias
 
     limpios["bot_activo"] = bool(formulario.get("bot_activo"))
+    limpios["gemini_activo"] = bool(formulario.get("gemini_activo"))
+
+    modelo = str(formulario.get("modelo_gemini", "")).strip().lower()
+    if not MODELO_GEMINI.fullmatch(modelo):
+        errores["modelo_gemini"] = (
+            "Escribe el nombre del modelo como sale en Google AI Studio, por ejemplo "
+            "gemini-3.5-flash-lite."
+        )
+    limpios["modelo_gemini"] = modelo
 
     for clave, (minimo, maximo) in LIMITES.items():
         valor = _numero_entre(str(formulario.get(clave, "")), minimo, maximo)

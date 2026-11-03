@@ -4,6 +4,7 @@ uv run auto-ibaguer preparar-base             crea las tablas y carga los datos 
 uv run auto-ibaguer crear-admin --usuario X   crea un administrador del dashboard
 uv run auto-ibaguer simular-turno             pide un turno como lo hará el bot (pruebas)
 uv run auto-ibaguer registrar-whatsapp        registra el número del bot (el día de la SIM)
+uv run auto-ibaguer probar-gemini             corre las frases de prueba contra Gemini
 """
 
 import argparse
@@ -11,6 +12,7 @@ import getpass
 import re
 import secrets
 import sys
+import time
 from pathlib import Path
 
 from alembic import command
@@ -20,14 +22,18 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app import tiempo
+from app.bot.conversacion import catalogo_del_bot
+from app.bot.frases_de_prueba import FRASES, FraseDePrueba
+from app.bot.interprete import Interpretacion
 from app.catalogo.datos_iniciales import cargar_datos_iniciales
+from app.catalogo.parametros import leer_parametros
 from app.catalogo.tablas import TipoVehiculo
 from app.clientes import servicio as clientes
 from app.config import obtener_entorno
 from app.db.sesion import obtener_motor
 from app.errores import ReglaDelNegocio
 from app.formato import duracion, hora_con_articulo
-from app.integraciones import whatsapp
+from app.integraciones import gemini, whatsapp
 from app.turnos import casos_de_uso as casos
 from app.turnos.errores import FueraDeHorario
 from app.turnos.estados import OrigenTurno
@@ -175,6 +181,62 @@ def registrar_whatsapp() -> int:
     return 0
 
 
+def _como_salio(frase: FraseDePrueba, entendido: Interpretacion | None) -> str | None:
+    """None si Gemini entendió lo que se esperaba; si no, qué se esperaba."""
+    if entendido is None:
+        return "no respondió"
+    faltas = []
+    if entendido.intencion != frase.intencion:
+        faltas.append(f"intención {frase.intencion.value}")
+    if frase.vehiculo and entendido.vehiculo != frase.vehiculo:
+        faltas.append(f"vehículo {frase.vehiculo}")
+    if frase.servicio and entendido.servicio != frase.servicio:
+        faltas.append(f"servicio {frase.servicio}")
+    return "esperaba " + ", ".join(faltas) if faltas else None
+
+
+def _lo_que_entendio(entendido: Interpretacion) -> str:
+    partes = [entendido.intencion.value, entendido.vehiculo, entendido.servicio]
+    return ", ".join(parte for parte in partes if parte)
+
+
+def probar_gemini(modelo: str | None, pausa: float) -> int:
+    """Corre las frases de prueba (app/bot/frases_de_prueba.py) contra el modelo de verdad.
+
+    Sirve para decidir si un modelo nuevo se puede usar con clientes. Entre frase y frase
+    espera `pausa` segundos, para no pasarse del límite del plan gratis.
+    """
+    entorno = obtener_entorno()
+    if not entorno.gemini_clave:
+        print("Falta GEMINI_CLAVE en el archivo .env.", file=sys.stderr)
+        return 1
+    with Session(obtener_motor()) as sesion:
+        parametros = leer_parametros(sesion)
+        catalogo = catalogo_del_bot(sesion)
+    modelo = (modelo or parametros.modelo_gemini).strip().lower()
+    interprete = gemini.Gemini(entorno.gemini_clave, modelo, negocio=parametros.nombre_negocio)
+    print(f"Probando {len(FRASES)} frases con {modelo}:")
+    bien = 0
+    for numero, frase in enumerate(FRASES):
+        if numero:
+            time.sleep(pausa)
+        entendido = interprete.interpretar(frase.texto, catalogo)
+        falla = _como_salio(frase, entendido)
+        if falla is None:
+            bien += 1
+            print(f"  bien   «{frase.texto}» → {_lo_que_entendio(entendido)}")
+        else:
+            detalle = interprete.ultimo_problema or (
+                f"entendió {_lo_que_entendio(entendido)}" if entendido else ""
+            )
+            print(f"  MAL    «{frase.texto}» → {falla} ({detalle})")
+    porcentaje = round(100 * bien / len(FRASES))
+    print(f"{bien} de {len(FRASES)} bien ({porcentaje} %).")
+    if bien < len(FRASES):
+        print("Revisa las que salieron MAL antes de usar este modelo con clientes.")
+    return 0 if bien == len(FRASES) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     lector = argparse.ArgumentParser(
         prog="auto-ibaguer", description="Comandos del sistema de turnos de Auto Ibaguer."
@@ -203,6 +265,17 @@ def main(argv: list[str] | None = None) -> int:
         "registrar-whatsapp",
         help="Registra el número del bot en WhatsApp (una vez, el día que llega la SIM).",
     )
+    probar = comandos.add_parser(
+        "probar-gemini",
+        help="Corre las frases de prueba contra Gemini (antes de cambiar el modelo).",
+    )
+    probar.add_argument("--modelo", help="El modelo a probar (si no, el de Configuración)")
+    probar.add_argument(
+        "--pausa",
+        type=float,
+        default=4.0,
+        help="Segundos entre frase y frase (4 para el plan gratis; 0 con el de pago)",
+    )
 
     argumentos = lector.parse_args(argv)
     try:
@@ -212,6 +285,8 @@ def main(argv: list[str] | None = None) -> int:
             return simular_turno(argumentos.vehiculo, argumentos.nombre, argumentos.celular)
         if argumentos.comando == "registrar-whatsapp":
             return registrar_whatsapp()
+        if argumentos.comando == "probar-gemini":
+            return probar_gemini(argumentos.modelo, argumentos.pausa)
         return crear_admin(argumentos.usuario)
     except OperationalError:
         print(MENSAJE_SIN_BASE, file=sys.stderr)

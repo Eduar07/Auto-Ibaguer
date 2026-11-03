@@ -38,6 +38,8 @@ FORMULARIO = {
     "avisar_cuando_falten": "3",
     "sesion_bot_minutos": "45",
     "aviso_datos": "Guardamos tu nombre, celular y placa solo para atenderte. ¿Aceptas?",
+    "gemini_activo": True,
+    "modelo_gemini": " Gemini-3.6-Flash ",
 }
 
 
@@ -55,6 +57,7 @@ def test_guardar_parametros_los_deja_listos_para_el_bot_y_la_fila(sesion: Sessio
     assert parametros.gracia == timedelta(minutes=20)
     assert parametros.avisar_cuando_falten == 3
     assert parametros.sesion_bot == timedelta(minutes=45)
+    assert (parametros.gemini_activo, parametros.modelo_gemini) == (True, "gemini-3.6-flash")
     assert "hora_apertura" in cambiaron and "nombre_negocio" not in cambiaron
     assert configuracion.guardar_parametros(sesion, FORMULARIO) == []  # nada nuevo
 
@@ -67,6 +70,7 @@ def test_todos_los_errores_se_dicen_juntos_y_no_se_guarda_nada(sesion: Session):
         "gracia_minutos": "0",
         "aviso_datos": "corto",
         "telefono_contacto": "123",
+        "modelo_gemini": "gemini/../../otra-cosa",
     }
 
     with pytest.raises(ConfiguracionInvalida) as error:
@@ -78,6 +82,7 @@ def test_todos_los_errores_se_dicen_juntos_y_no_se_guarda_nada(sesion: Session):
         "gracia_minutos",
         "aviso_datos",
         "telefono_contacto",
+        "modelo_gemini",
     }
     assert leer_parametros(sesion).hora_apertura == time(5, 30)
 

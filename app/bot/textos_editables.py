@@ -129,6 +129,12 @@ GRUPOS: tuple[Grupo, ...] = (
                 "Despedida",
                 "Cuando el cliente escribe gracias o chao.",
             ),
+            Editable(
+                "pico_y_placa",
+                "Pico y placa",
+                "Cuando el cliente pregunta por el pico y placa (lo entiende Gemini).",
+                botones=_MENU,
+            ),
         ),
     ),
     Grupo(

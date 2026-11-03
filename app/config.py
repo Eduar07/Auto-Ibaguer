@@ -25,6 +25,10 @@ class ConfiguracionEntorno(BaseSettings):
     clave_secreta: str = CLAVE_DE_DESARROLLO
     # Horas sin usar el dashboard para que la sesión venza y pida la contraseña otra vez.
     sesion_horas: int = 12
+    # El reloj (app.reloj) corre dentro del servidor web y cada 30 segundos revisa lo que
+    # vence con el tiempo. En la nube va siempre encendido; en tu computador lo puedes
+    # apagar para mirar algo sin que el reloj mueva la fila.
+    reloj_activo: bool = True
 
     @property
     def es_produccion(self) -> bool:

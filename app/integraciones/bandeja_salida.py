@@ -1,17 +1,36 @@
-"""Dejar un mensaje en la bandeja de salida.
+"""La bandeja de salida: dejar un mensaje y enviarlo, con reintentos.
 
 Quien produce un aviso (por ejemplo, la fila al llamar a alguien) no habla con WhatsApp:
-deja el mensaje aquí, en la misma operación que el cambio que lo produjo. El que envía
-(hito 5) lo recoge, revisa si WhatsApp deja escribirle a esa persona (ventana de 24
-horas) y lo reintenta si falla.
+deja el mensaje aquí (`encolar`), en la misma operación que el cambio que lo produjo.
+El reloj recoge los que ya toca enviar (`enviar_siguiente`) y se los pasa al que envía.
+Si WhatsApp no lo acepta, se vuelve a intentar más tarde, cada vez esperando un poco más.
+
+El que envía de verdad llega en el hito 5 (WhatsApp). Aquí está todo lo demás: el
+orden, los reintentos, cuándo darse por vencido y qué hacer con un aviso que ya no sirve.
 """
 
-from datetime import datetime
-from typing import Any
+import logging
+from collections.abc import Callable
+from datetime import datetime, timedelta
+from enum import StrEnum
+from typing import Any, Protocol
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.integraciones.tablas import MensajeSaliente
+from app.integraciones.tablas import EstadoMensaje, MensajeSaliente
+
+logger = logging.getLogger(__name__)
+
+# Después de cada intento fallido, cuánto se espera para el siguiente. Cuando se acaba la
+# lista, el mensaje queda fallido: son 6 intentos en unos 18 minutos.
+ESPERAS = (
+    timedelta(seconds=30),
+    timedelta(minutes=1),
+    timedelta(minutes=2),
+    timedelta(minutes=5),
+    timedelta(minutes=10),
+)
 
 
 def encolar(
@@ -34,3 +53,116 @@ def encolar(
     )
     sesion.add(mensaje)
     return mensaje
+
+
+# --- Enviar ------------------------------------------------------------------------------
+
+
+class EnvioFallido(Exception):
+    """WhatsApp no aceptó el mensaje.
+
+    `reintentar` dice si vale la pena volver a intentar: sí cuando se cayó la conexión o
+    WhatsApp falló un momento; no cuando el problema no se arregla solo (por ejemplo, el
+    número no tiene WhatsApp).
+    """
+
+    def __init__(self, motivo: str, *, reintentar: bool) -> None:
+        super().__init__(motivo)
+        self.reintentar = reintentar
+
+
+class Enviador(Protocol):
+    """Quien entrega los mensajes; en el hito 5, WhatsApp.
+
+    Es como una interfaz de Java: la bandeja solo sabe que tiene el método `enviar`, y
+    en las pruebas se usa uno de mentira.
+    """
+
+    def enviar(self, sesion: Session, mensaje: MensajeSaliente) -> str:
+        """Entrega el mensaje y devuelve el id que le dio WhatsApp.
+
+        Si no pudo, lanza EnvioFallido.
+        """
+        ...
+
+
+# Revisa si el aviso todavía sirve antes de enviarlo (app.turnos.avisos.sigue_vigente).
+SigueVigente = Callable[[Session, MensajeSaliente, datetime], bool]
+
+
+class Resultado(StrEnum):
+    ENVIADO = "enviado"
+    REINTENTO = "reintento"  # falló, pero se vuelve a intentar más tarde
+    FALLIDO = "fallido"
+    DESCARTADO = "descartado"
+
+
+def cuando_reintentar(intentos: int, ahora: datetime) -> datetime | None:
+    """Cuándo va el próximo intento después de `intentos` intentos fallidos.
+
+    None: ya no se intenta más.
+    """
+    if intentos > len(ESPERAS):
+        return None
+    return ahora + ESPERAS[intentos - 1]
+
+
+def enviar_siguiente(
+    sesion: Session, enviador: Enviador, *, ahora: datetime, sigue_vigente: SigueVigente
+) -> Resultado | None:
+    """Envía el próximo mensaje que ya toca y anota cómo le fue. None si no hay ninguno.
+
+    El mensaje queda bloqueado hasta el commit (FOR UPDATE SKIP LOCKED): si otro reloj
+    corre al mismo tiempo, se lo salta y toma otro, así nadie recibe el mismo aviso dos
+    veces. Antes de enviarlo se revisa que todavía sirva.
+    """
+    consulta = (
+        select(MensajeSaliente)
+        .where(
+            MensajeSaliente.estado == EstadoMensaje.PENDIENTE,
+            MensajeSaliente.proximo_intento_en <= ahora,
+        )
+        .order_by(MensajeSaliente.proximo_intento_en, MensajeSaliente.id)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    )
+    mensaje = sesion.scalars(consulta).first()
+    if mensaje is None:
+        return None
+    if not sigue_vigente(sesion, mensaje, ahora):
+        mensaje.estado = EstadoMensaje.DESCARTADO
+        sesion.flush()
+        return Resultado.DESCARTADO
+
+    mensaje.intentos += 1
+    try:
+        # Si el que envía falla a mitad de algo en la base, solo se deshace lo suyo
+        # (un SAVEPOINT): el intento igual queda anotado.
+        with sesion.begin_nested():
+            id_meta = enviador.enviar(sesion, mensaje)
+    except EnvioFallido as error:
+        resultado = _fallo(mensaje, str(error), reintentar=error.reintentar, ahora=ahora)
+    except Exception as error:
+        # Un error del programa tampoco puede trancar la bandeja: este mensaje espera su
+        # próximo intento y los demás siguen saliendo.
+        logger.exception("Error inesperado al enviar el mensaje %s.", mensaje.id)
+        resultado = _fallo(mensaje, f"Error inesperado: {error!r}", reintentar=True, ahora=ahora)
+    else:
+        mensaje.id_meta = id_meta
+        mensaje.estado = EstadoMensaje.ENVIADO
+        mensaje.enviado_en = ahora
+        resultado = Resultado.ENVIADO
+    sesion.flush()
+    return resultado
+
+
+def _fallo(
+    mensaje: MensajeSaliente, motivo: str, *, reintentar: bool, ahora: datetime
+) -> Resultado:
+    mensaje.ultimo_error = motivo
+    siguiente = cuando_reintentar(mensaje.intentos, ahora) if reintentar else None
+    if siguiente is None:
+        mensaje.estado = EstadoMensaje.FALLIDO
+        return Resultado.FALLIDO
+    mensaje.proximo_intento_en = siguiente
+    return Resultado.REINTENTO

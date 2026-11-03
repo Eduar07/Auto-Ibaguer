@@ -42,6 +42,7 @@ class TurnoEnPantalla:
     intentos_sin_llegar: int
     gracia_hasta: datetime | None
     en_lavado_desde: datetime | None
+    lavado_lleva_min: int | None  # cuánto lleva en el puesto; None si no se está lavando
     listo_desde: datetime | None
     adelante: int | None  # turnos adelante en la fila de espera
     espera_min: int | None  # minutos estimados para entrar a un puesto
@@ -53,6 +54,20 @@ class TurnoEnPantalla:
     @property
     def servicio_por_definir(self) -> bool:
         return self.servicio_id is None
+
+    @property
+    def sobre_el_estimado_min(self) -> int:
+        """Cuánto se ha pasado el lavado de su duración estimada (0 si no se ha pasado)."""
+        if self.lavado_lleva_min is None:
+            return 0
+        return max(0, self.lavado_lleva_min - self.duracion_estimada_min)
+
+    @property
+    def demorado(self) -> bool:
+        """Lavado demorado: pasó su duración estimada. Puede que ya esté listo y nadie lo
+        haya marcado; mientras tanto el cliente no recibe el aviso y la espera de la fila
+        se calcula mal."""
+        return self.sobre_el_estimado_min > 0
 
 
 @dataclass(frozen=True)
@@ -81,6 +96,10 @@ class FilaEnPantalla:
     def en_lavado(self) -> int:
         return sum(1 for p in self.puestos if p.turno is not None)
 
+    @property
+    def demorados(self) -> int:
+        return sum(1 for p in self.puestos if p.turno is not None and p.turno.demorado)
+
 
 @dataclass(frozen=True)
 class Movimiento:
@@ -106,10 +125,20 @@ class Tablero:
     def en_espera(self) -> int:
         return sum(len(fila.espera) for fila in self.filas)
 
+    @property
+    def demorados(self) -> int:
+        return sum(fila.demorados for fila in self.filas)
+
 
 def inicio_del_dia(ahora: datetime) -> datetime:
     """Las 12:00 a.m. de hoy en Bogotá."""
     return datetime.combine(tiempo.hora_local(ahora).date(), time(0), tzinfo=tiempo.zona_horaria())
+
+
+def _minutos_desde(momento: datetime | None, ahora: datetime) -> int | None:
+    if momento is None:
+        return None
+    return max(0, int((ahora - momento).total_seconds() // 60))
 
 
 def _precios(sesion: Session) -> dict[tuple[int, int], int]:
@@ -260,6 +289,9 @@ def armar_tablero(
             intentos_sin_llegar=turno.intentos_sin_llegar,
             gracia_hasta=turno.gracia_hasta if turno.estado == EstadoTurno.LLAMADO else None,
             en_lavado_desde=turno.en_lavado_desde,
+            lavado_lleva_min=_minutos_desde(turno.en_lavado_desde, ahora)
+            if turno.estado == EstadoTurno.EN_LAVADO
+            else None,
             listo_desde=listos.get(turno.id),
             adelante=foto.adelante_de(turno.id),
             espera_min=reglas.minutos_hasta(foto.inicio_de(turno.id), ahora),

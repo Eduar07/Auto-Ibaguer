@@ -2,20 +2,32 @@
 
 uv run auto-ibaguer preparar-base             crea las tablas y carga los datos iniciales
 uv run auto-ibaguer crear-admin --usuario X   crea un administrador del dashboard
+uv run auto-ibaguer simular-turno             pide un turno como lo hará el bot (pruebas)
 """
 
 import argparse
 import getpass
+import secrets
 import sys
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app import tiempo
 from app.catalogo.datos_iniciales import cargar_datos_iniciales
+from app.catalogo.tablas import TipoVehiculo
+from app.clientes import servicio as clientes
+from app.config import obtener_entorno
 from app.db.sesion import obtener_motor
+from app.errores import ReglaDelNegocio
+from app.formato import duracion, hora_con_articulo
+from app.turnos import casos_de_uso as casos
+from app.turnos.errores import FueraDeHorario
+from app.turnos.estados import OrigenTurno
 from app.web.administradores import guardar_administrador
 
 RAIZ_DEL_PROYECTO = Path(__file__).resolve().parent.parent
@@ -74,6 +86,65 @@ def crear_admin(usuario: str) -> int:
     return 0
 
 
+# Lo que se escribe en --vehiculo y el tipo de vehículo que corresponde.
+VEHICULOS_PARA_SIMULAR = {"carro": "Automóvil", "camioneta": "Camioneta", "moto": "Moto"}
+
+
+def simular_turno(vehiculo: str, nombre: str | None, celular: str | None) -> int:
+    """Pide un turno por WhatsApp como lo hará el bot (hito 5), con las mismas reglas.
+
+    Sirve para probar el dashboard y el reloj mientras el bot no existe. Si no se da el
+    celular, se inventa uno que empieza por 5799: ningún celular colombiano empieza así.
+    """
+    if obtener_entorno().es_produccion:
+        print("simular-turno es solo para probar en tu computador.", file=sys.stderr)
+        return 1
+    telefono = celular or f"5799{secrets.randbelow(10**8):08d}"
+    try:
+        with Session(obtener_motor()) as sesion, sesion.begin():
+            cliente = clientes.registrar_cliente(
+                sesion,
+                nombre=nombre or f"Prueba {telefono[-4:]}",
+                telefono=telefono,
+                acepta_datos=True,
+            )
+            tipo = sesion.scalars(
+                select(TipoVehiculo).where(TipoVehiculo.nombre == VEHICULOS_PARA_SIMULAR[vehiculo])
+            ).one()
+            vehiculo_del_cliente = clientes.registrar_vehiculo(
+                sesion, cliente_id=cliente.id, tipo_vehiculo_id=tipo.id
+            )
+            nuevo = casos.pedir_turno(
+                sesion, vehiculo_id=vehiculo_del_cliente.id, origen=OrigenTurno.WHATSAPP
+            )
+            resumen = [f"Turno {nuevo.numero} por WhatsApp (simulado) para {cliente.nombre}."]
+            if nuevo.llamado:
+                limite = hora_con_articulo(tiempo.hora_local(nuevo.gracia_hasta))
+                resumen += [
+                    f"Había un puesto libre: quedó llamado y tiene hasta {limite} para llegar.",
+                    "Si no llega, el reloj lo pasa al final de la fila a esa hora "
+                    "(con el servidor encendido).",
+                ]
+            else:
+                adelante = "turno" if nuevo.adelante == 1 else "turnos"
+                espera = (
+                    f"; entra en aprox. {duracion(nuevo.espera_min)}" if nuevo.espera_min else ""
+                )
+                resumen.append(
+                    f"Quedó en la fila con {nuevo.adelante} {adelante} adelante{espera}."
+                )
+    except ReglaDelNegocio as error:
+        print(f"No se dio el turno: {error}", file=sys.stderr)
+        if isinstance(error, FueraDeHorario):
+            print(
+                "Para probar a esta hora, amplía el horario en Configuración > Negocio y horario.",
+                file=sys.stderr,
+            )
+        return 1
+    print("\n".join(resumen))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     lector = argparse.ArgumentParser(
         prog="auto-ibaguer", description="Comandos del sistema de turnos de Auto Ibaguer."
@@ -86,11 +157,25 @@ def main(argv: list[str] | None = None) -> int:
         "crear-admin", help="Crea un administrador del dashboard o le cambia la contraseña."
     )
     admin.add_argument("--usuario", required=True, help="Nombre de usuario, por ejemplo: eduar")
+    simular = comandos.add_parser(
+        "simular-turno",
+        help="Pide un turno como si el cliente escribiera por WhatsApp (solo para probar).",
+    )
+    simular.add_argument(
+        "--vehiculo",
+        choices=sorted(VEHICULOS_PARA_SIMULAR),
+        default="carro",
+        help="carro (si no se dice), camioneta o moto",
+    )
+    simular.add_argument("--nombre", help="Nombre del cliente (si no, uno de prueba)")
+    simular.add_argument("--celular", help="Celular del cliente (si no, uno inventado)")
 
     argumentos = lector.parse_args(argv)
     try:
         if argumentos.comando == "preparar-base":
             return preparar_base()
+        if argumentos.comando == "simular-turno":
+            return simular_turno(argumentos.vehiculo, argumentos.nombre, argumentos.celular)
         return crear_admin(argumentos.usuario)
     except OperationalError:
         print(MENSAJE_SIN_BASE, file=sys.stderr)

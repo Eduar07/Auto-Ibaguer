@@ -5,6 +5,7 @@
   "queja": ("Queja", "rojo"),
   "felicitacion": ("Felicitación", "verde"),
   "quiere_hablar": ("Quiere hablar con alguien", "azul"),
+  "pregunta": ("Pregunta que el bot no supo", "naranja"),
 } %}
 {% set nombre_del_tipo, color = tipos[c.tipo.value] %}
 <article class="panel comentario{% if c.atendido %} comentario--atendido{% endif %}" id="comentario-{{ c.id }}" aria-labelledby="comentario-{{ c.id }}-tipo">
@@ -26,6 +27,10 @@
     No es cliente y no dejó su número: no hay cómo responderle.
     {% endif %}
   </p>
+
+  {% if c.tipo.value == "pregunta" %}
+  <p class="comentario__pista">Cuando le respondas, agrega la respuesta a la <a href="/configuracion#ficha">ficha del negocio</a>: así el bot la sabe la próxima vez.</p>
+  {% endif %}
 
   <div class="comentario__acciones">
     {% if c.atendido %}

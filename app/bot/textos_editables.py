@@ -478,6 +478,45 @@ GRUPOS: tuple[Grupo, ...] = (
             ),
         ),
     ),
+    Grupo(
+        "preguntas",
+        "Preguntas y charla",
+        (
+            Editable(
+                "charla",
+                "Charla, si Gemini no responde",
+                'Gemini escribe la respuesta a la charla ("estoy cansado", "te amo"); este '
+                "texto sale solo si no responde o si lo que escribió rompía una regla.",
+                botones=_MENU,
+            ),
+            Editable(
+                "pregunta_al_administrador",
+                "Pregunta que la ficha no sabe",
+                "Cuando un cliente pregunta algo que no está en la ficha del negocio. La "
+                "pregunta te llega en Comentarios.",
+                opcionales=frozenset({"nombre"}),
+                botones=_MENU,
+            ),
+            Editable(
+                "pregunta_sin_respuesta",
+                "Pregunta que la ficha no sabe, sin ser cliente",
+                "Igual, de alguien que nunca ha pedido turno: se le pide permiso para guardar "
+                "su número.",
+                botones=_PERMISO,
+            ),
+            Editable(
+                "pregunta_anonima",
+                "Si no da permiso para responder su pregunta",
+                "Cuando toca No, gracias después de una pregunta que el bot no supo.",
+            ),
+            Editable(
+                "ayuda_urgente",
+                "Mensajes graves",
+                "Cuando alguien escribe que quiere morir o hacerse daño. El bot no improvisa: "
+                "manda este texto, sin botones. Revisa que los números sigan vigentes.",
+            ),
+        ),
+    ),
 )
 
 EDITABLES: dict[str, Editable] = {

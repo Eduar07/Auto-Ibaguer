@@ -36,6 +36,7 @@ from app import tiempo
 from app.bot import textos
 from app.bot.interprete import CARRO, Catalogo, Intencion, Interpretacion, Interprete
 from app.bot.mensajes import Entrada, Lista, Mensaje, Opcion, recortar
+from app.bot.redactor import Redactor, Respuesta, ficha_completa, pide_ayuda_urgente, revisar
 from app.bot.sesiones import PASO_INICIAL
 from app.bot.tablas import SesionBot
 from app.bot.textos import BOTONES, Textos
@@ -111,6 +112,9 @@ PASO_DEL_BOTON = {
     "cancelar": Paso.CANCELAR,
     "responder": Paso.PERMISO_CONTACTO,
 }
+
+# Lo que contesta el redactor (app.bot.redactor), con la ficha del negocio.
+PREGUNTA_O_CHARLA = frozenset({Intencion.PREGUNTA, Intencion.CHARLA})
 
 # Lo que el cliente pide con sus palabras mientras cuenta lo que pasó, y el bot también
 # hace (después de anotarlo): ver su turno, la fila, los precios, cancelar...
@@ -253,13 +257,15 @@ def atender(
     *,
     ahora: datetime | None = None,
     interprete: Interprete | None = None,
+    redactor: Redactor | None = None,
 ) -> list[Mensaje]:
     """Lo que el bot contesta a un mensaje del cliente, y lo que hace en el sistema.
 
     `interprete` entiende el texto libre (Gemini). Sin él, el bot entiende los botones y
-    unas pocas palabras.
+    unas pocas palabras. `redactor` escribe la respuesta a una pregunta sobre el negocio
+    o a la charla, con la ficha del negocio (también Gemini); sin él, usa un texto fijo.
     """
-    atencion = _Atencion(sesion, entrada, ahora or tiempo.ahora(), interprete)
+    atencion = _Atencion(sesion, entrada, ahora or tiempo.ahora(), interprete, redactor)
     respuesta = atencion.responder()
     atencion.guardar()
     return respuesta
@@ -303,12 +309,18 @@ class _Atencion:
     """Todo lo que hace falta para contestar un mensaje."""
 
     def __init__(
-        self, sesion: Session, entrada: Entrada, ahora: datetime, interprete: Interprete | None
+        self,
+        sesion: Session,
+        entrada: Entrada,
+        ahora: datetime,
+        interprete: Interprete | None,
+        redactor: Redactor | None = None,
     ) -> None:
         self.sesion = sesion
         self.entrada = entrada
         self.ahora = ahora
         self.interprete = interprete
+        self.redactor = redactor
         self.parametros: Parametros = leer_parametros(sesion)
         # Con lo que el administrador cambió en Configuración > Textos del bot.
         self.texto = Textos(self.parametros.textos_bot)
@@ -353,6 +365,8 @@ class _Atencion:
             return self._boton(self.entrada.opcion)
         escrito = (self.entrada.texto or "").strip()
         normal = normalizar(escrito)
+        if normal and pide_ayuda_urgente(normal):
+            return self._ayuda_urgente()  # antes que todo, en cualquier paso
         if self.paso == Paso.DETALLE:
             return self._detalle(escrito, normal)
         if self.entrada.otro or not escrito:
@@ -440,6 +454,8 @@ class _Atencion:
                 elegida = self._opcion_entendida(entendido)
                 if elegida is None and entendido.intencion == Intencion.FELICITACION:
                     return self._felicitacion(escrito)
+                if elegida is None and entendido.intencion in PREGUNTA_O_CHARLA:
+                    return self._con_la_ficha(entendido.intencion, escrito)
                 if elegida is None and self._cambia_de_tema(entendido):
                     return self._hacer(entendido, escrito)
         if elegida is not None:
@@ -482,6 +498,10 @@ class _Atencion:
                 return self._felicitacion(escrito)
             case Intencion.HABLAR_CON_PERSONA:
                 return self._hablar_con_una_persona(escrito)
+            case Intencion.PREGUNTA | Intencion.CHARLA:
+                return self._con_la_ficha(entendido.intencion, escrito)
+            case Intencion.CRISIS:
+                return self._ayuda_urgente()
         return self._menu("no_entendi")
 
     def _cambia_de_tema(self, entendido: Interpretacion) -> bool:
@@ -495,6 +515,7 @@ class _Atencion:
             Intencion.MIS_LAVADAS,
             Intencion.QUEJA,
             Intencion.HABLAR_CON_PERSONA,
+            Intencion.CRISIS,
         )
         if entendido.intencion in otra_cosa:
             return True
@@ -574,14 +595,7 @@ class _Atencion:
     # --- Menú --------------------------------------------------------------------------------
 
     def _mensaje_del_menu(self, nombre_del_texto: str, **datos: object) -> Mensaje:
-        return Mensaje(
-            self.texto(nombre_del_texto, **datos),
-            botones=(
-                Opcion("menu.pedir", BOTONES["pedir"]),
-                Opcion("menu.fila", BOTONES["fila"]),
-                Opcion("menu.precios", BOTONES["precios"]),
-            ),
-        )
+        return _con_el_menu(self.texto(nombre_del_texto, **datos))
 
     def _menu(self, nombre_del_texto: str) -> list[Mensaje]:
         self._volver_al_menu()
@@ -1302,13 +1316,15 @@ class _Atencion:
     def _permiso_para_responder(self, respuesta: str) -> list[Mensaje]:
         pide_persona = self.datos.get("pide_persona")
         comentario_id = self.datos.get("comentario")
+        tipo = _tipo_de_comentario(self.datos.get("tipo"))
         self._volver_al_menu()
         if respuesta != "si":
+            telefono = self._telefono_del_negocio()
             if pide_persona is not None:
-                telefono = self._telefono_del_negocio()
                 return [Mensaje(self.texto("persona_sin_permiso", telefono=telefono))]
+            if tipo == TipoComentario.PREGUNTA:
+                return [Mensaje(self.texto("pregunta_anonima", telefono=telefono))]
             return [Mensaje(self.texto("queja_anonima"))]
-        tipo = TipoComentario.QUEJA
         if pide_persona is not None:
             tipo = TipoComentario.QUIERE_HABLAR
             nuevo = comentarios.registrar(self.sesion, tipo, pide_persona, ahora=self.ahora)
@@ -1333,10 +1349,7 @@ class _Atencion:
             self.sesion, comentario_id, escrito
         ):
             return
-        try:
-            tipo = TipoComentario(self.datos.get("tipo", TipoComentario.QUEJA))
-        except ValueError:
-            tipo = TipoComentario.QUEJA
+        tipo = _tipo_de_comentario(self.datos.get("tipo"))
         nuevo = comentarios.registrar(
             self.sesion, tipo, escrito, cliente=self.cliente, ahora=self.ahora
         )
@@ -1397,6 +1410,60 @@ class _Atencion:
             return [self._mensaje_del_menu(nombre, **datos)]
         # En medio de otra pregunta (pidiendo turno, por ejemplo): se agradece y se sigue.
         return [_con_nota(self.texto(nombre, **datos), self._pregunta())]
+
+    # --- Preguntas sobre el negocio, charla y mensajes graves ---------------------------------
+
+    def _con_la_ficha(self, tipo: Intencion, escrito: str) -> list[Mensaje]:
+        """Una pregunta sobre el negocio o charla: la respuesta la escribe el redactor, solo
+        con la ficha, y el bot la revisa. En medio de otra pregunta (pidiendo turno, por
+        ejemplo), contesta y sigue con lo que estaba."""
+        respuesta = self._redactar(tipo, escrito)
+        if tipo == Intencion.PREGUNTA and respuesta is None:
+            return self._pregunta_sin_respuesta(escrito)
+        texto = respuesta.texto if respuesta is not None else self.texto("charla")
+        if self.paso == Paso.MENU:
+            return [_con_el_menu(texto)]
+        return [_con_nota(texto, self._pregunta())]
+
+    def _redactar(self, tipo: Intencion, escrito: str) -> Respuesta | None:
+        """La respuesta revisada. None si no hay redactor, no respondió, no sabe (en una
+        pregunta) o lo que escribió rompe una regla (app.bot.redactor.revisar)."""
+        if self.redactor is None:
+            return None
+        ficha = ficha_completa(self.parametros, catalogo_del_bot(self.sesion))
+        try:
+            respuesta = self.redactor.redactar(tipo, escrito, ficha)
+        except Exception:
+            logger.exception("El redactor falló; el bot usó un texto fijo.")
+            return None
+        if respuesta is None or (tipo == Intencion.PREGUNTA and not respuesta.sabe):
+            return None
+        texto = revisar(respuesta.texto, ficha)
+        if texto is None:
+            # Nunca se escribe lo que dijo: solo que no pasó la revisión.
+            logger.warning("La respuesta redactada rompía una regla; el bot usó un texto fijo.")
+            return None
+        return Respuesta(texto)
+
+    def _pregunta_sin_respuesta(self, escrito: str) -> list[Mensaje]:
+        """La ficha no lo dice: la pregunta le llega al administrador, en Comentarios."""
+        comentario = comentarios.registrar(
+            self.sesion, TipoComentario.PREGUNTA, escrito, cliente=self.cliente, ahora=self.ahora
+        )
+        self._volver_al_menu()
+        if self.cliente is None:
+            # Sin su permiso no se guarda su número: se le pregunta si quiere que le respondan.
+            self.paso = Paso.PERMISO_CONTACTO
+            self.datos = {"comentario": comentario.id, "tipo": TipoComentario.PREGUNTA.value}
+            return [self._con_botones_de_permiso(self.texto("pregunta_sin_respuesta"))]
+        nombre = _primer_nombre(self.cliente)
+        return [self._mensaje_del_menu("pregunta_al_administrador", nombre=nombre)]
+
+    def _ayuda_urgente(self) -> list[Mensaje]:
+        """Dice que quiere morir o hacerse daño. El bot no improvisa ni guarda nada: manda
+        un texto fijo con las líneas de ayuda, sin botones (no es momento de ofrecer turnos)."""
+        self._volver_al_menu()
+        return [Mensaje(self.texto("ayuda_urgente"))]
 
     # --- Sus lavadas ------------------------------------------------------------------------
 
@@ -1483,6 +1550,25 @@ def _con_nota(nota: str, pregunta: Mensaje) -> Mensaje:
 
 def _entero(texto_escrito: str) -> int | None:
     return int(texto_escrito) if texto_escrito.isdigit() else None
+
+
+def _con_el_menu(texto: str) -> Mensaje:
+    return Mensaje(
+        texto,
+        botones=(
+            Opcion("menu.pedir", BOTONES["pedir"]),
+            Opcion("menu.fila", BOTONES["fila"]),
+            Opcion("menu.precios", BOTONES["precios"]),
+        ),
+    )
+
+
+def _tipo_de_comentario(valor: object) -> TipoComentario:
+    """El tipo guardado en la conversación; si no se reconoce, es una queja."""
+    try:
+        return TipoComentario(valor)
+    except ValueError:
+        return TipoComentario.QUEJA
 
 
 def _sin_pasarse(texto: str) -> str:

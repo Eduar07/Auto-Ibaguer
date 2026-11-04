@@ -42,6 +42,7 @@ def formulario_de_configuracion(sesion: Session, **cambios: str) -> dict:
         "aviso_datos": parametros.aviso_datos,
         "gemini_activo": "si",
         "modelo_gemini": parametros.modelo_gemini,
+        "ficha_negocio": parametros.ficha_negocio,
     }
     puestos = list(sesion.scalars(select(Puesto)))
     datos_formulario["puestos_en_pantalla"] = [str(p.id) for p in puestos]

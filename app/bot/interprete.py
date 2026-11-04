@@ -2,7 +2,9 @@
 
 El intérprete solo dice qué quiere el cliente, de una lista cerrada, y de qué vehículo o
 servicio habla. Nunca redacta lo que contesta el bot ni inventa precios, turnos o
-tiempos: eso sale del sistema, como cuando el cliente toca un botón.
+tiempos: eso sale del sistema, como cuando el cliente toca un botón. Lo único que se
+redacta son las respuestas a una pregunta sobre el negocio o a la charla, y eso lo hace
+otro (app.bot.redactor), solo con la ficha del negocio.
 
 Antes de mandarle el mensaje se le tapan los datos personales que se reconocen (placas,
 celulares y correos): el intérprete no los necesita para entender qué quiere el cliente.
@@ -25,7 +27,10 @@ class Intencion(StrEnum):
     QUEJA = "queja"  # se queja de algo que ya pasó
     FELICITACION = "felicitacion"
     HABLAR_CON_PERSONA = "hablar_con_persona"  # quiere que le responda alguien, no el bot
-    OTRO = "otro"  # cualquier otra cosa, o no está claro
+    PREGUNTA = "pregunta"  # sobre el negocio: horarios, pagos, dirección (app.bot.redactor)
+    CHARLA = "charla"  # no pide nada: saluda, cuenta cómo se siente, bromea (app.bot.redactor)
+    CRISIS = "crisis"  # dice en serio que quiere morir o hacerse daño: un texto fijo de ayuda
+    OTRO = "otro"  # no se entiende qué quiere
 
 
 # Cuando el cliente dice "carro" sin decir si es automóvil o camioneta: el bot pregunta.

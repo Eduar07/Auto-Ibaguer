@@ -1,5 +1,9 @@
 """Lo que dice el bot. Los textos son propios: siempre iguales, nunca los inventa una IA.
 
+La única excepción es la respuesta a una pregunta sobre el negocio o a la charla, que la
+escribe Gemini con la ficha del negocio y el bot revisa (app.bot.redactor). Si no sirve,
+sale el texto fijo de aquí ("charla", "pregunta_al_administrador").
+
 Cada texto tiene un nombre y huecos entre llaves ({numero}, {hora}...) que el bot llena
 con los datos del sistema. *así* sale en negrilla en WhatsApp.
 
@@ -150,6 +154,19 @@ TEXTOS: dict[str, str] = {
     "sin_lavadas": "{nombre}, todavía no tienes lavadas con nosotros. ¿Pedimos la primera?",
     "mis_lavadas_sin_registro": "No encontramos lavadas con este número de WhatsApp. Las "
     "contamos cuando pides turno por aquí o das este número en el local.",
+    # --- Preguntas sobre el negocio y charla (las demás respuestas las escribe Gemini) ---
+    "charla": "Gracias por escribirnos. Por aquí te ayudamos con tu turno, la fila o los precios.",
+    "pregunta_al_administrador": "Esa no la sé, {nombre}, pero ya se la pasé al administrador "
+    "para que te responda lo antes posible.",
+    "pregunta_sin_respuesta": "Esa no la sé todavía. ¿Quieres que el administrador te "
+    "responda? Para eso guardamos tu número de WhatsApp, solo para responderte.",
+    "pregunta_anonima": "Entendido, no guardamos tu número. Si quieres la respuesta, llama al "
+    "{telefono}.",
+    # --- Mensajes graves: el bot no improvisa (líneas verificadas en noviembre de 2026) ---
+    "ayuda_urgente": "Siento mucho que te sientas así. No tienes que pasar por esto sin ayuda: "
+    "puedes hablar ya mismo, gratis y a cualquier hora, con la Línea 106 de salud mental, o "
+    "escribirle por WhatsApp a la Línea Espérame de Bucaramanga al 322 964 3755. Si estás en "
+    "peligro ahora, llama al 123.",
     # --- Avisos de la fila (salen de la bandeja de salida) ---
     "aviso_anticipado": "Tu turno *{turno}* está cerca: {adelante}. Sal hacia el lavadero "
     "para que llegues a tiempo.",

@@ -84,11 +84,26 @@ FRASES: tuple[FraseDePrueba, ...] = (
     FraseDePrueba("necesito hablar con el encargado", Q.HABLAR_CON_PERSONA),
     FraseDePrueba("me puede llamar alguien por favor?", Q.HABLAR_CON_PERSONA),
     FraseDePrueba("quiero hablar con una persona, no con un robot", Q.HABLAR_CON_PERSONA),
-    # --- Otra cosa ---
-    FraseDePrueba("a qué hora abren el domingo?", Q.OTRO),
-    FraseDePrueba("reciben nequi?", Q.OTRO),
-    FraseDePrueba("dónde quedan?", Q.OTRO),
-    FraseDePrueba("jajaja ok", Q.OTRO),
+    # --- Preguntas sobre el negocio (las contesta la ficha) ---
+    FraseDePrueba("a qué hora abren el domingo?", Q.PREGUNTA),
+    FraseDePrueba("reciben nequi?", Q.PREGUNTA),
+    FraseDePrueba("dónde quedan?", Q.PREGUNTA),
+    FraseDePrueba("tienen sala de espera?", Q.PREGUNTA),
+    FraseDePrueba("puedo pagar con tarjeta?", Q.PREGUNTA),
+    # --- Charla ---
+    FraseDePrueba("jajaja ok", Q.CHARLA),
+    FraseDePrueba("te amo", Q.CHARLA),
+    FraseDePrueba("estoy cansado", Q.CHARLA),
+    FraseDePrueba("me quiero ir a dormir", Q.CHARLA),
+    FraseDePrueba("eres un robot?", Q.CHARLA),
+    FraseDePrueba("buenas noches, cómo estás?", Q.CHARLA),
+    # --- Mensajes graves: el bot no improvisa ---
+    FraseDePrueba("ya no quiero vivir", Q.CRISIS),
+    FraseDePrueba("a veces pienso en quitarme la vida", Q.CRISIS),
+    FraseDePrueba("jajaja me muero de la risa", Q.CHARLA),  # una forma de hablar
+    # --- No se entiende ---
+    FraseDePrueba("asdfgh", Q.OTRO),
+    FraseDePrueba("kjsdhfk", Q.OTRO),
     # --- Con datos personales: deben llegar tapados ---
     FraseDePrueba("quiero turno para la moto ABC12D", Q.PEDIR_TURNO, vehiculo="Moto"),
     FraseDePrueba("llámenme al 300 123 4567 que ya no voy", Q.CANCELAR),

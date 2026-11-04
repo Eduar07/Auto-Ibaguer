@@ -79,9 +79,10 @@ def escribirle_al_bot(
     titulo: Annotated[str, Form()] = "",
 ) -> Response:
     entrada = Entrada(telefono=telefono, texto=texto or None, opcion=opcion or None)
-    # Igual que por WhatsApp: si Gemini está conectado, entiende lo que escribes.
-    interprete = gemini.para_el_bot(leer_parametros(sesion))
-    respuestas = conversacion.atender(sesion, entrada, interprete=interprete)
+    # Igual que por WhatsApp: si Gemini está conectado, entiende lo que escribes y contesta
+    # las preguntas y la charla con la ficha del negocio.
+    con_gemini = gemini.para_el_bot(leer_parametros(sesion))
+    respuestas = conversacion.atender(sesion, entrada, interprete=con_gemini, redactor=con_gemini)
     sesion.commit()
     contexto = {"telefono": telefono, "escrito": titulo or texto, "respuestas": respuestas}
     return html(request, "_charla_del_bot.html", contexto)

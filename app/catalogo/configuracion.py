@@ -31,6 +31,7 @@ LIMITES = {
     "sesion_bot_minutos": (10, 120),
 }
 PRECIO_MAXIMO = 5_000_000
+LARGO_DE_LA_FICHA = 2000  # caracteres: lo que Gemini lee en cada respuesta que escribe
 # El nombre de un modelo de Gemini: "gemini-3.5-flash-lite", "gemini-flash-latest"...
 MODELO_GEMINI = re.compile(r"[a-z0-9][a-z0-9.\-]{2,59}")
 DURACION_MINIMA, DURACION_MAXIMA = 5, 600
@@ -119,6 +120,16 @@ def validar_parametros(formulario: Mapping[str, Any]) -> dict[str, Any]:
     if not 20 <= len(aviso) <= 600:
         errores["aviso_datos"] = "El aviso debe tener entre 20 y 600 caracteres."
     limpios["aviso_datos"] = aviso
+
+    # Puede quedar vacía: entonces el bot solo sabe el horario, el teléfono y los servicios.
+    ficha = str(formulario.get("ficha_negocio", "")).replace("\r\n", "\n")
+    ficha = "\n".join(" ".join(linea.split()) for linea in ficha.strip().split("\n"))
+    ficha = re.sub(r"\n{3,}", "\n\n", ficha)
+    if len(ficha) > LARGO_DE_LA_FICHA:
+        errores["ficha_negocio"] = (
+            f"La ficha puede tener hasta {LARGO_DE_LA_FICHA} caracteres; esta tiene {len(ficha)}."
+        )
+    limpios["ficha_negocio"] = ficha
 
     if errores:
         raise ConfiguracionInvalida(errores)

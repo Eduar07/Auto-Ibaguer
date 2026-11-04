@@ -760,6 +760,72 @@ legend { padding: 0; margin-bottom: 8px; }
   margin: 0; padding: 12px 14px; border-left: 3px solid var(--borde-fuerte); border-radius: 0 10px 10px 0;
   background: var(--fondo); font-size: 15px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere;
 }
+.comentario__pausa {
+  display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 1.45; font-weight: 600; color: var(--azul-texto);
+}
+.comentario__pausa .icono { flex: none; margin-top: 1px; }
+
+/* Responder por WhatsApp: el diálogo es una conversación. Se abre mostrando lo último
+   (column-reverse empieza abajo) y, si es corta, queda arriba (el margen automático). */
+.dialogo:has(.dialogo__cuerpo--charla) { max-width: 100%; }
+.dialogo__cuerpo--charla { flex-direction: column-reverse; }
+.responder { display: flex; flex-direction: column; gap: 16px; margin-bottom: auto; }
+.responder__comentario { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.responder__comentario figcaption { font-size: 13px; font-weight: 700; color: var(--tinta-suave); }
+.charla-cliente {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: #efeae2;
+}
+.charla-cliente__dia { align-self: center; margin: 2px 0; }
+.charla-cliente__dia span {
+  display: inline-block; padding: 3px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.9);
+  color: var(--tinta-gris); font-size: 12px; font-weight: 600; box-shadow: 0 1px 1px rgba(14, 26, 43, 0.08);
+}
+.charla-cliente__vacia { align-self: center; padding: 6px; font-size: 14px; color: var(--tinta-gris); text-align: center; }
+.linea { max-width: 85%; display: flex; flex-direction: column; gap: 3px; }
+.linea p {
+  padding: 8px 12px; border-radius: 12px; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere;
+  box-shadow: 0 1px 1px rgba(14, 26, 43, 0.12);
+}
+/* Del lado del negocio, como en WhatsApp Business: el cliente a la izquierda; el bot (verde) y
+   el administrador (azul) a la derecha. */
+.linea--cliente { align-self: flex-start; }
+.linea--cliente p { background: #fff; border-top-left-radius: 4px; }
+.linea--bot, .linea--administrador { align-self: flex-end; align-items: flex-end; }
+.linea--bot p { background: #d9fdd3; border-top-right-radius: 4px; }
+.linea--administrador p {
+  background: var(--azul-claro); border-top-right-radius: 4px;
+  box-shadow: inset 0 0 0 1px var(--azul-resalte-borde), 0 1px 1px rgba(14, 26, 43, 0.12);
+}
+.linea__quien { padding: 0 4px; font-size: 12px; font-weight: 700; color: var(--tinta-gris); }
+.linea--administrador .linea__quien { color: var(--azul-texto); }
+.linea__pie { padding: 0 4px; font-size: 12px; color: var(--tinta-suave); }
+.linea__estado { font-weight: 700; }
+.linea__estado--pendiente { color: var(--naranja-texto); }
+.linea__estado--enviado { color: var(--verde); }
+.linea__estado--fallido, .linea__estado--descartado { color: var(--rojo-oscuro); }
+.linea__error { padding: 0 4px; font-size: 12px; line-height: 1.4; color: var(--rojo-oscuro); text-align: right; overflow-wrap: anywhere; }
+/* El bot en pausa: una sola franja arriba del mensaje, para que la conversación se vea. */
+.pausa-del-bot {
+  display: flex; align-items: center; gap: 4px 12px; padding: 6px 6px 6px 12px; border-radius: 10px;
+  background: var(--azul-resalte); box-shadow: inset 0 0 0 1px var(--azul-resalte-borde);
+}
+.pausa-del-bot[hidden] { display: none; }
+.pausa-del-bot__estado {
+  flex: 1 1 auto; display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 1.4; color: var(--tinta-gris);
+}
+.pausa-del-bot__estado .icono { flex: none; margin-top: 1px; color: var(--azul-texto); }
+.pausa-del-bot__estado strong { color: var(--azul-texto); }
+.pausa-del-bot .boton-texto { flex: none; min-height: 40px; padding: 0 8px; }
+.pausa-del-bot--listo { padding: 10px 12px; background: var(--verde-claro); box-shadow: none; }
+.pausa-del-bot--listo .pausa-del-bot__estado, .pausa-del-bot--listo .icono { color: var(--verde); }
+.campo textarea.campo__mensaje { min-height: 72px; max-height: 40vh; field-sizing: content; }
+.ayuda--aviso { color: var(--naranja-texto); }
+
+@media (min-width: 720px) {
+  .dialogo:has(.dialogo__cuerpo--charla) {
+    width: min(640px, calc(100% - 32px)); height: min(780px, calc(100dvh - 48px));
+  }
+}
 
 /* --- Textos del bot ----------------------------------------------------------------- */
 
@@ -853,6 +919,7 @@ legend { padding: 0; margin-bottom: 8px; }
 .burbuja--yo { align-self: flex-end; }
 .burbuja--yo p { background: #d9fdd3; border-top-right-radius: 4px; }
 .burbuja__etiqueta { font-size: 12px; font-weight: 700; color: var(--naranja-texto); padding-left: 4px; }
+.burbuja__etiqueta--persona { color: var(--azul-texto); }
 .burbuja__botones, .burbuja__opciones { display: flex; flex-direction: column; gap: 4px; }
 .burbuja__boton, .burbuja__opcion {
   min-height: 44px; padding: 8px 12px; border: 0; border-radius: 12px; background: #fff;

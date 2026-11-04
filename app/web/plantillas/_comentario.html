@@ -1,5 +1,6 @@
 {#- Un comentario en la pantalla Comentarios. Al marcarlo (atendido o pendiente), el
-    servidor devuelve esta misma tarjeta, ya cambiada. -#}
+    servidor devuelve esta misma tarjeta, ya cambiada. Desde el diálogo de responder llega
+    con `oob`: reemplaza la tarjeta que está detrás del diálogo. -#}
 {% import "_iconos.html" as iconos %}
 {% set tipos = {
   "queja": ("Queja", "rojo"),
@@ -8,7 +9,7 @@
   "pregunta": ("Pregunta que el bot no supo", "naranja"),
 } %}
 {% set nombre_del_tipo, color = tipos[c.tipo.value] %}
-<article class="panel comentario{% if c.atendido %} comentario--atendido{% endif %}" id="comentario-{{ c.id }}" aria-labelledby="comentario-{{ c.id }}-tipo">
+<article class="panel comentario{% if c.atendido %} comentario--atendido{% endif %}" id="comentario-{{ c.id }}" aria-labelledby="comentario-{{ c.id }}-tipo"{% if oob %} hx-swap-oob="true"{% endif %}>
   <div class="comentario__cabeza">
     <span class="insignia insignia--{{ color }}" id="comentario-{{ c.id }}-tipo">{{ nombre_del_tipo }}</span>
     <span class="suave">{{ cuando(c.creado_en) }}</span>
@@ -28,6 +29,10 @@
     {% endif %}
   </p>
 
+  {% if c.pausa_hasta %}
+  <p class="comentario__pausa">{{ iconos.icono("pausa", 18) }}<span>Le están respondiendo por WhatsApp: el bot no le contesta hasta {{ cuando_sera(c.pausa_hasta) }}</span></p>
+  {% endif %}
+
   {% if c.tipo.value == "pregunta" %}
   <p class="comentario__pista">Cuando le respondas, agrega la respuesta a la <a href="/configuracion#ficha">ficha del negocio</a>: así el bot la sabe la próxima vez.</p>
   {% endif %}
@@ -35,10 +40,20 @@
   <div class="comentario__acciones">
     {% if c.atendido %}
     <span class="comentario__atendido">{{ iconos.icono("listo", 18, 2.5) }}Atendido{% if c.atendido_por %} por {{ c.atendido_por }}{% endif %} · {{ cuando(c.atendido_en) }}</span>
+    {% if c.telefono %}
+    <button type="button" class="boton-texto" hx-get="/comentarios/{{ c.id }}/responder" hx-target="#dialogo-contenido">
+      {{ iconos.icono("responder", 18, 2.2) }}Responder por WhatsApp
+    </button>
+    {% endif %}
     <button type="button" class="boton-texto" hx-post="/comentarios/{{ c.id }}/pendiente"
             hx-target="#comentario-{{ c.id }}" hx-swap="outerHTML">Volver a pendiente</button>
     {% else %}
-    <button type="button" class="boton" hx-post="/comentarios/{{ c.id }}/atendido"
+    {% if c.telefono %}
+    <button type="button" class="boton" hx-get="/comentarios/{{ c.id }}/responder" hx-target="#dialogo-contenido">
+      {{ iconos.icono("responder", 18, 2.2) }}Responder por WhatsApp
+    </button>
+    {% endif %}
+    <button type="button" class="boton{% if c.telefono %} boton--borde{% endif %}" hx-post="/comentarios/{{ c.id }}/atendido"
             hx-target="#comentario-{{ c.id }}" hx-swap="outerHTML" hx-disabled-elt="this">
       {{ iconos.icono("listo", 18, 2.5) }}Marcar como atendido
     </button>

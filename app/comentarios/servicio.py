@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot.mensajes import recortar
+from app.bot.tablas import PausaDelBot
 from app.clientes.tablas import Cliente
 from app.comentarios.tablas import LARGO_MAXIMO, Comentario, TipoComentario
 from app.errores import ReglaDelNegocio
@@ -96,9 +97,24 @@ def volver_a_pendiente(sesion: Session, comentario_id: int) -> Comentario:
     return comentario
 
 
+def reabrir(sesion: Session, comentario_id: int) -> None:
+    """El cliente volvió a escribir mientras le responde una persona: queda por atender otra
+    vez, para que se vea en el menú. Si el comentario ya no existe, no pasa nada."""
+    comentario = sesion.get(Comentario, comentario_id)
+    if comentario is not None and comentario.atendido_en is not None:
+        comentario.atendido_en = None
+        comentario.atendido_por = None
+        sesion.flush()
+
+
 def borrar(sesion: Session, comentario_id: int) -> None:
-    """Por si quien lo escribió pide que se borre (Ley 1581), o si no era un comentario."""
-    sesion.delete(_el_comentario(sesion, comentario_id))
+    """Por si quien lo escribió pide que se borre (Ley 1581), o si no era un comentario.
+
+    Si el bot estaba en pausa porque le respondían desde este comentario, vuelve a
+    contestarle: ya no hay dónde mostrar lo que escriba."""
+    comentario = _el_comentario(sesion, comentario_id)
+    sesion.execute(delete(PausaDelBot).where(PausaDelBot.comentario_id == comentario_id))
+    sesion.delete(comentario)
     sesion.flush()
 
 

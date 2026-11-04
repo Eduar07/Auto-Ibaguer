@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app import cli
 from app.bot import conversacion
 from app.bot.mensajes import Lista, Mensaje, Opcion
+from app.comentarios.tablas import Comentario
 from app.config import obtener_entorno
 from app.integraciones import bandeja_entrada, bandeja_salida, whatsapp
 from app.integraciones.bandeja_salida import Resultado
@@ -42,6 +43,7 @@ from pruebas.fabricas import (
     por_whatsapp,
     tipo_vehiculo,
 )
+from pruebas.navegador import HTMX
 
 CELULAR = "573001234567"
 ID_DEL_NUMERO = "109876543210"
@@ -531,6 +533,37 @@ def test_meta_avisa_que_un_mensaje_no_se_entrego(webhook_listo: TestClient, sesi
     assert (
         mensaje.ultimo_error == "WhatsApp no pudo entregarlo (error 131047: Re-engagement message)."
     )
+
+
+# --- Responderle desde Comentarios (hito 7b) ----------------------------------------------------
+
+
+def test_el_administrador_le_responde_por_whatsapp_y_el_bot_no_se_mete(
+    webhook_listo: TestClient, adentro: TestClient, sesion: Session, abrir, enviador, meta
+):
+    vehiculo = cliente_con_vehiculo(sesion, telefono=CELULAR, nombre="Ana Ruiz")
+    nuevo = por_whatsapp(sesion, vehiculo=vehiculo)  # llamado hasta las 8:15
+    mandar(webhook_listo, aviso_de_meta(escribe("me atendieron mal")))
+    assert meta.textos[-1].startswith("Qué pena, Ana, con lo que pasó.")
+    [queja] = sesion.scalars(select(Comentario)).all()
+
+    # El administrador le responde desde Comentarios y el reloj lo manda, como texto.
+    adentro.post(
+        f"/comentarios/{queja.id}/responder",
+        data={"texto": "Hola Ana, te habla Eduar. ¿Qué pasó?"},
+        headers=HTMX,
+    )
+    enviar(abrir, enviador)
+    assert meta.enviados[-1]["type"] == "text"
+    assert meta.textos[-1] == "Hola Ana, te habla Eduar. ¿Qué pasó?"
+
+    # Lo que Ana le contesta a él, el bot no lo contesta.
+    enviados = len(meta.enviados)
+    mandar(webhook_listo, aviso_de_meta(escribe("El señor de la caja fue grosero")))
+    assert len(meta.enviados) == enviados
+    # Lo de la fila, sí.
+    mandar(webhook_listo, aviso_de_meta(escribe("ya llegué")))
+    assert meta.textos[-1].startswith(f"¡Bienvenido! Ya te marcamos como llegado ({nuevo.numero})")
 
 
 # --- Registrar el número, el día de la SIM ------------------------------------------------------

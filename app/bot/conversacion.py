@@ -10,7 +10,8 @@ llegada...), así que lo que pasa en el chat se ve al instante en la fila y al r
 
 Las quejas, las felicitaciones y los pedidos de hablar con una persona le llegan al
 administrador en el dashboard (Comentarios, app.comentarios). De quien no es cliente no
-se guarda el número sin su permiso.
+se guarda el número sin su permiso. Mientras el administrador le responde a un cliente,
+el bot no se mete en la conversación (app.bot.pausa), pero sí atiende lo de la fila.
 
 `atender` recibe lo que el cliente escribió o tocó y devuelve los mensajes para
 contestarle. No los envía ni confirma nada: quien lo llama (WhatsApp, o la página
@@ -33,12 +34,12 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app import tiempo
-from app.bot import textos
+from app.bot import pausa, textos
 from app.bot.interprete import CARRO, Catalogo, Intencion, Interpretacion, Interprete
 from app.bot.mensajes import Entrada, Lista, Mensaje, Opcion, recortar
 from app.bot.redactor import Redactor, Respuesta, ficha_completa, pide_ayuda_urgente, revisar
 from app.bot.sesiones import PASO_INICIAL
-from app.bot.tablas import SesionBot
+from app.bot.tablas import PausaDelBot, SesionBot
 from app.bot.textos import BOTONES, Textos
 from app.catalogo.parametros import Parametros, leer_parametros
 from app.catalogo.tablas import Fila, Servicio, ServicioPrecio, TipoVehiculo
@@ -97,6 +98,11 @@ PASOS_DE_TEXTO = frozenset({Paso.NOMBRE, Paso.PLACA, Paso.NUMERO_DE_TURNO})
 PASOS_QUE_ENTIENDE_GEMINI = frozenset({Paso.VEHICULO, Paso.PRECIOS, Paso.SERVICIO})
 # Las preguntas que también se contestan escribiendo un sí o un no claros ("no gracias").
 PASOS_DE_SI_O_NO = frozenset({Paso.AVISO_DATOS, Paso.CONFIRMAR, Paso.PERMISO_CONTACTO})
+
+# En estos el bot no le está preguntando nada: lo que escriba es conversación. Mientras el
+# administrador le responde (app.bot.pausa), eso le llega a él y el bot no lo contesta. En
+# los demás pasos el cliente va en algo con el bot (tocó "Pedir turno"...) y el bot sigue.
+PASOS_DE_CHARLA = frozenset({Paso.MENU, Paso.DETALLE})
 
 # El prefijo del id de cada botón dice a qué paso pertenece: un botón de un mensaje
 # viejo ya no sirve. Los del menú y los del turno ("En camino", "Ya estoy aquí") sirven
@@ -365,8 +371,13 @@ class _Atencion:
             return self._boton(self.entrada.opcion)
         escrito = (self.entrada.texto or "").strip()
         normal = normalizar(escrito)
+        pausa_vigente = pausa.pausa_de(self.sesion, self.telefono, self.ahora)
         if normal and pide_ayuda_urgente(normal):
+            if pausa_vigente is not None:
+                self._avisar_a_quien_responde(pausa_vigente)  # que lo vea la persona
             return self._ayuda_urgente()  # antes que todo, en cualquier paso
+        if pausa_vigente is not None and self.paso in PASOS_DE_CHARLA:
+            return self._mientras_responde_una_persona(pausa_vigente, normal)
         if self.paso == Paso.DETALLE:
             return self._detalle(escrito, normal)
         if self.entrada.otro or not escrito:
@@ -1368,13 +1379,14 @@ class _Atencion:
         self._volver_al_menu()
         return [Mensaje(self.texto("detalle_recibido")), *self._ademas(normal, escrito)]
 
-    def _ademas(self, normal: str, escrito: str) -> list[Mensaje]:
-        """En lo que contó, ¿pide también algo que el bot sabe hacer? Se hace después de
-        anotarlo. Un mensaje corto es un pedido ("ya llegué"); uno largo es un relato ("ya
-        llegué a la casa y vi el rayón"), y en un relato no se marca nada en la fila."""
-        if _solo_para_cerrar(normal):
-            return []
+    def _lo_de_la_fila(self, normal: str) -> list[Mensaje] | None:
+        """Lo que pide sobre su turno en medio de otra cosa (lo que cuenta de una queja, o
+        la conversación con el administrador). Un mensaje corto es un pedido ("ya llegué");
+        uno largo es un relato ("ya llegué a la casa y vi el rayón"), y en un relato no se
+        marca nada en la fila. None: no es de la fila."""
         corto = len(normal.split()) <= 4
+        if FRASE_DEL_QR in normal:
+            return self._llego_por_el_qr()  # el código QR del local
         if "cancel" in normal:
             # Siempre pregunta antes, con botones; si no tiene turnos, no hay qué cancelar.
             return self._preguntar_si_cancela() if self._activos() else []
@@ -1384,6 +1396,16 @@ class _Atencion:
             return self._llegada()
         if corto and _avisa_que_va_en_camino(normal):
             return self._en_camino()
+        return None
+
+    def _ademas(self, normal: str, escrito: str) -> list[Mensaje]:
+        """En lo que contó, ¿pide también algo que el bot sabe hacer? Se hace después de
+        anotarlo: primero lo de la fila (_lo_de_la_fila) y después lo demás."""
+        if _solo_para_cerrar(normal):
+            return []
+        de_la_fila = self._lo_de_la_fila(normal)
+        if de_la_fila is not None:
+            return de_la_fila
         if _pregunta_sus_lavadas(normal):
             return self._mis_lavadas()
         entendido = self._entender(escrito)
@@ -1458,6 +1480,24 @@ class _Atencion:
             return [self._con_botones_de_permiso(self.texto("pregunta_sin_respuesta"))]
         nombre = _primer_nombre(self.cliente)
         return [self._mensaje_del_menu("pregunta_al_administrador", nombre=nombre)]
+
+    def _mientras_responde_una_persona(
+        self, pausa_vigente: PausaDelBot, normal: str
+    ) -> list[Mensaje]:
+        """El administrador le está escribiendo desde Comentarios: el bot no se mete en la
+        conversación. Lo que escribe le llega al administrador (el comentario vuelve a
+        quedar por atender) y, después de la pausa, el bot empieza desde el menú. Lo de la
+        fila sí lo atiende el bot ("ya llegué", "mi turno"...): la fila no espera."""
+        de_la_fila = self._lo_de_la_fila(normal) if normal else None
+        if de_la_fila:  # sin turnos que cancelar, "cancelar" también es para la persona
+            return de_la_fila
+        self._avisar_a_quien_responde(pausa_vigente)
+        self._volver_al_menu()
+        return []
+
+    def _avisar_a_quien_responde(self, pausa_vigente: PausaDelBot) -> None:
+        if pausa_vigente.comentario_id is not None:
+            comentarios.reabrir(self.sesion, pausa_vigente.comentario_id)
 
     def _ayuda_urgente(self) -> list[Mensaje]:
         """Dice que quiere morir o hacerse daño. El bot no improvisa ni guarda nada: manda

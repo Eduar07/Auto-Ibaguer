@@ -11,7 +11,6 @@ uv run auto-ibaguer probar-gemini             corre las frases de prueba contra 
 import argparse
 import getpass
 import re
-import secrets
 import sys
 import time
 from pathlib import Path
@@ -32,6 +31,7 @@ from app.catalogo.datos_iniciales import cargar_datos_iniciales
 from app.catalogo.parametros import leer_parametros
 from app.catalogo.tablas import TipoVehiculo
 from app.clientes import servicio as clientes
+from app.clientes.reglas import celular_inventado
 from app.config import con_psycopg, obtener_entorno
 from app.db.revision import Revision, revisar
 from app.db.sesion import obtener_motor
@@ -179,12 +179,12 @@ def simular_turno(vehiculo: str, nombre: str | None, celular: str | None) -> int
     """Pide un turno por WhatsApp como lo hará el bot (hito 5), con las mismas reglas.
 
     Sirve para probar el dashboard y el reloj mientras el bot no existe. Si no se da el
-    celular, se inventa uno que empieza por 5799: ningún celular colombiano empieza así.
+    celular, se inventa uno que empieza por 5799 (app.clientes.reglas.PREFIJO_DE_PRUEBA).
     """
     if obtener_entorno().es_produccion:
         print("simular-turno es solo para probar en tu computador.", file=sys.stderr)
         return 1
-    telefono = celular or f"5799{secrets.randbelow(10**8):08d}"
+    telefono = celular or celular_inventado()
     try:
         with Session(obtener_motor()) as sesion, sesion.begin():
             cliente = clientes.registrar_cliente(

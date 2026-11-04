@@ -1,4 +1,4 @@
-"""Tabla de sesiones del bot."""
+"""Tablas del bot: en qué va cada conversación y con quién está en pausa."""
 
 from datetime import datetime
 from typing import Any
@@ -36,3 +36,25 @@ class SesionBot(Base):
     )
     # Pasados 30 minutos sin respuesta, la sesión vence y el bot vuelve al menú.
     expira_en: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PausaDelBot(Base):
+    """Mientras una persona del lavadero le responde a un cliente, el bot no le contesta.
+
+    Se crea (o se alarga) cada vez que el administrador le escribe desde Comentarios, y
+    vence sola (app.bot.pausa). Los botones, los avisos de la fila y los mensajes graves
+    siguen funcionando igual.
+    """
+
+    __tablename__ = "pausa_del_bot"
+    __table_args__ = (CheckConstraint("telefono ~ '^[0-9]{8,15}$'", name="telefono_solo_digitos"),)
+
+    telefono: Mapped[str] = mapped_column(String(15), primary_key=True)
+    hasta: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # El comentario que se está respondiendo: si el cliente escribe, vuelve a quedar por
+    # atender. Si alguien lo borra, la pausa sigue sin él.
+    comentario_id: Mapped[int | None] = mapped_column(
+        ForeignKey("comentario.id", ondelete="SET NULL")
+    )
+    administrador_id: Mapped[int] = mapped_column(ForeignKey("administrador.id"))
+    creada_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

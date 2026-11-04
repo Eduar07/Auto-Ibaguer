@@ -14,7 +14,7 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app import tiempo
-from app.bot.tablas import SesionBot
+from app.bot.tablas import PausaDelBot, SesionBot
 from app.catalogo.tablas import Fila, TipoVehiculo
 from app.clientes.errores import (
     FaltaAutorizacion,
@@ -277,6 +277,8 @@ def borrar_datos(sesion: Session, cliente_id: int, *, ahora: datetime | None = N
             or_(SesionBot.cliente_id == cliente.id, SesionBot.telefono == cliente.telefono)
         )
     )
+    if cliente.telefono:
+        sesion.execute(delete(PausaDelBot).where(PausaDelBot.telefono == cliente.telefono))
     # Sus quejas y felicitaciones las escribió él, con sus palabras: también se borran.
     comentarios.borrar_los_del_cliente(sesion, cliente)
     # Las consultas quedan para contar cuánta gente pregunta, pero ya sin saber quién.

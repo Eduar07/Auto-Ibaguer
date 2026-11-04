@@ -1,9 +1,10 @@
 {% import "_burbujas_del_bot.html" as burbujas %}
-{#- Cada 3 segundos pregunta si la fila le dejó un aviso nuevo a este celular. -#}
+{#- Cada 3 segundos pregunta si la fila le dejó un aviso nuevo a este celular, o si el
+    administrador le escribió desde Comentarios. -#}
 <div id="avisos-del-bot" hidden hx-get="/probar-bot/avisos" hx-trigger="every 3s" hx-swap="outerHTML"
      hx-vals='{{ {"telefono": telefono, "desde": desde}|tojson }}'></div>
 {% if avisos %}
 <div hx-swap-oob="beforeend:#charla">
-  {% for aviso in avisos %}{{ burbujas.del_bot(aviso, telefono, "Aviso de la fila") }}{% endfor %}
+  {% for aviso in avisos %}{{ burbujas.del_bot(aviso.mensaje, telefono, aviso.etiqueta, aviso.de_una_persona) }}{% endfor %}
 </div>
 {% endif %}

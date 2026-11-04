@@ -1,10 +1,14 @@
 """Reglas de clientes y vehículos, sin base de datos: teléfonos, nombres y placas."""
 
 import re
+import secrets
 
 from app.clientes.errores import NombreInvalido, PlacaInvalida, TelefonoInvalido
 
 LARGO_MAXIMO_NOMBRE = 80
+# Los celulares inventados para probar (Probar el bot, simular-turno) empiezan así: ningún
+# celular colombiano empieza por 5799. A esos nunca se les escribe por WhatsApp.
+PREFIJO_DE_PRUEBA = "5799"
 
 
 def normalizar_telefono(texto: str) -> str:
@@ -19,6 +23,15 @@ def normalizar_telefono(texto: str) -> str:
     if not 8 <= len(digitos) <= 15:
         raise TelefonoInvalido(f"El teléfono {texto.strip()!r} no es válido.")
     return digitos
+
+
+def celular_inventado() -> str:
+    """Un celular para probar: 5799 y ocho cifras al azar."""
+    return f"{PREFIJO_DE_PRUEBA}{secrets.randbelow(10**8):08d}"
+
+
+def es_de_prueba(telefono: str) -> bool:
+    return telefono.startswith(PREFIJO_DE_PRUEBA)
 
 
 def nombre_bonito(texto: str) -> str:

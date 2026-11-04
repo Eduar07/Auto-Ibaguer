@@ -1,0 +1,15 @@
+{#- Si el bot está en pausa con este cliente porque le responde una persona, en el pie del
+    diálogo de responder. La conversación, al pedirse sola, también lo pone al día (`oob`).
+    Al devolverlo al bot (`devuelto`), la tarjeta del comentario también cambia. -#}
+{% import "_iconos.html" as iconos %}
+<div id="pausa-del-bot" class="pausa-del-bot{% if devuelto %} pausa-del-bot--listo{% endif %}"
+     {%- if not (devuelto or c.pausa_hasta) %} hidden{% endif %}{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if devuelto %}
+  <p class="pausa-del-bot__estado" role="status">{{ iconos.icono("listo", 18, 2.5) }}<span>Listo: el bot vuelve a contestarle.</span></p>
+  {% elif c.pausa_hasta %}
+  <p class="pausa-del-bot__estado">{{ iconos.icono("pausa", 18) }}<span><strong>Bot en pausa hasta {{ cuando_sera(c.pausa_hasta) }}</strong> Solo contesta lo de la fila, como «ya llegué».</span></p>
+  <button type="button" class="boton-texto" hx-post="/comentarios/{{ c.id }}/devolver-al-bot"
+          hx-target="#pausa-del-bot" hx-swap="outerHTML" hx-disabled-elt="this">Devolver al bot</button>
+  {% endif %}
+</div>
+{% if devuelto %}{% with oob=True %}{% include "_comentario.html" %}{% endwith %}{% endif %}

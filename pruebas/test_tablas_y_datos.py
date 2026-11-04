@@ -37,8 +37,9 @@ TABLAS_DE_LA_FASE_1 = {
     "mensaje_entrante",
     "mensaje_saliente",
 }
-# Hito 7b: las quejas, felicitaciones y pedidos de hablar con una persona.
-TODAS_LAS_TABLAS = TABLAS_DE_LA_FASE_1 | {"comentario"}
+# Hito 7b: las quejas, felicitaciones y pedidos de hablar con una persona, y el bot en
+# pausa mientras el administrador le responde a un cliente.
+TODAS_LAS_TABLAS = TABLAS_DE_LA_FASE_1 | {"comentario", "pausa_del_bot"}
 
 MENU_ESPERADO = {
     ("Básico", "Automóvil"): 40_000,
@@ -62,7 +63,7 @@ def contar_registros(sesion: Session) -> dict[str, int]:
     return {m.__tablename__: len(sesion.scalars(select(m)).all()) for m in modelos}
 
 
-def test_existen_las_17_tablas(motor: Engine):
+def test_existen_las_18_tablas(motor: Engine):
     tablas = set(inspect(motor).get_table_names()) - {"alembic_version"}
     assert tablas == TODAS_LAS_TABLAS
 

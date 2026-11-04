@@ -1,0 +1,57 @@
+{#- Responderle por WhatsApp a quien dejó el comentario: arriba el comentario y la
+    conversación (que se actualiza sola), abajo el mensaje nuevo. Al enviarlo, el servidor
+    devuelve este mismo diálogo, con el mensaje ya en la conversación. -#}
+{% import "_iconos.html" as iconos %}
+{% set tipos = {
+  "queja": "Queja",
+  "felicitacion": "Felicitación",
+  "quiere_hablar": "Quiere hablar con alguien",
+  "pregunta": "Pregunta que el bot no supo",
+} %}
+<form class="dialogo__caja" hx-post="/comentarios/{{ c.id }}/responder" hx-target="#dialogo-contenido"
+      hx-disabled-elt="find button[type='submit']">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">{% if c.cliente %}Responder a {{ c.cliente }}{% else %}Responder por WhatsApp{% endif %}</h2>
+    <p>Por WhatsApp, al {{ c.telefono|telefono_oculto }}{% if not c.cliente_id %}. No es cliente: dio permiso para que le respondan{% endif %}.</p>
+  </div>
+
+  {#- Se abre mostrando lo último de la conversación, como en WhatsApp (CSS: column-reverse). -#}
+  <div class="dialogo__cuerpo dialogo__cuerpo--charla">
+    <div class="responder">
+      <figure class="responder__comentario">
+        <figcaption>{{ tipos[c.tipo.value] }} · {{ cuando(c.creado_en) }}</figcaption>
+        <blockquote class="comentario__cita">{{ c.texto }}</blockquote>
+      </figure>
+      {% include "_charla_con_el_cliente.html" %}
+    </div>
+  </div>
+
+  <div class="dialogo__pie">
+    {% include "_pausa_del_bot.html" %}
+    {% if hasta %}
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <div class="campo">
+      <label for="respuesta">Tu mensaje</label>
+      <textarea id="respuesta" class="campo__mensaje" name="texto" rows="2" maxlength="{{ largo_maximo }}" required>{{ texto }}</textarea>
+      {#- La hora ya termina en punto ("a.m."): no se le pone otro. -#}
+      <p class="ayuda">WhatsApp deja escribirle hasta {{ cuando_sera(hasta) }}{% if not c.pausa_hasta %} Al enviarlo, el bot hace una pausa de una hora con este cliente, para no meterse.{% endif %}</p>
+      {% if not whatsapp_conectado %}
+      <p class="ayuda ayuda--aviso">WhatsApp todavía no está conectado: el mensaje queda esperando en la bandeja de salida. Si hablas con el bot en Probar el bot, ahí lo ves llegar.</p>
+      {% endif %}
+    </div>
+    <button type="submit" class="boton boton--grande">Enviar por WhatsApp</button>
+    {% else %}
+    <p class="nota nota--suelta">{{ iconos.icono("info", 18) }}<span>WhatsApp solo deja escribirle hasta 24 horas después de su último mensaje, y ya pasaron. Llámalo, o espera a que vuelva a escribir.</span></p>
+    {% if texto %}
+    {#- Lo que alcanzó a escribir no se pierde: lo puede copiar. -#}
+    <div class="campo">
+      <label for="respuesta">Lo que escribiste (no salió)</label>
+      <textarea id="respuesta" rows="3" readonly>{{ texto }}</textarea>
+    </div>
+    {% endif %}
+    <a class="boton boton--grande boton--borde" href="tel:+{{ c.telefono }}">Llamar</a>
+    {% endif %}
+  </div>
+</form>
+{% if con_tarjeta %}{% with oob=True %}{% include "_comentario.html" %}{% endwith %}{% endif %}

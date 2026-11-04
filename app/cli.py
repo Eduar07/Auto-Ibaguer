@@ -276,9 +276,11 @@ def _lo_que_entendio(entendido: Interpretacion) -> str:
     return ", ".join(parte for parte in partes if parte)
 
 
-def _lo_que_contesta(con_gemini: gemini.Gemini, tipo: Intencion, texto: str, ficha: str) -> str:
+def _lo_que_contesta(
+    con_gemini: gemini.Gemini, tipo: Intencion, frase: FraseDePrueba, ficha: str
+) -> str:
     """Lo que el bot le contestaría a una pregunta o a la charla, como en WhatsApp."""
-    respuesta = con_gemini.redactar(tipo, texto, ficha)
+    respuesta = con_gemini.redactar(tipo, frase.texto, ficha, antes=frase.antes)
     if respuesta is None:
         return f"contesta el texto fijo ({con_gemini.ultimo_problema or 'no respondió'})"
     if tipo == Intencion.PREGUNTA and not respuesta.sabe:
@@ -293,8 +295,9 @@ def probar_gemini(modelo: str | None, pausa: float) -> int:
     """Corre las frases de prueba (app/bot/frases_de_prueba.py) contra el modelo de verdad.
 
     Sirve para decidir si un modelo nuevo se puede usar con clientes. A las preguntas y a
-    la charla les muestra, además, lo que contestaría el bot con la ficha del negocio. Entre
-    petición y petición espera `pausa` segundos, para no pasarse del límite del plan gratis.
+    la charla les muestra, además, lo que contestaría el bot con la ficha del negocio. Las
+    frases "con memoria" van con lo que se venían diciendo antes. Entre petición y petición
+    espera `pausa` segundos, para no pasarse del límite del plan gratis.
     """
     entorno = obtener_entorno()
     if not entorno.gemini_clave:
@@ -311,19 +314,20 @@ def probar_gemini(modelo: str | None, pausa: float) -> int:
     for numero, frase in enumerate(FRASES):
         if numero:
             time.sleep(pausa)
-        entendido = interprete.interpretar(frase.texto, catalogo)
+        entendido = interprete.interpretar(frase.texto, catalogo, antes=frase.antes)
         falla = _como_salio(frase, entendido)
+        cual = f"«{frase.texto}»" + (" (con memoria)" if frase.antes else "")
         if falla is None:
             bien += 1
-            print(f"  bien   «{frase.texto}» → {_lo_que_entendio(entendido)}")
+            print(f"  bien   {cual} → {_lo_que_entendio(entendido)}")
         else:
             detalle = interprete.ultimo_problema or (
                 f"entendió {_lo_que_entendio(entendido)}" if entendido else ""
             )
-            print(f"  MAL    «{frase.texto}» → {falla} ({detalle})")
+            print(f"  MAL    {cual} → {falla} ({detalle})")
         if entendido is not None and entendido.intencion in PREGUNTA_O_CHARLA:
             time.sleep(pausa)
-            contesta = _lo_que_contesta(interprete, entendido.intencion, frase.texto, ficha)
+            contesta = _lo_que_contesta(interprete, entendido.intencion, frase, ficha)
             print(f"         {contesta}")
     porcentaje = round(100 * bien / len(FRASES))
     print(f"{bien} de {len(FRASES)} bien ({porcentaje} %).")

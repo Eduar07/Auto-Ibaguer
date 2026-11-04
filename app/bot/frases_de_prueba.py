@@ -6,14 +6,25 @@ se cambie el modelo en Configuración (o cuando Google lo actualice). Si una fra
 se mira por qué antes de usar ese modelo con clientes.
 
 Para agregar una, basta escribirla aquí con lo que se espera. Las que mandan una placa o
-un celular prueban, además, que esos datos lleguen tapados.
+un celular prueban, además, que esos datos lleguen tapados. Las que traen `antes` prueban
+la memoria: solo se entienden por lo que se venían diciendo ("sí porfa", "y la
+camioneta?").
 """
 
 from dataclasses import dataclass
 
-from app.bot.interprete import CARRO, Intencion
+from app.bot.interprete import CARRO, Anterior, Intencion
 
 Q = Intencion  # para que cada frase quepa en una línea
+MENU = ("Pedir turno", "Ver la fila", "Servicios y precios")
+
+
+def cliente(texto: str) -> Anterior:
+    return Anterior("cliente", texto)
+
+
+def bot(texto: str, *opciones: str) -> Anterior:
+    return Anterior("bot", texto, opciones)
 
 
 @dataclass(frozen=True)
@@ -22,6 +33,7 @@ class FraseDePrueba:
     intencion: Intencion
     vehiculo: str | None = None  # si se espera que diga de qué vehículo habla
     servicio: str | None = None
+    antes: tuple[Anterior, ...] = ()  # lo que se venían diciendo, del más viejo al más nuevo
 
 
 FRASES: tuple[FraseDePrueba, ...] = (
@@ -97,6 +109,9 @@ FRASES: tuple[FraseDePrueba, ...] = (
     FraseDePrueba("me quiero ir a dormir", Q.CHARLA),
     FraseDePrueba("eres un robot?", Q.CHARLA),
     FraseDePrueba("buenas noches, cómo estás?", Q.CHARLA),
+    # Otros temas: conversa, pero no se vuelve un asistente para todo (política de Meta).
+    FraseDePrueba("viste el partido de anoche?", Q.CHARLA),
+    FraseDePrueba("me ayudas con una tarea de matemáticas?", Q.CHARLA),
     # --- Mensajes graves: el bot no improvisa ---
     FraseDePrueba("ya no quiero vivir", Q.CRISIS),
     FraseDePrueba("a veces pienso en quitarme la vida", Q.CRISIS),
@@ -107,4 +122,52 @@ FRASES: tuple[FraseDePrueba, ...] = (
     # --- Con datos personales: deben llegar tapados ---
     FraseDePrueba("quiero turno para la moto ABC12D", Q.PEDIR_TURNO, vehiculo="Moto"),
     FraseDePrueba("llámenme al 300 123 4567 que ya no voy", Q.CANCELAR),
+    # --- Con memoria: se entienden por lo que se venían diciendo ---
+    FraseDePrueba(
+        "sí porfa",
+        Q.PEDIR_TURNO,
+        antes=(
+            cliente("están atendiendo hoy?"),
+            bot("¡Sí, hoy atendemos hasta las 6:00 p.m.! ¿Quieres que te aparte un turno?"),
+        ),
+    ),
+    FraseDePrueba(
+        "y para la camioneta?",
+        Q.PRECIOS,
+        vehiculo="Camioneta",
+        antes=(
+            cliente("cuánto vale lavar la moto?"),
+            bot("Servicios para moto: *Básico* · $18.000, *Intermedio* · $25.000."),
+        ),
+    ),
+    FraseDePrueba(
+        "y eso cuánto vale?",
+        Q.PRECIOS,
+        servicio="Encerado",
+        antes=(
+            cliente("qué es eso del encerado?"),
+            bot("El Encerado deja la pintura protegida y con brillo, como recién salida."),
+        ),
+    ),
+    FraseDePrueba(
+        "el del medio",
+        Q.VER_FILA,
+        antes=(bot("¡Hola, Ana! Qué bueno saludarte de nuevo.", *MENU),),
+    ),
+    FraseDePrueba(
+        "jaja sí, todo el día",
+        Q.CHARLA,
+        antes=(
+            cliente("uff estoy muy cansado"),
+            bot("Uy, se nota que fue un día largo. ¿Te tocó trabajar mucho?"),
+        ),
+    ),
+    FraseDePrueba(
+        "no gracias, era solo para saber",
+        Q.CHARLA,
+        antes=(
+            cliente("a qué hora cierran hoy?"),
+            bot("Hoy atendemos hasta las 6:00 p.m. ¿Te aparto un turno?"),
+        ),
+    ),
 )

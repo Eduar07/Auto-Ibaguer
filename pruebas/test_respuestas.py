@@ -6,6 +6,7 @@ el bot contesta con un texto fijo y las líneas de ayuda.
 """
 
 import logging
+from collections.abc import Sequence
 
 import httpx
 import pytest
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.bot import conversacion
 from app.bot.conversacion import catalogo_del_bot
-from app.bot.interprete import Intencion, Interpretacion
+from app.bot.interprete import Anterior, Intencion, Interpretacion
 from app.bot.mensajes import Entrada
 from app.bot.redactor import Respuesta, ficha_completa, pide_ayuda_urgente, revisar
 from app.bot.textos import TEXTOS
@@ -39,9 +40,13 @@ class RedactorDeMentira:
     def __init__(self, *respuestas: Respuesta | None | Exception) -> None:
         self.respuestas = list(respuestas)
         self.pedidos: list[tuple[Intencion, str, str]] = []
+        self.antes: list[tuple[Anterior, ...]] = []  # lo que vio de la conversación
 
-    def redactar(self, tipo: Intencion, mensaje: str, ficha: str) -> Respuesta | None:
+    def redactar(
+        self, tipo: Intencion, mensaje: str, ficha: str, antes: Sequence[Anterior] = ()
+    ) -> Respuesta | None:
         self.pedidos.append((tipo, mensaje, ficha))
+        self.antes.append(tuple(antes))
         respuesta = self.respuestas.pop(0) if self.respuestas else None
         if isinstance(respuesta, Exception):
             raise respuesta
@@ -79,13 +84,13 @@ def charla(sesion: Session, entendidos: list, respuestas: list | None = None) ->
         ("me quiero ir a dormir", "¡Que descanses! Mañana te ayudamos con tu turno."),
     ],
 )
-def test_la_charla_la_contesta_gemini_y_deja_el_menu(sesion: Session, frase, contesta):
+def test_la_charla_la_contesta_gemini_sin_ofrecer_el_menu(sesion: Session, frase, contesta):
     cliente = charla(sesion, [Interpretacion(Q.CHARLA)], [Respuesta(contesta)])
 
     cliente.escribe(frase)
 
     assert cliente.texto == contesta
-    assert cliente.opciones == MENU
+    assert cliente.opciones == []  # es una conversación, no una venta
     [(tipo, mensaje, ficha)] = cliente.redactor.pedidos
     assert (tipo, mensaje) == (Q.CHARLA, frase)
     assert ficha.startswith("Nombre: Auto Ibaguer.")
@@ -156,7 +161,7 @@ def test_una_pregunta_se_contesta_con_la_ficha(sesion: Session):
     cliente.escribe("reciben nequi?")
 
     assert cliente.texto == "Sí, recibimos Nequi, efectivo y tarjeta."
-    assert cliente.opciones == MENU
+    assert cliente.opciones == []
     [(tipo, _, ficha)] = cliente.redactor.pedidos
     assert tipo == Q.PREGUNTA
     assert ficha.endswith("Formas de pago: efectivo, Nequi y tarjeta.")
@@ -343,7 +348,11 @@ def test_la_ficha_que_escribe_el_administrador_va_al_final(sesion: Session):
     ("texto", "queda"),
     [
         ("Sí, recibimos Nequi.", "Sí, recibimos Nequi."),
-        ("Que descanses 😴 mañana te esperamos.", "Que descanses mañana te esperamos."),
+        # Emojis con moderación: hasta dos se quedan; con más, se quitan todos.
+        ("Que descanses 😴 mañana te esperamos.", "Que descanses 😴 mañana te esperamos."),
+        ("¡Qué bien! 🙌🚗", "¡Qué bien! 🙌🚗"),
+        ("¡Listo! 🚗✨🧼 Te esperamos 😊", "¡Listo! Te esperamos"),
+        ("👍🏻", None),  # solo un emoji no es una respuesta
         ("Llámanos al 322 755 6850.", "Llámanos al 322 755 6850."),  # está en la ficha
         ("Llámanos al 322-755-6850.", "Llámanos al 322-755-6850."),
         (

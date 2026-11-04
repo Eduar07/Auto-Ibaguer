@@ -22,9 +22,11 @@ from app.bot import pausa
 from app.catalogo.parametros import leer_parametros
 from app.comentarios import consultas, respuestas
 from app.comentarios import servicio as comentarios
-from app.comentarios.respuestas import Linea, NoSePuedeResponder
+from app.comentarios.respuestas import NoSePuedeResponder
 from app.comentarios.servicio import ComentarioNoExiste
 from app.config import obtener_entorno
+from app.integraciones import historial
+from app.integraciones.historial import Linea
 from app.web.comun import (
     Admin,
     NecesitaEntrar,
@@ -168,7 +170,7 @@ def _por_dia(lineas: list[Linea]) -> list[tuple[date, list[Linea]]]:
 def _charla(sesion: Session, c: consultas.ComentarioEnLista, ahora: datetime) -> dict[str, Any]:
     """La conversación y en qué va: lo que se muestra en el diálogo y se vuelve a pedir."""
     telefono = c.telefono or ""
-    lineas = respuestas.charla_con(sesion, telefono, leer_parametros(sesion))
+    lineas = historial.conversacion(sesion, telefono, leer_parametros(sesion))
     hasta = respuestas.hasta_cuando_se_puede(sesion, telefono, ahora)
     # Si nada de esto cambió, la conversación que se ve está al día (ver `charla`).
     huella = hashlib.sha256(

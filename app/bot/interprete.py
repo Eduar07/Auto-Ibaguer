@@ -6,11 +6,14 @@ tiempos: eso sale del sistema, como cuando el cliente toca un botón. Lo único 
 redacta son las respuestas a una pregunta sobre el negocio o a la charla, y eso lo hace
 otro (app.bot.redactor), solo con la ficha del negocio.
 
-Antes de mandarle el mensaje se le tapan los datos personales que se reconocen (placas,
-celulares y correos): el intérprete no los necesita para entender qué quiere el cliente.
+Para entender el mensaje nuevo, el intérprete también ve lo último que se dijeron (la
+memoria del bot, `Anterior`): así un "sí porfa" o un "y la camioneta?" se entienden por
+lo que venía antes. Antes de mandárselo se le tapan los datos personales que se reconocen
+(placas, celulares y correos): no los necesita para entender qué quiere el cliente.
 """
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol
@@ -54,14 +57,27 @@ class Interpretacion:
     servicio: str | None = None  # uno del catálogo
 
 
+@dataclass(frozen=True)
+class Anterior:
+    """Un mensaje de lo que se venían diciendo, del más viejo al más nuevo (sale de
+    app.integraciones.historial). Va sin tapar: los datos se tapan al mandárselo a Gemini."""
+
+    quien: str  # "cliente", "bot" o "administrador"
+    texto: str
+    opciones: tuple[str, ...] = ()  # los botones que traía, si era del bot
+
+
 class Interprete(Protocol):
     """Quien entiende el texto libre; en el hito 7, Gemini.
 
     Como una interfaz de Java: el bot solo sabe que tiene `interpretar`. Si el
     intérprete no responde a tiempo o falla, devuelve None y el bot sigue con botones.
+    `antes` es lo último que se dijeron, para entender el mensaje en contexto.
     """
 
-    def interpretar(self, mensaje: str, catalogo: Catalogo) -> Interpretacion | None: ...
+    def interpretar(
+        self, mensaje: str, catalogo: Catalogo, antes: Sequence[Anterior] = ()
+    ) -> Interpretacion | None: ...
 
 
 def leer_respuesta(datos: Any, catalogo: Catalogo) -> Interpretacion | None:

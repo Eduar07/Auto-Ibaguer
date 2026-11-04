@@ -5,58 +5,30 @@ bot (con sus reintentos y en orden), y solo si el cliente escribió en las últi
 horas: WhatsApp no deja escribirle libremente a nadie más. Mientras tanto, el bot queda en
 pausa con ese cliente (app.bot.pausa), para no meterse en la conversación.
 
-La conversación que se muestra (charla_con) junta lo que el cliente escribió y lo que le
-salió: las respuestas del bot, los avisos de la fila y lo que escribió el administrador.
+La conversación que se muestra en el diálogo sale de app.integraciones.historial.
 """
 
 import re
-from dataclasses import dataclass
 from datetime import datetime
-from enum import StrEnum
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot import pausa
-from app.bot.avisos import mensaje_del_aviso
-from app.bot.mensajes import recortar
-from app.catalogo.parametros import Parametros
 from app.comentarios import servicio as comentarios
 from app.comentarios.servicio import ComentarioNoExiste
 from app.comentarios.tablas import Comentario
 from app.errores import ReglaDelNegocio
 from app.integraciones import bandeja_salida
-from app.integraciones.bandeja_salida import TIPO_DEL_ADMINISTRADOR, TIPO_RESPUESTA
-from app.integraciones.tablas import EstadoMensaje, MensajeEntrante, MensajeSaliente
+from app.integraciones.tablas import MensajeEntrante, MensajeSaliente
 from app.integraciones.whatsapp import VENTANA_PARA_ESCRIBIR
-from app.turnos.estados import TipoAviso
 
 LARGO_MAXIMO = 1000  # caracteres: WhatsApp deja más, pero un mensaje así ya es largo
-CUANTOS = 30  # lo último de la conversación que se muestra
-_TIPOS_DE_AVISO = {tipo.value for tipo in TipoAviso}
 
 
 class NoSePuedeResponder(ReglaDelNegocio):
     pass
-
-
-class Quien(StrEnum):
-    CLIENTE = "cliente"
-    BOT = "bot"
-    ADMINISTRADOR = "administrador"
-
-
-@dataclass(frozen=True)
-class Linea:
-    """Un mensaje de la conversación, como se muestra en Comentarios."""
-
-    cuando: datetime
-    quien: Quien
-    dice: str
-    por: str | None = None  # el usuario del administrador que lo escribió
-    estado: EstadoMensaje | None = None  # de lo que salió: por enviar, enviado, no salió...
-    error: str | None = None
 
 
 def hasta_cuando_se_puede(sesion: Session, telefono: str, ahora: datetime) -> datetime | None:
@@ -133,67 +105,3 @@ def limpio(texto: str) -> str:
     seguidas."""
     lineas = [linea.strip() for linea in texto.replace("\r\n", "\n").strip().split("\n")]
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lineas))
-
-
-# --- La conversación --------------------------------------------------------------------------
-
-
-def charla_con(
-    sesion: Session, telefono: str, parametros: Parametros, *, cuantos: int = CUANTOS
-) -> list[Linea]:
-    """Lo último que se dijeron con ese celular, del más viejo al más nuevo."""
-    entrantes = sesion.scalars(
-        select(MensajeEntrante)
-        .where(MensajeEntrante.telefono == telefono)
-        .order_by(MensajeEntrante.id.desc())
-        .limit(cuantos)
-    )
-    salientes = sesion.scalars(
-        select(MensajeSaliente)
-        .where(MensajeSaliente.telefono == telefono)
-        .order_by(MensajeSaliente.id.desc())
-        .limit(cuantos)
-    )
-    # Cada lista del más viejo al más nuevo; al ordenar, lo que pasó a la misma hora queda
-    # en ese orden, y primero lo que escribió el cliente que lo que se le contestó.
-    lineas = [_lo_que_llego(m) for m in reversed(list(entrantes))]
-    lineas += [_lo_que_salio(m, parametros) for m in reversed(list(salientes))]
-    lineas.sort(key=lambda linea: (linea.cuando, linea.quien != Quien.CLIENTE))
-    return lineas[-cuantos:]
-
-
-def _lo_que_llego(mensaje: MensajeEntrante) -> Linea:
-    contenido = mensaje.contenido or {}
-    if contenido.get("titulo") or contenido.get("opcion"):
-        dice = f"Tocó «{contenido.get('titulo') or contenido.get('opcion')}»"
-    elif contenido.get("texto"):
-        dice = recortar(str(contenido["texto"]), LARGO_MAXIMO)
-    elif mensaje.tipo == "reaction":
-        dice = "Reaccionó a un mensaje."
-    else:
-        dice = "Mandó algo que no es texto (una foto, un audio...): aquí no se puede ver."
-    return Linea(mensaje.recibido_en, Quien.CLIENTE, dice)
-
-
-def _lo_que_salio(mensaje: MensajeSaliente, parametros: Parametros) -> Linea:
-    contenido = mensaje.contenido or {}
-    if mensaje.tipo == TIPO_DEL_ADMINISTRADOR:
-        quien, por, dice = Quien.ADMINISTRADOR, contenido.get("por"), contenido.get("texto", "")
-    elif mensaje.tipo == TIPO_RESPUESTA:
-        quien, por, dice = Quien.BOT, None, contenido.get("texto", "")
-    elif mensaje.tipo in _TIPOS_DE_AVISO:
-        quien, por = Quien.BOT, None
-        try:
-            dice = mensaje_del_aviso(mensaje.tipo, contenido, parametros).texto
-        except (KeyError, TypeError, ValueError):
-            dice = "Un aviso de la fila."
-    else:
-        quien, por, dice = Quien.BOT, None, mensaje.tipo
-    return Linea(
-        mensaje.creado_en,
-        quien,
-        recortar(str(dice), LARGO_MAXIMO),
-        por=por,
-        estado=mensaje.estado,
-        error=mensaje.ultimo_error,
-    )

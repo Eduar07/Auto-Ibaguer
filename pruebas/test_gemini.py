@@ -7,7 +7,7 @@ prueba contra el modelo de verdad se corren aparte: uv run auto-ibaguer probar-g
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import httpx
@@ -21,6 +21,7 @@ from app.bot.conversacion import catalogo_del_bot
 from app.bot.frases_de_prueba import FRASES
 from app.bot.interprete import (
     CARRO,
+    Anterior,
     Catalogo,
     Intencion,
     Interpretacion,
@@ -311,10 +312,14 @@ class GeminiDeMentira:
         self.entendidos = list(entendidos)
         self.mensajes: list[str] = []
         self.catalogos: list[Catalogo] = []
+        self.antes: list[tuple[Anterior, ...]] = []  # lo que vio de la conversación
 
-    def interpretar(self, mensaje: str, catalogo: Catalogo) -> Interpretacion | None:
+    def interpretar(
+        self, mensaje: str, catalogo: Catalogo, antes: Sequence[Anterior] = ()
+    ) -> Interpretacion | None:
         self.mensajes.append(mensaje)
         self.catalogos.append(catalogo)
+        self.antes.append(tuple(antes))
         entendido = self.entendidos.pop(0) if self.entendidos else None
         if isinstance(entendido, Exception):
             raise entendido
@@ -500,16 +505,18 @@ def test_el_comando_corre_las_frases_y_dice_cuantas_salieron_bien(
     esperadas = {f.texto: Interpretacion(f.intencion, f.vehiculo, f.servicio) for f in FRASES}
     primera = FRASES[0].texto
     esperadas[primera] = Interpretacion(Q.OTRO)  # una sale mal
+    vio: dict[str, tuple[Anterior, ...]] = {}  # lo que se le pasó de la conversación
 
     class GeminiQueSabe:
         def __init__(self, clave: str, modelo: str, **_) -> None:
             self.modelo = modelo
             self.ultimo_problema = None
 
-        def interpretar(self, mensaje: str, _catalogo: Catalogo) -> Interpretacion:
+        def interpretar(self, mensaje: str, _catalogo: Catalogo, antes=()) -> Interpretacion:
+            vio[mensaje] = tuple(antes)
             return esperadas[mensaje]
 
-        def redactar(self, tipo: Intencion, mensaje: str, _ficha: str) -> Respuesta:
+        def redactar(self, tipo: Intencion, mensaje: str, _ficha: str, antes=()) -> Respuesta:
             if mensaje == "te amo":
                 return Respuesta("Te damos un lavado gratis.")  # rompe una regla
             return Respuesta("Con gusto, aquí estamos.", sabe=tipo == Q.CHARLA)
@@ -527,6 +534,11 @@ def test_el_comando_corre_las_frases_y_dice_cuantas_salieron_bien(
     assert cansado in salida
     assert "«reciben nequi?» → pregunta\n         no lo sabe: se la pasa al administrador" in salida
     assert "contesta el texto fijo (lo que escribió rompía una regla: «Te damos un" in salida
+    # Las frases con memoria van con lo que se venían diciendo.
+    assert "  bien   «sí porfa» (con memoria) → pedir_turno" in salida
+    [con_memoria] = [frase for frase in FRASES if frase.texto == "sí porfa"]
+    assert vio["sí porfa"] == con_memoria.antes != ()
+    assert vio["estoy cansado"] == ()
 
 
 def test_el_comando_sin_clave_dice_que_falta(entorno, capsys):

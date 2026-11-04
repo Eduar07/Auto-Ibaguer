@@ -35,7 +35,14 @@ from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot import pausa, textos
-from app.bot.interprete import CARRO, Catalogo, Intencion, Interpretacion, Interprete
+from app.bot.interprete import (
+    CARRO,
+    Anterior,
+    Catalogo,
+    Intencion,
+    Interpretacion,
+    Interprete,
+)
 from app.bot.mensajes import Entrada, Lista, Mensaje, Opcion, recortar
 from app.bot.redactor import Redactor, Respuesta, ficha_completa, pide_ayuda_urgente, revisar
 from app.bot.sesiones import PASO_INICIAL
@@ -52,6 +59,7 @@ from app.comentarios.tablas import LARGO_MAXIMO, TipoComentario
 from app.errores import ReglaDelNegocio
 from app.formato import DIAS, cuando_fue, duracion, hora_con_articulo, horario, pesos
 from app.formato import telefono as telefono_legible
+from app.integraciones import historial
 from app.turnos import casos_de_uso as casos
 from app.turnos import consultas, reglas
 from app.turnos.consultas import PosicionDelTurno, ResumenDeLaFila
@@ -98,6 +106,11 @@ PASOS_DE_TEXTO = frozenset({Paso.NOMBRE, Paso.PLACA, Paso.NUMERO_DE_TURNO})
 PASOS_QUE_ENTIENDE_GEMINI = frozenset({Paso.VEHICULO, Paso.PRECIOS, Paso.SERVICIO})
 # Las preguntas que también se contestan escribiendo un sí o un no claros ("no gracias").
 PASOS_DE_SI_O_NO = frozenset({Paso.AVISO_DATOS, Paso.CONFIRMAR, Paso.PERMISO_CONTACTO})
+
+# La memoria del bot: cuántos mensajes de lo último que se dijeron lee Gemini, y de cuánto
+# tiempo atrás (lo mismo que WhatsApp deja escribirle: 24 horas).
+MEMORIA = 10
+MEMORIA_HORAS = timedelta(hours=24)
 
 # En estos el bot no le está preguntando nada: lo que escriba es conversación. Mientras el
 # administrador le responde (app.bot.pausa), eso le llega a él y el bot no lo contesta. En
@@ -340,6 +353,7 @@ class _Atencion:
         self.cliente = clientes.buscar_por_telefono(sesion, self.telefono)
         if self.cliente is not None:
             self._vincular(self.cliente)
+        self._lo_anterior: tuple[Anterior, ...] | None = None
 
     def guardar(self) -> None:
         self.conversacion.paso_actual = self.paso
@@ -475,12 +489,32 @@ class _Atencion:
 
     # --- Lo que escribió con sus palabras (Gemini) ------------------------------------------
 
+    def _antes(self) -> tuple[Anterior, ...]:
+        """La memoria del bot: lo último que se dijeron con este celular (sin el mensaje que
+        está contestando), para que Gemini entienda el nuevo y siga la conversación. Se lee
+        una sola vez por mensaje, y solo si se le va a preguntar a Gemini."""
+        if self._lo_anterior is None:
+            lineas = historial.conversacion(
+                self.sesion,
+                self.telefono,
+                self.parametros,
+                cuantos=MEMORIA,
+                desde=self.ahora - MEMORIA_HORAS,
+                solo_lo_que_vio=True,
+            )
+            self._lo_anterior = tuple(
+                Anterior(linea.quien.value, linea.dice, linea.opciones) for linea in lineas
+            )
+        return self._lo_anterior
+
     def _entender(self, escrito: str) -> Interpretacion | None:
         """Qué quiere el cliente, según el intérprete. None si no hay o no respondió."""
         if self.interprete is None:
             return None
         try:
-            return self.interprete.interpretar(escrito, catalogo_del_bot(self.sesion))
+            return self.interprete.interpretar(
+                escrito, catalogo_del_bot(self.sesion), antes=self._antes()
+            )
         except Exception:
             # Un error del intérprete nunca deja al cliente sin respuesta: siguen los botones.
             logger.exception("El intérprete falló; el bot siguió con los botones.")
@@ -1438,14 +1472,20 @@ class _Atencion:
     def _con_la_ficha(self, tipo: Intencion, escrito: str) -> list[Mensaje]:
         """Una pregunta sobre el negocio o charla: la respuesta la escribe el redactor, solo
         con la ficha, y el bot la revisa. En medio de otra pregunta (pidiendo turno, por
-        ejemplo), contesta y sigue con lo que estaba."""
+        ejemplo), contesta y sigue con lo que estaba.
+
+        Lo que escribe el redactor va solo, sin el menú: es una conversación, no una venta,
+        y los botones de antes se pueden seguir tocando. El texto fijo sí lleva el menú: sin
+        Gemini, los botones son el camino."""
         respuesta = self._redactar(tipo, escrito)
         if tipo == Intencion.PREGUNTA and respuesta is None:
             return self._pregunta_sin_respuesta(escrito)
-        texto = respuesta.texto if respuesta is not None else self.texto("charla")
-        if self.paso == Paso.MENU:
-            return [_con_el_menu(texto)]
-        return [_con_nota(texto, self._pregunta())]
+        if self.paso != Paso.MENU:
+            texto = respuesta.texto if respuesta is not None else self.texto("charla")
+            return [_con_nota(texto, self._pregunta())]
+        if respuesta is None:
+            return [_con_el_menu(self.texto("charla"))]
+        return [Mensaje(respuesta.texto)]
 
     def _redactar(self, tipo: Intencion, escrito: str) -> Respuesta | None:
         """La respuesta revisada. None si no hay redactor, no respondió, no sabe (en una
@@ -1454,7 +1494,7 @@ class _Atencion:
             return None
         ficha = ficha_completa(self.parametros, catalogo_del_bot(self.sesion))
         try:
-            respuesta = self.redactor.redactar(tipo, escrito, ficha)
+            respuesta = self.redactor.redactar(tipo, escrito, ficha, antes=self._antes())
         except Exception:
             logger.exception("El redactor falló; el bot usó un texto fijo.")
             return None

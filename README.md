@@ -139,6 +139,7 @@ La pantalla **Mensajes de WhatsApp** (en Configuración, o <http://localhost:800
 | `gemini.py` | La API de Gemini: le pide la intención en un formato fijo y, para una pregunta o la charla, la respuesta con la ficha del negocio; espera máximo 5 segundos y decide si se usa (clave, plan, Configuración). |
 | `bandeja_entrada.py` | Guarda cada mensaje que llega y lo atiende con el bot, de a uno por cliente. |
 | `bandeja_salida.py` | Deja cada mensaje por enviar y lo envía con reintentos, en orden para cada cliente. |
+| `historial.py` | Lo que se han dicho con un celular, de las dos bandejas y en orden: la conversación de **Comentarios** y la memoria del bot. |
 | `tablas.py` | Las dos bandejas: `mensaje_entrante` y `mensaje_saliente`. |
 
 Es lo que en sistemas grandes se llama *inbox* y *outbox*: primero se guarda y después se atiende o se envía, como cuando en Java se separa recibir de procesar con una cola.
@@ -189,9 +190,15 @@ Cuando el cliente escribe con sus palabras, Gemini dice qué quiere, de una list
 Gemini redacta solo en dos casos, y siempre con reglas:
 
 - **Una pregunta sobre el negocio** ("¿reciben Nequi?"): la contesta solo con la ficha del negocio (abajo). Si la ficha no lo dice, no lo inventa: la pregunta te llega a **Comentarios**.
-- **La charla** ("estoy cansado", "te amo", "¿eres un robot?"): una respuesta corta y amable que vuelve al lavadero. No coquetea y, si le preguntan, dice que es un asistente virtual.
+- **La charla** ("estoy cansado", "te amo", "¿viste el partido?"): conversa con naturalidad y no ofrece turnos a la fuerza (después de la charla no le pega el menú). No coquetea y, si le preguntan, dice que es un asistente virtual.
 
-Antes de mandar lo que escribió, el bot lo revisa con reglas fijas, sin depender de que Gemini obedezca: si trae un precio, un porcentaje, un descuento, un tiempo de espera, un enlace o un número que no estén en la ficha, o dice que es una persona, no sale y el bot usa un texto fijo.
+**Con memoria.** Para entender el mensaje nuevo y para escribir, Gemini ve lo último que se dijeron: hasta 10 mensajes de las últimas 24 horas, con los datos personales tapados (lo del cliente, lo del bot, los avisos de la fila y lo que le escribiste desde **Comentarios**). Así un "sí porfa" después de "¿te aparto un turno?" pide el turno, un "y para la camioneta?" después de los precios de la moto muestra los de camioneta, y no repite lo que ya dijo. No guarda nada aparte: lo lee de las bandejas de WhatsApp.
+
+**Cómo habla** (las instrucciones de Gemini, en `app/integraciones/gemini.py`): corto, como en WhatsApp; natural y sencillo, tuteando y al tono del cliente; sin muletillas como "¿En qué te puedo ayudar?" ni repetir cómo empezó el mensaje anterior; una pregunta a la vez; un emoji como mucho y humor ligero cuando encaja; y sin convertir cada charla en una venta.
+
+**Otros temas**: conversa de lo cotidiano (cómo está, el partido, una broma), pero no se vuelve un asistente para todo: tareas, recetas, noticias, explicaciones largas o consejos de salud, leyes o plata los declina con amabilidad. Desde el 15 de enero de 2026, Meta prohíbe los chatbots de propósito general en la API de WhatsApp Business; un bot que atiende a los clientes de un negocio sí está permitido, y así se queda.
+
+Antes de mandar lo que escribió, el bot lo revisa con reglas fijas, sin depender de que Gemini obedezca: si trae un precio, un porcentaje, un descuento, un tiempo de espera, un enlace o un número que no estén en la ficha, o dice que es una persona, no sale y el bot usa un texto fijo. Con más de dos emojis, se los quita.
 
 | El cliente escribe | El bot |
 |---|---|
@@ -204,7 +211,9 @@ Antes de mandar lo que escribió, el bot lo revisa con reglas fijas, sin depende
 | "quiero hablar con una persona" | Te avisa en **Comentarios** y le da el teléfono por si es urgente. |
 | "cuántas lavadas llevo" | Cuántas lleva y cuándo fue la última, con los datos del sistema. |
 | "a qué hora abren el domingo?" | Lo contesta con el horario de Configuración y la ficha del negocio. |
-| "estoy cansado" | Una respuesta corta que escribe Gemini, por ejemplo: "Se entiende. Si quieres, nos dejas el carro y descansas mientras lo lavamos." |
+| "estoy cansado" | Una respuesta corta que escribe Gemini, por ejemplo: "Uy, se nota que fue un día largo. ¿Te tocó trabajar mucho?" |
+| "sí porfa" (después de "¿te aparto un turno?") | Empieza a pedir el turno: lo entiende por lo que venían hablando. |
+| "me ayudas con una tarea?" | Le dice con amabilidad que por aquí no puede: el número es del lavadero. |
 | "ya no quiero vivir" | Un texto fijo con la Línea 106 (salud mental, gratis, a toda hora), la Línea Espérame de Bucaramanga (WhatsApp 322 964 3755) y el 123. No pasa por Gemini, no se guarda y no ofrece turnos. |
 
 Las quejas, "hablar con una persona", "cuántas lavadas llevo" y los mensajes graves se reconocen aunque Gemini no esté. De quien no es cliente no se guarda el número sin su permiso: el bot le pregunta con dos botones si quiere que le respondan.
@@ -217,16 +226,16 @@ Cuándo **no** se le pregunta a Gemini:
 - Cuando el bot pidió un dato (el nombre, la placa, el número de turno): lo que escribe es ese dato.
 - Al aceptar el aviso de datos y al confirmar el turno: ahí se responde con los botones o con un sí o un no claros, porque son decisiones que no se adivinan.
 
-Si Gemini no responde en 5 segundos, falla o se acabó la cuota, el bot muestra el menú y sigue con botones; en la terminal queda escrito por qué (una vez cada 5 minutos, nunca el mensaje del cliente). Antes de mandarle un mensaje se tapan las placas, los celulares y los correos (`[placa]`, `[número]`, `[correo]`): Gemini no los necesita para entender qué quiere el cliente.
+Si Gemini no responde en 5 segundos, falla o se acabó la cuota, el bot muestra el menú y sigue con botones; en la terminal queda escrito por qué (una vez cada 5 minutos, nunca el mensaje del cliente). Antes de mandarle un mensaje (y lo que se venían diciendo) se tapan las placas, los celulares y los correos (`[placa]`, `[número]`, `[correo]`): Gemini no los necesita para entender qué quiere el cliente.
 
 ### Conectar Gemini
 
 1. En [Google AI Studio](https://aistudio.google.com/), en la sección de claves de la API (*API keys*), crea una clave y cópiala en `GEMINI_CLAVE` en tu `.env`. Es secreta, como el token de WhatsApp.
 2. Vuelve a encender el servidor. En **Configuración > Bot de WhatsApp** debe decir *Conectado*.
-3. Corre las frases de prueba: `uv run auto-ibaguer probar-gemini`. Prueba unas 65 frases como las escribe la gente y dice cuántas entendió bien; a las preguntas y a la charla les muestra, además, lo que contestaría el bot. Si alguna sale MAL, revísala antes de usar ese modelo con clientes.
+3. Corre las frases de prueba: `uv run auto-ibaguer probar-gemini`. Prueba 73 frases como las escribe la gente y dice cuántas entendió bien; las que dicen *(con memoria)* solo se entienden por lo que se venían diciendo ("sí porfa"). A las preguntas y a la charla les muestra, además, lo que contestaría el bot. Si alguna sale MAL, revísala antes de usar ese modelo con clientes.
 4. Prueba la charla en **Probar el bot**.
 
-**Plan gratis o de pago.** Con el plan gratis de la API, Google usa los mensajes para mejorar sus productos y personas pueden leerlos; sus propios términos piden no mandar datos personales por ahí. Sirve para probar con mensajes tuyos. Con clientes de verdad hace falta el plan de pago (un proyecto de Google Cloud con facturación activa), donde Google no usa los mensajes. Por eso, en la nube (`ENTORNO=produccion`) el bot solo usa Gemini si pones `GEMINI_PLAN_DE_PAGO=true`; mientras tanto sigue con botones. Los límites del plan gratis (mensajes por minuto y por día) se ven en AI Studio; cada mensaje usa unos pocos cientos de tokens, y una pregunta o la charla, unos mil (son dos peticiones y la segunda lleva la ficha).
+**Plan gratis o de pago.** Con el plan gratis de la API, Google usa los mensajes para mejorar sus productos y personas pueden leerlos; sus propios términos piden no mandar datos personales por ahí. Sirve para probar con mensajes tuyos. Con clientes de verdad hace falta el plan de pago (un proyecto de Google Cloud con facturación activa), donde Google no usa los mensajes. Por eso, en la nube (`ENTORNO=produccion`) el bot solo usa Gemini si pones `GEMINI_PLAN_DE_PAGO=true`; mientras tanto sigue con botones. Los límites del plan gratis (mensajes por minuto y por día) se ven en AI Studio; cada mensaje usa unos pocos cientos de tokens (unos más con la memoria), y una pregunta o la charla, unos mil o dos mil (son dos peticiones y la segunda lleva la ficha).
 
 **El modelo** se cambia en **Configuración > Bot de WhatsApp**, sin programar (al empezar, `gemini-3.5-flash-lite`, de los más rápidos y baratos de Google). Antes de cambiarlo, pruébalo con las frases: `uv run auto-ibaguer probar-gemini --modelo nombre-del-modelo`. El interruptor **Entender lo que escriben** apaga Gemini si algún día entiende mal.
 

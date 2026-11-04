@@ -2,21 +2,24 @@
 pregunta sobre el negocio ("¿reciben Nequi?") o charla ("estoy cansado", "te amo").
 
 Es lo único que se redacta: los precios, la fila y los turnos salen del sistema. El
-redactor escribe solo con la ficha del negocio (ficha_completa) y, antes de mandarle la
-respuesta al cliente, el bot la revisa con reglas fijas (revisar). Si no las cumple, o
-el redactor no responde, el bot usa un texto fijo.
+redactor escribe solo con la ficha del negocio (ficha_completa) y con lo último que se
+dijeron (para seguir la conversación sin repetirse). Antes de mandarle la respuesta al
+cliente, el bot la revisa con reglas fijas (revisar). Si no las cumple, o el redactor no
+responde, el bot usa un texto fijo.
 """
 
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
 from app import formato
-from app.bot.interprete import Catalogo, Intencion
+from app.bot.interprete import Anterior, Catalogo, Intencion
 from app.catalogo.parametros import Parametros
 
 LARGO_MAXIMO = 400  # caracteres: se lee de un vistazo en WhatsApp
+EMOJIS_MAXIMOS = 2  # con más, se le quitan todos: emojis sí, pero con moderación
 
 
 @dataclass(frozen=True)
@@ -29,10 +32,13 @@ class Redactor(Protocol):
     """Quien escribe la respuesta a una pregunta o a la charla; en el hito 7b, Gemini.
 
     Como una interfaz de Java: el bot solo sabe que tiene `redactar`. Si no responde a
-    tiempo o falla, devuelve None y el bot usa un texto fijo.
+    tiempo o falla, devuelve None y el bot usa un texto fijo. `antes` es lo último que se
+    dijeron, para que la respuesta siga la conversación.
     """
 
-    def redactar(self, tipo: Intencion, mensaje: str, ficha: str) -> Respuesta | None: ...
+    def redactar(
+        self, tipo: Intencion, mensaje: str, ficha: str, antes: Sequence[Anterior] = ()
+    ) -> Respuesta | None: ...
 
 
 def ficha_completa(parametros: Parametros, catalogo: Catalogo) -> str:
@@ -61,6 +67,10 @@ def ficha_completa(parametros: Parametros, catalogo: Catalogo) -> str:
 _ENLACE = re.compile(r"https?://\S+|www\.\S+|\b[\w-]+\.(?:com|co|net|org|app|me)\b", re.I)
 _NUMERO = re.compile(r"\d(?:[\d.,\s-]*\d)?")
 _EMOJI = re.compile(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]")
+# Los que se ven como un emoji (sin contar el tono de piel ni los que los unen).
+_EMOJI_QUE_SE_VE = re.compile(
+    r"[\U0001F000-\U0001F3FA\U0001F400-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF]"
+)
 _TAPADOS = ("[placa]", "[número]", "[numero]", "[correo]")
 # Lo que no escribe si la ficha no lo dice: ni precios con palabras ("cuarenta mil pesos",
 # "40 lucas") ni nada que el negocio no ofrece.
@@ -92,8 +102,10 @@ def revisar(texto: str, ficha: str) -> str | None:
     Estas reglas no dependen de que Gemini obedezca: un precio, un descuento, un enlace o
     un número que no estén en la ficha no salen, diga lo que diga el mensaje del cliente.
     """
-    limpio = " ".join(_EMOJI.sub("", texto).split())
-    if not limpio or len(limpio) > LARGO_MAXIMO:
+    if len(_EMOJI_QUE_SE_VE.findall(texto)) > EMOJIS_MAXIMOS:
+        texto = _EMOJI.sub("", texto)
+    limpio = " ".join(texto.split())
+    if not limpio or not _EMOJI.sub("", limpio).strip() or len(limpio) > LARGO_MAXIMO:
         return None
     normal, en_la_ficha = _sin_tildes(limpio), _sin_tildes(ficha)
     if any(tapado in normal for tapado in _TAPADOS):

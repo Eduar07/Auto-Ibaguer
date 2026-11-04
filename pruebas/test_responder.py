@@ -24,11 +24,12 @@ from app.clientes import servicio as clientes
 from app.clientes.tablas import Cliente, Vehiculo
 from app.comentarios import respuestas
 from app.comentarios import servicio as comentarios
-from app.comentarios.respuestas import NoSePuedeResponder, Quien
+from app.comentarios.respuestas import NoSePuedeResponder
 from app.comentarios.tablas import Comentario, TipoComentario
 from app.config import obtener_entorno
-from app.integraciones import bandeja_salida, whatsapp
+from app.integraciones import bandeja_salida, historial, whatsapp
 from app.integraciones.bandeja_salida import TIPO_DEL_ADMINISTRADOR, EnvioFallido
+from app.integraciones.historial import Quien
 from app.integraciones.tablas import EstadoMensaje, MensajeEntrante, MensajeSaliente
 from app.reloj import proceso, tareas
 from app.turnos import casos_de_uso as casos
@@ -402,7 +403,7 @@ def test_la_conversacion_junta_lo_que_llego_y_lo_que_salio_en_orden(
     )
     llego(sesion, "de otro celular", telefono="573109876543")
 
-    lineas = respuestas.charla_con(sesion, CELULAR, leer_parametros(sesion))
+    lineas = historial.conversacion(sesion, CELULAR, leer_parametros(sesion))
 
     assert [(linea.quien, linea.dice) for linea in lineas] == [
         (Quien.CLIENTE, "hola"),
@@ -417,7 +418,7 @@ def test_la_conversacion_junta_lo_que_llego_y_lo_que_salio_en_orden(
         (Quien.ADMINISTRADOR, "Hola Ana"),
     ]
     assert (lineas[-1].por, lineas[-1].estado) == ("eduar", EstadoMensaje.PENDIENTE)
-    assert len(respuestas.charla_con(sesion, CELULAR, leer_parametros(sesion), cuantos=3)) == 3
+    assert len(historial.conversacion(sesion, CELULAR, leer_parametros(sesion), cuantos=3)) == 3
 
 
 def test_la_conversacion_muestra_los_avisos_de_la_fila(sesion: Session):
@@ -425,7 +426,7 @@ def test_la_conversacion_muestra_los_avisos_de_la_fila(sesion: Session):
     nuevo = por_whatsapp(sesion, vehiculo=ana(sesion))  # no hay puesto libre: espera
     casos.marcar_listo(sesion, lavando, ahora=AHORA + minutos(30))  # C1 libre: lo llaman
 
-    aviso = respuestas.charla_con(sesion, CELULAR, leer_parametros(sesion))[-1]
+    aviso = historial.conversacion(sesion, CELULAR, leer_parametros(sesion))[-1]
 
     assert aviso.quien == Quien.BOT
     assert aviso.dice.startswith(f"¡Es tu turno! Ya hay un puesto libre para *{nuevo.numero}*.")

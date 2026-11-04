@@ -151,21 +151,21 @@ Se hace en tu app de [Meta for Developers](https://developers.facebook.com/apps)
 
 1. **Agrega el número.** Pon la SIM en un celular; ese número no puede tener WhatsApp instalado (si lo tiene, borra primero esa cuenta de WhatsApp). En el Administrador de WhatsApp: *Números de teléfono > Agregar número*. Escribe el nombre que verán los clientes (Auto Ibaguer) y confirma con el código que llega por SMS o por llamada.
 2. **Agrega un método de pago** a la cuenta de WhatsApp (en la *Configuración del negocio*, la cuenta de WhatsApp > *Pagos*): sin él, Meta no entrega los mensajes.
-3. **El identificador del número:** en la app, *WhatsApp > Configuración de la API* (*API Setup*), elige el número nuevo y copia su *identificador del número de teléfono* en `WHATSAPP_ID_NUMERO`.
+3. **Los identificadores:** en la app, *WhatsApp > Configuración de la API* (*API Setup*), elige el número nuevo y copia su *identificador del número de teléfono* en `WHATSAPP_ID_NUMERO`, y el *identificador de la cuenta de WhatsApp Business* (sale encima del número) en `WHATSAPP_ID_CUENTA`.
 4. **Un token que no vence:** en la *Configuración del negocio > Usuarios del sistema*, crea uno con rol de administrador, asígnale la app y la cuenta de WhatsApp, y genera un token sin vencimiento con los permisos `whatsapp_business_messaging` y `whatsapp_business_management`. Cópialo en `WHATSAPP_TOKEN`: es la llave para enviar mensajes a nombre del negocio.
 5. **La clave secreta de la app:** en la app, *Configuración de la app > Básica > Clave secreta de la app*. Cópiala en `WHATSAPP_SECRETO_APP`. Con ella el servidor sabe que un aviso viene de Meta.
 6. **Un token de verificación**, inventado por ti: `python3 -c "import secrets; print(secrets.token_urlsafe(24))"` y lo copias en `WHATSAPP_TOKEN_VERIFICACION`.
-7. **Registra el número** con un PIN de 6 dígitos que inventas (la verificación en dos pasos de WhatsApp). Meta solo deja hacerlo por la API:
+7. **Enlaza la app y registra el número** con un PIN de 6 dígitos que inventas (la verificación en dos pasos de WhatsApp). Meta solo deja hacerlo por la API:
 
    ```bash
    uv run auto-ibaguer registrar-whatsapp
    ```
 
-   Te pide el PIN sin mostrarlo y no lo guarda. Anótalo en un lugar seguro: WhatsApp lo vuelve a pedir si el número se registra otra vez.
+   Primero enlaza la app con la cuenta de WhatsApp Business: Meta muchas veces no lo hace sola, y sin el enlace los mensajes llegan al celular pero nunca al servidor (aunque el botón de prueba de Meta funcione). Dice con qué app quedó enlazada. Después te pide el PIN sin mostrarlo y no lo guarda. Anótalo en un lugar seguro: WhatsApp lo vuelve a pedir si el número se registra otra vez. El comando se puede correr otra vez, con el mismo PIN, sin dañar nada.
 8. **Enciende el servidor** (`uv run fastapi dev app/main.py`; si ya estaba encendido, apágalo con Ctrl+C y vuelve a encenderlo, porque el `.env` se lee al arrancar). La terminal debe decir `Reloj: WhatsApp conectado` y la pantalla **Mensajes de WhatsApp**, que está conectado.
 9. **Una dirección pública** para que Meta llegue a tu computador. En otra terminal: `cloudflared tunnel --url http://localhost:8000` (cómo instalarlo, abajo) y copia la dirección `https://….trycloudflare.com` que muestra. Cambia cada vez que lo enciendes. Con el sistema en la nube no hace falta: [El día de la SIM, con el sistema en la nube](#el-día-de-la-sim-con-el-sistema-en-la-nube).
 10. **Registra el webhook:** en la app, *WhatsApp > Configuración*: URL de devolución de llamada `https://….trycloudflare.com/webhook/whatsapp` y el token de verificación del paso 6; *Verificar y guardar*. Después, en *Campos del webhook*, suscríbete a **messages**.
-11. **Pon la app en modo Live** (arriba, en el panel de la app): en modo de desarrollo Meta no manda todos los avisos. Para pasarla, Meta pide la dirección de una política de privacidad; la armamos ese día.
+11. **Pon la app en modo Live** (arriba, en el panel de la app): en modo de desarrollo Meta no manda todos los avisos ("some webhooks will not be sent if your app is in Dev mode"). Para pasarla, Meta pide la dirección pública de una política de privacidad: llena los datos que faltan en la política (razón social, NIT, dirección, correo), cópiala a Google Docs, publícala con *Archivo > Compartir > Publicar en la Web* y pega esa dirección en *Configuración de la app > Básica > URL de la política de privacidad*. Si Meta también pide las *instrucciones para eliminar datos*, sirve la misma dirección: la política tiene esa parte. Antes de abrir al público, que la revise tu abogado.
 12. **Pruébalo:** desde otro celular, escríbele "hola" al número del bot. Debe contestar con el menú, y en **Mensajes de WhatsApp** aparecen los dos mensajes.
 
 Instalar `cloudflared` en Ubuntu (WSL), una sola vez:
@@ -182,6 +182,7 @@ Si no llegan los mensajes, mira la terminal del servidor y la pantalla **Mensaje
 | `sin una firma válida` en la terminal | `WHATSAPP_SECRETO_APP` no es la clave secreta de esta app. |
 | Meta no verifica la URL del webhook | Que el servidor y el túnel estén encendidos y que el token de verificación sea el mismo del `.env`. |
 | No aparece nada al escribirle al bot | Que el webhook esté suscrito a **messages**, la app en modo Live y el túnel encendido (si lo apagaste, la dirección cambió). |
+| El botón de prueba de Meta llega, pero los mensajes de verdad no | La cuenta de WhatsApp no está enlazada con la app: corre otra vez `uv run auto-ibaguer registrar-whatsapp` y mira con qué app dice que quedó enlazada. |
 | Llegan los mensajes pero las respuestas dicen *No salió* | El motivo sale debajo del mensaje. `error 190`: el token venció o no es ese; `error 131042`: falta el método de pago o tiene un problema; `error 131047`: el cliente no ha escrito en 24 horas. |
 
 ## Gemini

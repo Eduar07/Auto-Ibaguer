@@ -305,6 +305,39 @@ def registrar_numero(
         raise RegistroFallido(str(_por_que_no(respuesta)))
 
 
+def enlazar_la_app(entorno: ConfiguracionEntorno, http: httpx.Client | None = None) -> list[str]:
+    """Enlaza la app con la cuenta de WhatsApp Business (WABA) para que Meta le avise de cada
+    mensaje al webhook, y devuelve los nombres de las apps enlazadas.
+
+    Meta muchas veces no lo hace solo: la configuración del webhook se ve bien, el botón de
+    prueba de Meta funciona, pero los mensajes de verdad nunca llegan. Enlazarla otra vez no
+    daña nada (Meta contesta lo mismo), así que el comando lo hace siempre.
+    """
+    url = (
+        f"{URL_DE_META}/{entorno.whatsapp_version_api}/{entorno.whatsapp_id_cuenta}/subscribed_apps"
+    )
+    cliente = http or httpx.Client(timeout=httpx.Timeout(20.0, connect=5.0))
+    encabezados = {"Authorization": f"Bearer {entorno.whatsapp_token}"}
+    try:
+        enlace = cliente.post(url, headers=encabezados)
+        if not enlace.is_success:
+            raise RegistroFallido(str(_por_que_no(enlace)))
+        enlazadas = cliente.get(url, headers=encabezados)
+    except httpx.HTTPError as error:
+        raise RegistroFallido(f"No hubo conexión con WhatsApp ({type(error).__name__}).") from error
+    if not enlazadas.is_success:
+        raise RegistroFallido(str(_por_que_no(enlazadas)))
+    try:
+        datos = enlazadas.json().get("data") or []
+    except (ValueError, AttributeError):
+        datos = []
+    return [
+        str((app.get("whatsapp_business_api_data") or {}).get("name") or "sin nombre")
+        for app in datos
+        if isinstance(app, dict)
+    ]
+
+
 @lru_cache
 def del_entorno() -> WhatsApp | None:
     """El enviador de WhatsApp, si el .env tiene los datos para conectarse. Si no, None."""

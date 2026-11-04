@@ -47,6 +47,9 @@ class ConfiguracionEntorno(BaseSettings):
     whatsapp_token: str = ""
     # El "identificador del número de teléfono" que da Meta (no es el número mismo).
     whatsapp_id_numero: str = ""
+    # El "identificador de la cuenta de WhatsApp Business" (WABA). Solo lo usa el comando
+    # registrar-whatsapp, para enlazar la app con la cuenta: sin eso, Meta no avisa.
+    whatsapp_id_cuenta: str = ""
     # La clave secreta de la app de Meta: con ella se revisa que cada mensaje venga de Meta.
     whatsapp_secreto_app: str = ""
     # Una palabra que inventas tú y escribes también en Meta al registrar el webhook.

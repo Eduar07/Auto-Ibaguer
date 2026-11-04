@@ -47,6 +47,7 @@ from pruebas.navegador import HTMX
 
 CELULAR = "573001234567"
 ID_DEL_NUMERO = "109876543210"
+ID_DE_LA_CUENTA = "205551234567890"
 SECRETO = "secreto-de-la-app-de-prueba"
 _ids = itertools.count(1)
 
@@ -108,6 +109,7 @@ def conectado(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch,
         whatsapp_token="token-de-prueba",
         whatsapp_id_numero=ID_DEL_NUMERO,
+        whatsapp_id_cuenta=ID_DE_LA_CUENTA,
         whatsapp_secreto_app=SECRETO,
         whatsapp_token_verificacion="palabra-de-prueba",
         whatsapp_version_api="v26.0",
@@ -121,6 +123,7 @@ def desconectado(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch,
         whatsapp_token="",
         whatsapp_id_numero="",
+        whatsapp_id_cuenta="",
         whatsapp_secreto_app="",
         whatsapp_token_verificacion="",
     )
@@ -594,21 +597,59 @@ def test_si_meta_no_registra_el_numero_dice_por_que(conectado):
         whatsapp.registrar_numero(obtener_entorno(), "000000", http=http)
 
 
+def test_enlazar_la_app_con_la_cuenta_de_whatsapp(conectado):
+    peticiones: list[httpx.Request] = []
+
+    def meta_enlaza(peticion: httpx.Request) -> httpx.Response:
+        peticiones.append(peticion)
+        if peticion.method == "POST":
+            return httpx.Response(200, json={"success": True})
+        app = {"id": "67084", "link": "https://www.facebook.com/games/?app_id=67084"}
+        return httpx.Response(
+            200, json={"data": [{"whatsapp_business_api_data": {**app, "name": "Auto Ibaguer"}}]}
+        )
+
+    http = httpx.Client(transport=httpx.MockTransport(meta_enlaza))
+    enlazadas = whatsapp.enlazar_la_app(obtener_entorno(), http=http)
+
+    assert enlazadas == ["Auto Ibaguer"]
+    url = f"https://graph.facebook.com/v26.0/{ID_DE_LA_CUENTA}/subscribed_apps"
+    assert [(p.method, str(p.url)) for p in peticiones] == [("POST", url), ("GET", url)]
+    assert all(p.headers["Authorization"] == "Bearer token-de-prueba" for p in peticiones)
+
+
+def test_si_meta_no_enlaza_la_app_dice_por_que(conectado):
+    def sin_permiso(_: httpx.Request) -> httpx.Response:
+        return error_de_meta(403, 200, "Permissions error")
+
+    http = httpx.Client(transport=httpx.MockTransport(sin_permiso))
+    with pytest.raises(whatsapp.RegistroFallido, match="error 200.*Permissions error"):
+        whatsapp.enlazar_la_app(obtener_entorno(), http=http)
+
+
 @pytest.fixture
 def registro(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """El comando registrar-whatsapp, sin llamar a Meta: anota los PIN que mandaría."""
-    pines: list[str] = []
-    monkeypatch.setattr(whatsapp, "registrar_numero", lambda _entorno, pin: pines.append(pin))
-    return pines
+    """El comando registrar-whatsapp, sin llamar a Meta: anota lo que haría."""
+    hecho: list[str] = []
+
+    def enlaza(_entorno) -> list[str]:
+        hecho.append("enlazar")
+        return ["Auto Ibaguer"]
+
+    monkeypatch.setattr(whatsapp, "enlazar_la_app", enlaza)
+    monkeypatch.setattr(whatsapp, "registrar_numero", lambda _entorno, pin: hecho.append(pin))
+    return hecho
 
 
-def test_el_comando_registra_con_el_pin_que_se_escribe(conectado, registro, monkeypatch, capsys):
+def test_el_comando_enlaza_la_app_y_registra_con_el_pin(conectado, registro, monkeypatch, capsys):
     monkeypatch.setattr(cli.getpass, "getpass", lambda _: "654321")
 
     assert cli.main(["registrar-whatsapp"]) == 0
 
-    assert registro == ["654321"]
-    assert "Listo: el número quedó registrado en WhatsApp." in capsys.readouterr().out
+    assert registro == ["enlazar", "654321"]  # primero el enlace: no necesita el PIN
+    salida = capsys.readouterr().out
+    assert "La cuenta de WhatsApp quedó enlazada con: Auto Ibaguer." in salida
+    assert "Listo: el número quedó registrado en WhatsApp." in salida
 
 
 def test_el_comando_no_manda_un_pin_mal_escrito(conectado, registro, monkeypatch, capsys):
@@ -616,7 +657,7 @@ def test_el_comando_no_manda_un_pin_mal_escrito(conectado, registro, monkeypatch
 
     assert cli.main(["registrar-whatsapp"]) == 1
 
-    assert registro == []
+    assert registro == ["enlazar"]
     assert "El PIN son 6 números." in capsys.readouterr().err
 
 
@@ -624,10 +665,28 @@ def test_el_comando_dice_que_falta_en_el_env(desconectado, registro, capsys):
     assert cli.main(["registrar-whatsapp"]) == 1
 
     assert registro == []
-    assert "Faltan WHATSAPP_TOKEN y WHATSAPP_ID_NUMERO" in capsys.readouterr().err
+    assert (
+        "Faltan WHATSAPP_TOKEN, WHATSAPP_ID_NUMERO y WHATSAPP_ID_CUENTA en el archivo .env."
+        in capsys.readouterr().err
+    )
 
 
-def test_el_comando_cuenta_por_que_meta_no_lo_registro(conectado, monkeypatch, capsys):
+def test_si_no_enlaza_la_app_no_pide_el_pin(conectado, monkeypatch, capsys):
+    def no_enlaza(_entorno):
+        raise whatsapp.RegistroFallido("WhatsApp respondió 400 (error 100): Invalid WABA ID")
+
+    def no_se_pide(_):
+        raise AssertionError("no debía pedir el PIN")
+
+    monkeypatch.setattr(whatsapp, "enlazar_la_app", no_enlaza)
+    monkeypatch.setattr(cli.getpass, "getpass", no_se_pide)
+
+    assert cli.main(["registrar-whatsapp"]) == 1
+    error = capsys.readouterr().err
+    assert "Meta no enlazó la app con la cuenta de WhatsApp: WhatsApp respondió 400" in error
+
+
+def test_el_comando_cuenta_por_que_meta_no_lo_registro(conectado, registro, monkeypatch, capsys):
     def no_registra(_entorno, _pin):
         raise whatsapp.RegistroFallido("WhatsApp respondió 400 (error 133005): PIN Mismatch")
 

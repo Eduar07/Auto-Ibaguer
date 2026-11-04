@@ -1,3 +1,7 @@
 {% import "_burbujas_del_bot.html" as burbujas %}
+{% import "_iconos.html" as iconos %}
 {% if escrito %}<div class="burbuja burbuja--yo"><p>{{ escrito }}</p></div>{% endif %}
 {% for mensaje in respuestas %}{{ burbujas.del_bot(mensaje, telefono) }}{% endfor %}
+{#- Cómo decidió el bot la respuesta: si le preguntó a Gemini y, si salió un texto fijo,
+    por qué. Solo se ve aquí, nunca le llega al cliente. -#}
+{% if traza %}<p class="charla__traza">{{ iconos.icono("info", 14) }}<span>{{ traza }}</span></p>{% endif %}

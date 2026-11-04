@@ -1,60 +1,65 @@
-"""Lo que el bot le pide a un intérprete (Gemini) cuando el cliente escribe con sus palabras.
+"""Lo que el bot le pide a Gemini cuando el cliente escribe con sus palabras.
 
-El intérprete solo dice qué quiere el cliente, de una lista cerrada, y de qué vehículo o
-servicio habla. Nunca redacta lo que contesta el bot ni inventa precios, turnos o
-tiempos: eso sale del sistema, como cuando el cliente toca un botón. Lo único que se
-redacta son las respuestas a una pregunta sobre el negocio o a la charla, y eso lo hace
-otro (app.bot.redactor), solo con la ficha del negocio.
+Una sola consulta por mensaje: Gemini entiende qué quiere el cliente (de una lista
+cerrada) y, cuando toca conversar, escribe también la respuesta. Como un mesero que en
+un solo viaje a la cocina lleva el pedido y vuelve con lo que hay que decirle a la mesa:
+antes eran dos viajes (uno para entender y otro para escribir), y con el plan gratis de
+Google la cocina se saturaba.
 
-Para entender el mensaje nuevo, el intérprete también ve lo último que se dijeron (la
-memoria del bot, `Anterior`): así un "sí porfa" o un "y la camioneta?" se entienden por
-lo que venía antes. Antes de mandárselo se le tapan los datos personales que se reconocen
-(placas, celulares y correos): no los necesita para entender qué quiere el cliente.
+Lo que el bot hace sigue saliendo del sistema: si Gemini dice "quiere los precios de la
+moto", el bot muestra los precios de la base, como si el cliente hubiera tocado el
+botón. Gemini solo escribe la conversación (saludos, despedidas, preguntas sobre el
+negocio, charla) y el bot lo revisa antes de mandarlo (app.bot.redactor.revisar).
+
+Para entender el mensaje nuevo, Gemini también ve lo último que se dijeron (la memoria
+del bot, `Anterior`) y en qué va la conversación (qué le está preguntando el bot): así
+un "sí porfa" o un "y la camioneta?" se entienden por lo que venía antes. Antes de
+mandárselo se le tapan los datos personales que se reconocen (placas, celulares y
+correos): no los necesita para entender qué quiere el cliente.
 """
 
 import re
-from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol
 
 
 class Intencion(StrEnum):
+    SALUDO = "saludo"  # solo saluda
+    DESPEDIDA = "despedida"  # se despide o agradece, sin pedir nada más
     PEDIR_TURNO = "pedir_turno"
     VER_FILA = "ver_fila"
     PRECIOS = "precios"
     MI_TURNO = "mi_turno"
     CANCELAR = "cancelar"
+    LLEGUE = "llegue"  # avisa que ya está en el lavadero
+    EN_CAMINO = "en_camino"  # avisa que va para allá
     PICO_Y_PLACA = "pico_y_placa"
     MIS_LAVADAS = "mis_lavadas"  # cuántas lleva con el lavadero
     QUEJA = "queja"  # se queja de algo que ya pasó
     FELICITACION = "felicitacion"
     HABLAR_CON_PERSONA = "hablar_con_persona"  # quiere que le responda alguien, no el bot
-    PREGUNTA = "pregunta"  # sobre el negocio: horarios, pagos, dirección (app.bot.redactor)
-    CHARLA = "charla"  # no pide nada: saluda, cuenta cómo se siente, bromea (app.bot.redactor)
+    PREGUNTA = "pregunta"  # sobre el negocio: horarios, pagos, dirección, sus datos...
+    CHARLA = "charla"  # no pide nada: cuenta cómo está, bromea, habla de otro tema
     CRISIS = "crisis"  # dice en serio que quiere morir o hacerse daño: un texto fijo de ayuda
-    OTRO = "otro"  # no se entiende qué quiere
+    OTRO = "otro"  # de verdad no se entiende qué quiere
 
 
-# Cuando el cliente dice "carro" sin decir si es automóvil o camioneta: el bot pregunta.
-CARRO = "carro"
-# Lo que responde el intérprete cuando el cliente no nombra un vehículo o un servicio.
-NINGUNO = "ninguno"
+# Lo que Gemini contesta en "vehiculo" fuera de los del catálogo:
+CARRO = "carro"  # dijo "carro" sin decir si es automóvil o camioneta: el bot pregunta
+OTRO_VEHICULO = "otro"  # un vehículo que el lavadero no tiene (un camión, una tractomula)
+NINGUNO = "ninguno"  # no nombra un vehículo, un servicio o un sí o un no
+
+# Lo que contesta a una pregunta de sí o no del bot.
+SI, NO = "si", "no"
 
 
 @dataclass(frozen=True)
 class Catalogo:
-    """Los vehículos y servicios que existen: el intérprete solo puede elegir entre estos."""
+    """Los vehículos y servicios que existen: Gemini solo puede elegir entre estos."""
 
     vehiculos: tuple[str, ...]  # "Automóvil", "Camioneta", "Moto"
     servicios: tuple[str, ...]  # "Básico", "Encerado"...
-
-
-@dataclass(frozen=True)
-class Interpretacion:
-    intencion: Intencion
-    vehiculo: str | None = None  # uno del catálogo, o CARRO
-    servicio: str | None = None  # uno del catálogo
 
 
 @dataclass(frozen=True)
@@ -67,21 +72,46 @@ class Anterior:
     opciones: tuple[str, ...] = ()  # los botones que traía, si era del bot
 
 
-class Interprete(Protocol):
-    """Quien entiende el texto libre; en el hito 7, Gemini.
+@dataclass(frozen=True)
+class Contexto:
+    """Todo lo que Gemini necesita, además del mensaje, para entenderlo y contestar."""
 
-    Como una interfaz de Java: el bot solo sabe que tiene `interpretar`. Si el
-    intérprete no responde a tiempo o falla, devuelve None y el bot sigue con botones.
-    `antes` es lo último que se dijeron, para entender el mensaje en contexto.
+    catalogo: Catalogo
+    ficha: str = ""  # lo único que sabe del negocio (app.bot.redactor.ficha_completa)
+    antes: tuple[Anterior, ...] = ()  # lo último que se dijeron
+    en_que_va: str = ""  # qué le está preguntando el bot ("" si nada)
+    # Lo que el bot diría con un texto fijo ("saludo", "despedida", "felicitacion"):
+    # Gemini lo dice con sus palabras, con la misma idea (app.bot.textos.CON_SUS_PALABRAS).
+    guias: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class Interpretacion:
+    """Lo que entendió Gemini y, si toca conversar, lo que escribió (todavía sin revisar)."""
+
+    intencion: Intencion
+    vehiculo: str | None = None  # uno del catálogo, CARRO u OTRO_VEHICULO
+    servicio: str | None = None  # uno del catálogo
+    si_o_no: str | None = None  # SI o NO, si contesta una pregunta de sí o no del bot
+    respuesta: str = ""  # lo que escribió para el cliente; "" si contesta el sistema
+    sabe: bool = True  # en una pregunta: False si la ficha no tiene el dato
+
+
+class Interprete(Protocol):
+    """Quien lee lo que el cliente escribe con sus palabras; en el bot de verdad, Gemini.
+
+    Como una interfaz de Java: el bot solo sabe que tiene `interpretar`. Si no responde a
+    tiempo o falla, devuelve None, anota por qué en `ultimo_problema` y el bot sigue sin
+    él (con los botones y unas palabras que reconoce solo).
     """
 
-    def interpretar(
-        self, mensaje: str, catalogo: Catalogo, antes: Sequence[Anterior] = ()
-    ) -> Interpretacion | None: ...
+    ultimo_problema: str | None
+
+    def interpretar(self, mensaje: str, contexto: Contexto) -> Interpretacion | None: ...
 
 
 def leer_respuesta(datos: Any, catalogo: Catalogo) -> Interpretacion | None:
-    """La respuesta del intérprete, revisada: lo que no está en la lista no se cree."""
+    """Lo que contestó Gemini, revisado: lo que no está en la lista no se cree."""
     if not isinstance(datos, dict):
         return None
     try:
@@ -90,10 +120,17 @@ def leer_respuesta(datos: Any, catalogo: Catalogo) -> Interpretacion | None:
         return None
     vehiculo = datos.get("vehiculo")
     servicio = datos.get("servicio")
+    si_o_no = datos.get("si_o_no")
+    respuesta = datos.get("respuesta")
+    sabe = datos.get("sabe")
+    validos = (*catalogo.vehiculos, CARRO, OTRO_VEHICULO)
     return Interpretacion(
         intencion,
-        vehiculo=vehiculo if vehiculo in catalogo.vehiculos or vehiculo == CARRO else None,
+        vehiculo=vehiculo if vehiculo in validos else None,
         servicio=servicio if servicio in catalogo.servicios else None,
+        si_o_no=si_o_no if si_o_no in (SI, NO) else None,
+        respuesta=respuesta.strip() if isinstance(respuesta, str) else "",
+        sabe=sabe if isinstance(sabe, bool) else True,
     )
 
 

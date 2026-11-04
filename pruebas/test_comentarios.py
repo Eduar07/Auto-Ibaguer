@@ -214,7 +214,7 @@ def test_un_relato_con_ya_llegue_no_marca_la_llegada(sesion: Session):
 
 def test_en_medio_de_pedir_turno_una_queja_cambia_de_tema(sesion: Session):
     vehiculo = ana(sesion)
-    cliente = chat(sesion, Interpretacion(Q.QUEJA))
+    cliente = chat(sesion, None, Interpretacion(Q.QUEJA))  # el "hola" también lo lee Gemini
     cliente.escribe("hola").toca("Pedir turno")  # conoce su carro: le pregunta el servicio
     assert paso(sesion) == "servicio"
 
@@ -263,7 +263,9 @@ def test_si_no_da_permiso_la_queja_queda_sin_su_numero(sesion: Session):
 
     cliente.escribe("no")  # un no escrito vale como el botón
 
-    assert cliente.texto.startswith("Entendido, no guardamos tu número.")
+    assert cliente.texto == (
+        "Listo, tu comentario ya le llegó al administrador. Gracias por ayudarnos a mejorar."
+    )
     [queja] = guardados(sesion)
     assert (queja.telefono, queja.permiso_en) == (None, None)
 
@@ -316,8 +318,7 @@ def test_si_no_da_permiso_no_se_guarda_nada_y_se_le_da_el_telefono(sesion: Sessi
     cliente.toca("No, gracias")
 
     assert cliente.texto == (
-        "Entendido, no guardamos tu número. Si quieres hablar con el administrador, llama al "
-        "322 755 6850."
+        "Listo, sin problema. Si quieres hablar con el administrador, llama al 322 755 6850."
     )
     assert guardados(sesion) == []
     assert paso(sesion) == "menu"
@@ -328,7 +329,7 @@ def test_escribir_el_boton_del_no_vale_igual(sesion: Session):
 
     cliente.escribe("No, gracias")  # "gracias" no lo vuelve una despedida
 
-    assert cliente.texto.startswith("Entendido, no guardamos tu número. Si quieres hablar")
+    assert cliente.texto.startswith("Listo, sin problema. Si quieres hablar")
     assert guardados(sesion) == []
 
 
@@ -359,7 +360,7 @@ def test_una_felicitacion_se_agradece_y_le_llega_al_administrador(sesion: Sessio
 
 def test_una_felicitacion_en_medio_de_pedir_turno_no_lo_interrumpe(sesion: Session):
     ana(sesion)
-    cliente = chat(sesion, Interpretacion(Q.FELICITACION))
+    cliente = chat(sesion, None, Interpretacion(Q.FELICITACION))
     cliente.escribe("hola").toca("Pedir turno")
 
     cliente.escribe("ustedes son los mejores")

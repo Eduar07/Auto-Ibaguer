@@ -91,14 +91,20 @@ def escribirle_al_bot(
     entrada = Entrada(telefono=telefono, texto=texto or None, opcion=opcion or None)
     ahora = tiempo.ahora()
     # Igual que por WhatsApp: si Gemini está conectado, entiende lo que escribes y contesta
-    # las preguntas y la charla con la ficha del negocio.
+    # las preguntas y la charla con la ficha del negocio. Aquí, además, se ve cómo decidió
+    # el bot cada respuesta (la traza): si le preguntó a Gemini y, si no, por qué.
     con_gemini = gemini.para_el_bot(leer_parametros(sesion))
-    respuestas = conversacion.atender(
-        sesion, entrada, ahora=ahora, interprete=con_gemini, redactor=con_gemini
+    respuestas, traza = conversacion.atender_con_traza(
+        sesion, entrada, ahora=ahora, interprete=con_gemini
     )
     _anotar(sesion, entrada, titulo, respuestas, ahora)
     sesion.commit()
-    contexto = {"telefono": telefono, "escrito": titulo or texto, "respuestas": respuestas}
+    contexto = {
+        "telefono": telefono,
+        "escrito": titulo or texto,
+        "respuestas": respuestas,
+        "traza": traza.texto(),
+    }
     return html(request, "_charla_del_bot.html", contexto)
 
 

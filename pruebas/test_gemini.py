@@ -28,6 +28,7 @@ from app.bot.interprete import (
     ocultar_datos,
 )
 from app.bot.mensajes import Entrada
+from app.bot.redactor import Respuesta
 from app.catalogo.parametros import leer_parametros
 from app.config import obtener_entorno
 from app.integraciones import gemini
@@ -508,6 +509,11 @@ def test_el_comando_corre_las_frases_y_dice_cuantas_salieron_bien(
         def interpretar(self, mensaje: str, _catalogo: Catalogo) -> Interpretacion:
             return esperadas[mensaje]
 
+        def redactar(self, tipo: Intencion, mensaje: str, _ficha: str) -> Respuesta:
+            if mensaje == "te amo":
+                return Respuesta("Te damos un lavado gratis.")  # rompe una regla
+            return Respuesta("Con gusto, aquí estamos.", sabe=tipo == Q.CHARLA)
+
     monkeypatch.setattr(gemini, "Gemini", GeminiQueSabe)
 
     assert cli.main(["probar-gemini", "--modelo", "gemini-3.6-flash", "--pausa", "0"]) == 1
@@ -516,6 +522,11 @@ def test_el_comando_corre_las_frases_y_dice_cuantas_salieron_bien(
     assert f"Probando {len(FRASES)} frases con gemini-3.6-flash:" in salida
     assert f"MAL    «{primera}» → esperaba intención pedir_turno" in salida
     assert f"{len(FRASES) - 1} de {len(FRASES)} bien" in salida
+    # A la charla y a las preguntas les muestra lo que contestaría el bot.
+    cansado = "  bien   «estoy cansado» → charla\n         contesta «Con gusto, aquí estamos.»"
+    assert cansado in salida
+    assert "«reciben nequi?» → pregunta\n         no lo sabe: se la pasa al administrador" in salida
+    assert "contesta el texto fijo (lo que escribió rompía una regla: «Te damos un" in salida
 
 
 def test_el_comando_sin_clave_dice_que_falta(entorno, capsys):

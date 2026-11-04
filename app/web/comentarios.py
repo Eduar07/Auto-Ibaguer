@@ -1,5 +1,6 @@
-"""La pantalla Comentarios: las quejas, las felicitaciones y quién pidió hablar con una
-persona, como llegan por WhatsApp. El administrador los lee y los marca como atendidos.
+"""La pantalla Comentarios: las quejas, las felicitaciones, quién pidió hablar con una
+persona y las preguntas que el bot no supo responder, como llegan por WhatsApp. El
+administrador los lee y los marca como atendidos.
 
 El número que sale junto a "Comentarios" en el menú se vuelve a pedir solo cada minuto, y
 también apenas el administrador marca o borra uno.

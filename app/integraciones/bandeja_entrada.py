@@ -131,10 +131,15 @@ def atender_pendientes(abrir: AbrirSesion, telefono: str, *, ahora: datetime | N
                 if mensaje is None:
                     return atendidos
                 mensaje_id = mensaje.id
-                # Gemini entiende lo que el cliente escribe con sus palabras, si está.
-                interprete = gemini.para_el_bot(leer_parametros(sesion))
+                # Gemini entiende lo que el cliente escribe con sus palabras, si está, y
+                # escribe la respuesta a una pregunta sobre el negocio o a la charla.
+                con_gemini = gemini.para_el_bot(leer_parametros(sesion))
                 respuestas = conversacion.atender(
-                    sesion, _entrada(mensaje), ahora=momento, interprete=interprete
+                    sesion,
+                    _entrada(mensaje),
+                    ahora=momento,
+                    interprete=con_gemini,
+                    redactor=con_gemini,
                 )
                 _contestar(sesion, telefono, respuestas, momento)
                 mensaje.procesado_en = momento

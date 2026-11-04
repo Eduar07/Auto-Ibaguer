@@ -7,7 +7,7 @@
   <div class="titular titular--siempre">
     <div>
       <h1>Comentarios</h1>
-      <p>Las quejas, las felicitaciones y quién pidió hablar con una persona, como llegan por WhatsApp. Cuando lo resuelvas, márcalo como atendido.</p>
+      <p>Las quejas, las felicitaciones, quién pidió hablar con una persona y las preguntas que el bot no supo responder, como llegan por WhatsApp. Cuando lo resuelvas, márcalo como atendido.</p>
     </div>
   </div>
 
@@ -21,7 +21,7 @@
     {% for c in comentarios %}{% include "_comentario.html" %}{% endfor %}
   </div>
   {% elif ver == "pendientes" %}
-  <p class="panel suave">No hay comentarios por atender. Cuando un cliente se queje, felicite el servicio o pida hablar con alguien, aparece aquí.</p>
+  <p class="panel suave">No hay comentarios por atender. Cuando un cliente se queje, felicite el servicio, pida hablar con alguien o pregunte algo que el bot no sabe, aparece aquí.</p>
   {% else %}
   <p class="panel suave">Todavía no ha llegado ningún comentario.</p>
   {% endif %}

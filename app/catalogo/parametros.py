@@ -39,6 +39,8 @@ class Parametros:
     aviso_datos: str
     gemini_activo: bool
     modelo_gemini: str
+    # Lo que el bot puede contar del negocio, escrito por el administrador (app.bot.redactor).
+    ficha_negocio: str
     # Los textos del bot que cambió el administrador: nombre del texto -> cómo quedó.
     textos_bot: Mapping[str, str] = field(default_factory=dict, hash=False)
 
@@ -70,5 +72,6 @@ def leer_parametros(sesion: Session) -> Parametros:
         aviso_datos=str(valor("aviso_datos")),
         gemini_activo=bool(valor("gemini_activo")),
         modelo_gemini=str(valor("modelo_gemini")),
+        ficha_negocio=str(valor("ficha_negocio")),
         textos_bot=textos_bot,
     )

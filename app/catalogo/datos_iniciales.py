@@ -129,6 +129,12 @@ CONFIGURACION_INICIAL: tuple[tuple[str, Any, str], ...] = (
         "Modelo de Gemini que entiende lo que escriben los clientes",
     ),
     (
+        "ficha_negocio",
+        "",
+        "Lo que el bot puede contarles a los clientes del negocio (dirección, pagos...): "
+        "Gemini contesta las preguntas solo con esto y con el horario del sistema",
+    ),
+    (
         "aviso_datos",
         "Para darte turno guardamos tu nombre, tu celular y la placa de tu vehículo. Los "
         "usamos solo para atenderte y avisarte. Puedes pedir que los borremos cuando "

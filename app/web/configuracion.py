@@ -127,6 +127,7 @@ def _valores_guardados(sesion: Session, filas: list[FilaEnConfiguracion]) -> dic
         "aviso_datos": parametros.aviso_datos,
         "gemini_activo": parametros.gemini_activo,
         "modelo_gemini": parametros.modelo_gemini,
+        "ficha_negocio": parametros.ficha_negocio,
     }
     for fila in filas:
         for puesto in fila.puestos:
@@ -166,6 +167,7 @@ def _formulario(
         "errores": errores or {},
         "dias_de_duracion_real": DIAS_DE_DURACION_REAL,
         "gemini": gemini.estado(leer_parametros(sesion)),
+        "largo_de_la_ficha": configuracion.LARGO_DE_LA_FICHA,
     }
     return html(request, "_formulario_configuracion.html", contexto)
 
@@ -179,6 +181,7 @@ def pagina_configuracion(request: Request, sesion: SesionBD, _: Admin) -> Respon
         "errores": {},
         "dias_de_duracion_real": DIAS_DE_DURACION_REAL,
         "gemini": gemini.estado(leer_parametros(sesion)),
+        "largo_de_la_ficha": configuracion.LARGO_DE_LA_FICHA,
     }
     return pagina(request, sesion, "configuracion.html", contexto, seccion="configuracion")
 
@@ -200,6 +203,7 @@ async def guardar(request: Request, sesion: SesionBD, _: Admin) -> Response:
             "sesion_bot_minutos",
             "aviso_datos",
             "modelo_gemini",
+            "ficha_negocio",
         )
     }
     parametros["dias_atencion"] = formulario.getlist("dias_atencion")

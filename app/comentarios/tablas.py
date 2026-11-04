@@ -27,10 +27,12 @@ class TipoComentario(StrEnum):
     QUEJA = "queja"
     FELICITACION = "felicitacion"
     QUIERE_HABLAR = "quiere_hablar"  # pidió hablar con una persona
+    PREGUNTA = "pregunta"  # preguntó algo que la ficha del negocio no sabía
 
 
 class Comentario(Base):
-    """Una queja, una felicitación o un cliente que quiere hablar con una persona.
+    """Una queja, una felicitación, un cliente que quiere hablar con una persona o una
+    pregunta que el bot no supo responder.
 
     Se guarda el celular solo para que el administrador pueda responderle: el de un cliente
     que ya aceptó el aviso de datos, o el de alguien que dio permiso para eso (permiso_en).

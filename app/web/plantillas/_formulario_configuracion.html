@@ -94,6 +94,13 @@
       </div>
       <p class="insignia insignia--{{ gemini.color }} gemini__estado">{{ gemini.texto }}</p>
     </div>
+    <div class="campo" id="ficha">
+      <label for="ficha_negocio">Ficha del negocio: lo que el bot puede contar</label>
+      <textarea id="ficha_negocio" name="ficha_negocio" rows="7" maxlength="{{ largo_de_la_ficha }}" {{ invalido("ficha_negocio") }}
+                placeholder="Por ejemplo:&#10;Dirección: Calle 45 # 12-30, al lado de la panadería.&#10;Formas de pago: efectivo, Nequi y tarjeta.&#10;Hay sala de espera con wifi.&#10;No lavamos motores ni tapicería.">{{ valores.ficha_negocio }}</textarea>
+      {{ error_de("ficha_negocio") }}
+      <span class="ayuda">Con esto y con el horario, el teléfono y los servicios de arriba, Gemini contesta preguntas como "¿reciben Nequi?" o "¿dónde quedan?". Lo que no esté aquí no lo inventa: la pregunta te llega a Comentarios. No escribas precios: esos los da el menú, siempre al día.</span>
+    </div>
     <p class="ayuda">Lo que el bot les contesta a los clientes se cambia en Textos del bot, sin programar.</p>
     <div class="enlaces-del-bot">
       <a class="boton boton--borde" href="/configuracion/textos">Textos del bot</a>

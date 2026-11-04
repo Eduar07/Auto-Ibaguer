@@ -24,9 +24,10 @@ from sqlalchemy.exc import ArgumentError, OperationalError
 from sqlalchemy.orm import Session
 
 from app import tiempo
-from app.bot.conversacion import catalogo_del_bot
+from app.bot import redactor
+from app.bot.conversacion import PREGUNTA_O_CHARLA, catalogo_del_bot
 from app.bot.frases_de_prueba import FRASES, FraseDePrueba
-from app.bot.interprete import Interpretacion
+from app.bot.interprete import Intencion, Interpretacion
 from app.catalogo.datos_iniciales import cargar_datos_iniciales
 from app.catalogo.parametros import leer_parametros
 from app.catalogo.tablas import TipoVehiculo
@@ -275,11 +276,25 @@ def _lo_que_entendio(entendido: Interpretacion) -> str:
     return ", ".join(parte for parte in partes if parte)
 
 
+def _lo_que_contesta(con_gemini: gemini.Gemini, tipo: Intencion, texto: str, ficha: str) -> str:
+    """Lo que el bot le contestaría a una pregunta o a la charla, como en WhatsApp."""
+    respuesta = con_gemini.redactar(tipo, texto, ficha)
+    if respuesta is None:
+        return f"contesta el texto fijo ({con_gemini.ultimo_problema or 'no respondió'})"
+    if tipo == Intencion.PREGUNTA and not respuesta.sabe:
+        return "no lo sabe: se la pasa al administrador"
+    revisada = redactor.revisar(respuesta.texto, ficha)
+    if revisada is None:
+        return f"contesta el texto fijo (lo que escribió rompía una regla: «{respuesta.texto}»)"
+    return f"contesta «{revisada}»"
+
+
 def probar_gemini(modelo: str | None, pausa: float) -> int:
     """Corre las frases de prueba (app/bot/frases_de_prueba.py) contra el modelo de verdad.
 
-    Sirve para decidir si un modelo nuevo se puede usar con clientes. Entre frase y frase
-    espera `pausa` segundos, para no pasarse del límite del plan gratis.
+    Sirve para decidir si un modelo nuevo se puede usar con clientes. A las preguntas y a
+    la charla les muestra, además, lo que contestaría el bot con la ficha del negocio. Entre
+    petición y petición espera `pausa` segundos, para no pasarse del límite del plan gratis.
     """
     entorno = obtener_entorno()
     if not entorno.gemini_clave:
@@ -288,6 +303,7 @@ def probar_gemini(modelo: str | None, pausa: float) -> int:
     with Session(obtener_motor()) as sesion:
         parametros = leer_parametros(sesion)
         catalogo = catalogo_del_bot(sesion)
+    ficha = redactor.ficha_completa(parametros, catalogo)
     modelo = (modelo or parametros.modelo_gemini).strip().lower()
     interprete = gemini.Gemini(entorno.gemini_clave, modelo, negocio=parametros.nombre_negocio)
     print(f"Probando {len(FRASES)} frases con {modelo}:")
@@ -305,8 +321,13 @@ def probar_gemini(modelo: str | None, pausa: float) -> int:
                 f"entendió {_lo_que_entendio(entendido)}" if entendido else ""
             )
             print(f"  MAL    «{frase.texto}» → {falla} ({detalle})")
+        if entendido is not None and entendido.intencion in PREGUNTA_O_CHARLA:
+            time.sleep(pausa)
+            contesta = _lo_que_contesta(interprete, entendido.intencion, frase.texto, ficha)
+            print(f"         {contesta}")
     porcentaje = round(100 * bien / len(FRASES))
     print(f"{bien} de {len(FRASES)} bien ({porcentaje} %).")
+    print("Lo que contesta a las preguntas y a la charla no cuenta: léelo y mira si te gusta.")
     if bien < len(FRASES):
         print("Revisa las que salieron MAL antes de usar este modelo con clientes.")
     return 0 if bien == len(FRASES) else 1
@@ -350,7 +371,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     probar = comandos.add_parser(
         "probar-gemini",
-        help="Corre las frases de prueba contra Gemini (antes de cambiar el modelo).",
+        help="Corre las frases de prueba contra Gemini y muestra lo que contesta a las "
+        "preguntas y a la charla (antes de cambiar el modelo).",
     )
     probar.add_argument("--modelo", help="El modelo a probar (si no, el de Configuración)")
     probar.add_argument(

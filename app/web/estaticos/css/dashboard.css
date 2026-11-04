@@ -751,6 +751,8 @@ legend { padding: 0; margin-bottom: 8px; }
 .comentario--atendido .comentario__texto { color: var(--tinta-gris); }
 .comentario__quien { font-size: 14px; line-height: 1.5; color: var(--tinta-suave); }
 .comentario__quien a { font-weight: 600; }
+.comentario__pista { font-size: 14px; line-height: 1.5; color: var(--tinta-suave); }
+.comentario__pista a { font-weight: 600; }
 .comentario__acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .comentario__acciones .peligro { margin-left: auto; }
 .comentario__atendido { display: inline-flex; align-items: center; gap: 6px; color: var(--verde); font-size: 14px; font-weight: 600; }

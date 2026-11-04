@@ -4,7 +4,7 @@ uv run auto-ibaguer preparar-base             crea las tablas y carga los datos 
 uv run auto-ibaguer revisar-base              dice si las tablas están al día y cuánto hay
 uv run auto-ibaguer crear-admin --usuario X   crea un administrador del dashboard
 uv run auto-ibaguer simular-turno             pide un turno como lo hará el bot (pruebas)
-uv run auto-ibaguer registrar-whatsapp        registra el número del bot (el día de la SIM)
+uv run auto-ibaguer registrar-whatsapp        enlaza la app y registra el número (día de la SIM)
 uv run auto-ibaguer probar-gemini             corre las frases de prueba contra Gemini
 """
 
@@ -233,19 +233,30 @@ def simular_turno(vehiculo: str, nombre: str | None, celular: str | None) -> int
 
 
 def registrar_whatsapp() -> int:
-    """Registra el número del bot en WhatsApp con el PIN de la verificación en dos pasos.
+    """Deja el número del bot listo en WhatsApp: primero enlaza la app con la cuenta de
+    WhatsApp Business (sin eso Meta no le avisa al webhook) y después registra el número con
+    el PIN de la verificación en dos pasos.
 
-    El PIN se escribe sin que se vea y no se guarda en ninguna parte.
+    El PIN se escribe sin que se vea y no se guarda en ninguna parte. Se puede correr otra
+    vez sin problema, con el mismo PIN.
     """
     entorno = obtener_entorno()
     datos = {
         "WHATSAPP_TOKEN": entorno.whatsapp_token,
         "WHATSAPP_ID_NUMERO": entorno.whatsapp_id_numero,
+        "WHATSAPP_ID_CUENTA": entorno.whatsapp_id_cuenta,
     }
     faltan = [nombre for nombre, valor in datos.items() if not valor]
     if faltan:
-        print(f"Faltan {' y '.join(faltan)} en el archivo .env.", file=sys.stderr)
+        lista = ", ".join(faltan[:-1]) + " y " + faltan[-1] if len(faltan) > 1 else faltan[0]
+        print(f"Faltan {lista} en el archivo .env.", file=sys.stderr)
         return 1
+    try:
+        enlazadas = whatsapp.enlazar_la_app(entorno)
+    except whatsapp.RegistroFallido as error:
+        print(f"Meta no enlazó la app con la cuenta de WhatsApp: {error}", file=sys.stderr)
+        return 1
+    print(f"La cuenta de WhatsApp quedó enlazada con: {', '.join(enlazadas) or 'la app'}.")
     pin = getpass.getpass("PIN de 6 dígitos (no se ve mientras lo escribes): ").strip()
     if not re.fullmatch(r"[0-9]{6}", pin):
         print("El PIN son 6 números. No se registró nada.", file=sys.stderr)
@@ -412,7 +423,8 @@ def main(argv: list[str] | None = None) -> int:
     simular.add_argument("--celular", help="Celular del cliente (si no, uno inventado)")
     comandos.add_parser(
         "registrar-whatsapp",
-        help="Registra el número del bot en WhatsApp (una vez, el día que llega la SIM).",
+        help="Enlaza la app con la cuenta de WhatsApp y registra el número del bot (el día de "
+        "la SIM; se puede repetir).",
     )
     probar = comandos.add_parser(
         "probar-gemini",

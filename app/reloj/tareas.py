@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.bot import pausa as pausa_del_bot
 from app.bot import sesiones as sesiones_del_bot
 from app.db.sesion import AbrirSesion
 from app.integraciones import bandeja_entrada, bandeja_salida
@@ -56,6 +57,8 @@ GRACIAS = Tarea("los tiempos de gracia", _vencer_gracias)
 def _vencer_sesiones_del_bot(abrir: AbrirSesion, ahora: datetime) -> list[str]:
     with abrir() as sesion, sesion.begin():
         vencidas = sesiones_del_bot.vencer(sesion, ahora=ahora)
+        # Las pausas del bot que ya pasaron también se borran: tienen el celular.
+        pausa_del_bot.vencer_pausas(sesion, ahora=ahora)
     if not vencidas:
         return []
     return [

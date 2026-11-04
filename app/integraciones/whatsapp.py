@@ -26,8 +26,9 @@ from app import tiempo
 from app.bot.avisos import mensaje_del_aviso
 from app.bot.mensajes import Mensaje
 from app.catalogo.parametros import leer_parametros
+from app.clientes.reglas import es_de_prueba
 from app.config import ConfiguracionEntorno, obtener_entorno
-from app.integraciones.bandeja_salida import TIPO_RESPUESTA, EnvioFallido
+from app.integraciones.bandeja_salida import TIPO_DEL_ADMINISTRADOR, TIPO_RESPUESTA, EnvioFallido
 from app.integraciones.tablas import MensajeEntrante, MensajeSaliente
 from app.turnos.estados import TipoAviso
 
@@ -187,9 +188,12 @@ def contenido_para_meta(mensaje: Mensaje, telefono: str) -> dict[str, Any]:
 
 
 def mensaje_del_bot(sesion: Session, mensaje: MensajeSaliente) -> Mensaje:
-    """Lo que dice un mensaje de la bandeja de salida: una respuesta o un aviso de la fila."""
+    """Lo que dice un mensaje de la bandeja de salida: una respuesta, un aviso de la fila o
+    lo que escribió el administrador."""
     if mensaje.tipo == TIPO_RESPUESTA:
         return Mensaje.desde_datos(mensaje.contenido)
+    if mensaje.tipo == TIPO_DEL_ADMINISTRADOR:
+        return Mensaje(str(mensaje.contenido["texto"]))
     if mensaje.tipo in {tipo.value for tipo in TipoAviso}:
         return mensaje_del_aviso(mensaje.tipo, mensaje.contenido, leer_parametros(sesion))
     raise EnvioFallido(f"No se sabe enviar un mensaje de tipo {mensaje.tipo!r}.", reintentar=False)
@@ -215,6 +219,11 @@ class WhatsApp:
         self.http = http or httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0))
 
     def enviar(self, sesion: Session, mensaje: MensajeSaliente) -> str:
+        if es_de_prueba(mensaje.telefono):
+            raise EnvioFallido(
+                "Es un celular de prueba (Probar el bot): no sale por WhatsApp.",
+                reintentar=False,
+            )
         if not le_escribio_hace_poco(sesion, mensaje.telefono):
             raise EnvioFallido(
                 "No le ha escrito al bot en las últimas 24 horas: WhatsApp no deja escribirle.",

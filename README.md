@@ -17,7 +17,7 @@ Sistema de turnos para el lavadero de carros y motos **Auto Ibaguer**:
 | 5 · Bot con botones | Construido: la conversación con botones funciona en **Probar el bot**, ya está conectada a WhatsApp (recibe, contesta, reintenta y a cada cliente le llegan sus mensajes en orden) y sus textos se cambian en **Configuración > Textos del bot**. Falta la prueba desde tu celular cuando llegue la SIM. |
 | 6 · Reloj | Construido: cada 30 segundos pasa al final a quien no llegó a tiempo, vence las sesiones del bot y marca los lavados demorados. Con WhatsApp conectado también envía y reintenta los mensajes, y atiende los que quedaron sin atender. Falta su prueba en tu computador. |
 | 7 · Gemini | Construido: el bot entiende lo que el cliente escribe con sus palabras ("cuánto vale lavar la camionetica", "ya no voy a poder ir") y, si Gemini falla o tarda más de 5 segundos, sigue con botones. Probado con un Gemini de mentira. Falta correr las frases de prueba con tu clave: `uv run auto-ibaguer probar-gemini`. |
-| 7b · Un bot que responde como una persona | Construido: quejas, felicitaciones, "quiero hablar con una persona" y "cuántas lavadas llevo", que llegan a la pantalla **Comentarios**; las preguntas sobre el negocio se contestan con la ficha del negocio y la charla ("estoy cansado", "te amo") la escribe Gemini, revisada por el bot; los mensajes graves reciben un texto fijo con las líneas de ayuda. Falta: responderle al cliente desde Comentarios por WhatsApp. |
+| 7b · Un bot que responde como una persona | Construido: quejas, felicitaciones, "quiero hablar con una persona" y "cuántas lavadas llevo", que llegan a la pantalla **Comentarios**; las preguntas sobre el negocio se contestan con la ficha del negocio y la charla ("estoy cansado", "te amo") la escribe Gemini, revisada por el bot; los mensajes graves reciben un texto fijo con las líneas de ayuda. Desde **Comentarios** se le responde al cliente por WhatsApp, con el bot en pausa mientras tanto. Probado de punta a punta en **Probar el bot** y con un WhatsApp de mentira. Falta probarlo con WhatsApp conectado. |
 | 8 · Producción | Listo para subir: la imagen de la nube, Render con su base de datos (`render.yaml`), la revisión de salud con el reloj, los avisos de caída por correo y la copia de seguridad diaria, cifrada y fuera de Render. Probado como lo hará Render, en GitHub. Falta crear la cuenta y subirlo: [Poner el sistema en la nube](#poner-el-sistema-en-la-nube). |
 | 9 · Piloto en el local | — |
 
@@ -88,9 +88,22 @@ El bot conversa con botones y unas pocas palabras; lo que el cliente escribe con
 
 Fuera del horario o con el bot apagado no da turnos, pero sí muestra la fila y los precios. Tampoco deja pedir un segundo turno en la misma fila: muestra el que tiene y ofrece mantenerlo o cancelarlo. Si el cliente no responde en 30 minutos, la conversación vuelve a empezar.
 
-**Probar el bot**: en Configuración, botón **Probar el bot** (o <http://localhost:8000/probar-bot>). Es la misma conversación que tendrá WhatsApp, con los mismos botones, y los avisos de la fila (te llamamos, tu vehículo está listo...) llegan a la charla. Lo que pidas ahí entra a la fila de verdad de tu computador. Solo existe en desarrollo.
+**Probar el bot**: en Configuración, botón **Probar el bot** (o <http://localhost:8000/probar-bot>). Es la misma conversación que tendrá WhatsApp, con los mismos botones, y los avisos de la fila (te llamamos, tu vehículo está listo...) llegan a la charla. Lo que pidas ahí entra a la fila de verdad de tu computador. Lo que escribes cuenta como si hubiera llegado por WhatsApp (para las 24 horas y para la conversación de Comentarios), y lo que le respondas desde **Comentarios** llega a la charla. Nada de eso sale por WhatsApp: a un celular de prueba (los que empiezan por 5799) nunca se le escribe. Solo existe en desarrollo.
 
 **Comentarios**: en el menú (o <http://localhost:8000/comentarios>). Las quejas, felicitaciones, pedidos de hablar con una persona y preguntas que el bot no supo, con el cliente y su último turno. Se marcan como atendidos o se borran (por ejemplo, si quien lo escribió pide que se borre). El número de pendientes sale en el menú y se actualiza solo cada minuto.
+
+**Responderle por WhatsApp**: si dejó su celular, el botón **Responder por WhatsApp** abre la conversación (lo que escribió, lo que le contestó el bot y lo que le escribiste tú, al día cada 10 segundos) y le escribes desde ahí. El primer mensaje ya trae con qué empezar ("Hola Ana, te habla Eduar, de Auto Ibaguer."). Sale por la bandeja de salida, con sus reintentos, y el comentario queda atendido. WhatsApp solo deja escribirle hasta 24 horas después de su último mensaje; después, llámalo.
+
+Mientras le respondes, el bot hace una pausa de una hora con ese cliente (se alarga con cada mensaje tuyo), para no meterse en la conversación:
+
+| El cliente | El bot |
+|---|---|
+| Te contesta ("fue en el capó"), manda una foto o dice "gracias" | No contesta. Lo ves en la conversación y el comentario vuelve a **por atender**. |
+| Escribe algo de la fila en un mensaje corto ("ya llegué", "voy en camino", "mi turno") o escanea el QR | Lo atiende: la fila no espera. |
+| Toca un botón o va en algo con el bot (tocó *Pedir turno* y el bot le pregunta la placa) | Lo atiende. |
+| Escribe un mensaje grave | Le manda las líneas de ayuda, y el comentario vuelve a **por atender** para que lo veas. |
+
+**Devolver al bot** termina la pausa antes. Si borras el comentario, la pausa también termina.
 
 **Textos del bot**: en Configuración, botón **Textos del bot** (o <http://localhost:8000/configuracion/textos>). Ahí se cambian los 58 textos que más leen los clientes (el saludo, el turno confirmado, los avisos de la fila...), agrupados como la conversación. Al abrir uno ves el texto, los datos que llena el bot ({numero}, {hora}...) y, al lado, cómo le llega al cliente mientras escribes. Cada texto se guarda por separado y el bot lo usa desde el siguiente mensaje; **Volver al original** lo deja como venía. Antes de guardar se revisa que no le falte un dato que el cliente necesita (por ejemplo, la hora límite del llamado), que no use datos que ese mensaje no tiene y que quepa en WhatsApp. Los botones y los demás textos (errores al escribir una placa, por ejemplo) siguen en `app/bot/textos.py`.
 
@@ -105,6 +118,7 @@ Fuera del horario o con el bot apagado no da turnos, pero sí muestra la fila y 
 | `conversacion.py` | Qué contesta a cada mensaje y en qué paso va cada cliente. Llama a los mismos casos de uso que el dashboard. |
 | `avisos.py` | Cómo dice el bot cada aviso de la fila. |
 | `sesiones.py` | Las conversaciones sin respuesta que vencen (las limpia el reloj). |
+| `pausa.py` | Con quién está en pausa el bot porque le responde una persona, y hasta cuándo. Lo que hace el bot durante la pausa está en `conversacion.py`. |
 
 ## WhatsApp
 
@@ -115,7 +129,7 @@ Así viaja cada mensaje:
 3. Enseguida, aparte, el bot lo atiende: decide qué contestar y deja las respuestas en la bandeja de salida, en la misma transacción de lo que hizo (pedir el turno, cancelarlo...). Los mensajes de un mismo cliente se atienden de a uno y en orden.
 4. Las respuestas salen por la API de WhatsApp. Si WhatsApp falla un momento, el reloj las reintenta, y a cada cliente sus mensajes le llegan en el orden en que el bot los escribió.
 
-Los avisos de la fila (te llamamos, tu vehículo está listo...) salen por el mismo camino. WhatsApp solo deja escribirle libremente a quien le escribió al negocio en las últimas 24 horas; si no, el aviso no sale y queda anotado por qué. Si el servidor se apaga a mitad de camino no se pierde nada: lo que se guardó se atiende o se envía cuando vuelve.
+Los avisos de la fila (te llamamos, tu vehículo está listo...) y lo que le escribes al cliente desde **Comentarios** salen por el mismo camino. WhatsApp solo deja escribirle libremente a quien le escribió al negocio en las últimas 24 horas; si no, el aviso no sale y queda anotado por qué. Si el servidor se apaga a mitad de camino no se pierde nada: lo que se guardó se atiende o se envía cuando vuelve.
 
 La pantalla **Mensajes de WhatsApp** (en Configuración, o <http://localhost:8000/mensajes>) muestra lo último que entró y salió, si WhatsApp está conectado y, cuando un mensaje no salió, por qué. El celular se ve a medias (300 \*\*\* 4567).
 
@@ -224,6 +238,7 @@ El servidor trae un reloj que cada 30 segundos revisa lo que vence con el tiempo
 |---|---|
 | Llamados que no llegaron en su tiempo de gracia (15 minutos) | La primera vez el turno pasa al final de la fila; la segunda, pierde el turno. La fila avanza, se llama al siguiente y el dashboard se actualiza solo. |
 | Sesiones del bot sin respuesta (30 minutos) | El bot vuelve al menú y olvida lo que el cliente iba escribiendo. Si la persona nunca aceptó el aviso de datos, se borra también su celular. |
+| Pausas del bot que ya pasaron (1 hora después de tu último mensaje desde Comentarios) | Se borran: el bot ya le contesta normal a ese cliente y no queda su celular guardado sin necesidad. |
 | Mensajes de WhatsApp que no salieron | Se reintentan cada vez más tarde (30 segundos, 1, 2, 5 y 10 minutos) y después se dejan. Un aviso que ya no sirve (por ejemplo, el cliente ya llegó) no se envía. Mientras WhatsApp no esté conectado, esperan en la bandeja de salida. |
 | Mensajes de clientes que nadie atendió (más de 1 minuto) | Si el servidor se apagó justo después de recibir un mensaje, el reloj lo atiende y le contesta al cliente. |
 
@@ -380,7 +395,8 @@ app/
 ├── catalogo/       filas, puestos, tipos de vehículo, servicios, precios y parámetros
 ├── clientes/       clientes, vehículos, placas y teléfonos
 ├── turnos/         la fila: turnos, llamados, avisos, puestos, historial y cobro
-├── bot/            conversación de WhatsApp: pasos, botones, textos y avisos
+├── bot/            conversación de WhatsApp: pasos, botones, textos, avisos y la pausa
+├── comentarios/    quejas, felicitaciones y preguntas para el administrador, y responderle al cliente
 ├── integraciones/  mensajes que entran y salen de WhatsApp (bandejas y reintentos)
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores
 ├── reloj/          lo que pasa solo cada 30 segundos (gracias, sesiones del bot, avisos)
@@ -417,7 +433,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Archivo | Qué tiene |
 |---|---|
 | `comun.py` | Lo que comparten las pantallas: plantillas, la sesión del administrador y las respuestas. |
-| `entrar.py`, `fila.py`, `clientes.py`, `configuracion.py`, `textos_del_bot.py`, `mensajes.py` | Las rutas de cada pantalla. Llaman a los casos de uso; no tienen reglas propias. |
+| `entrar.py`, `fila.py`, `clientes.py`, `comentarios.py`, `configuracion.py`, `textos_del_bot.py`, `mensajes.py`, `probar_bot.py` | Las rutas de cada pantalla. Llaman a los casos de uso; no tienen reglas propias. |
 | `webhook.py` | La dirección a la que Meta avisa cada mensaje de WhatsApp. No pide la sesión del administrador: la protege la firma de Meta. |
 | `tablero.py` | Arma lo que muestra la fila en vivo. Solo lee. |
 | `en_vivo.py` | Le avisa al navegador cuando una fila cambia (PostgreSQL `LISTEN/NOTIFY` y Server-Sent Events). |
@@ -433,7 +449,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 |---|---|
 | Horario, tiempo de gracia, cuándo avisar, nombre y teléfono del negocio, aviso de datos | Pantalla **Configuración** del dashboard (se guarda en la tabla `configuracion`). No se toca el código. |
 | Servicios, precios y puestos | Pantalla **Configuración**. Un precio nuevo apaga el viejo y crea otro en `servicio_precio`; así los cobros pasados no cambian. De la duración estimada de cada servicio dependen la espera de la fila y la alerta de lavado demorado. |
-| Lo que dice el bot | **Configuración > Textos del bot** para los 39 que más leen los clientes, y **Configuración > Datos personales** para el aviso de datos. Cada texto cambiado es una fila `texto_bot.<nombre>` en la tabla `configuracion`. Los botones y los demás textos, en `app/bot/textos.py`. |
+| Lo que dice el bot | **Configuración > Textos del bot** para los 58 que más leen los clientes, y **Configuración > Datos personales** para el aviso de datos. Cada texto cambiado es una fila `texto_bot.<nombre>` en la tabla `configuracion`. Los botones y los demás textos, en `app/bot/textos.py`. |
 | Colores, letras y tamaños del dashboard | `app/web/estaticos/css/dashboard.css`. Los colores del diseño están al comienzo, con nombre. |
 | Conexión a la base, claves de Meta y Gemini, reloj encendido o apagado | Archivo `.env`, que nunca se sube a GitHub. `.env.example` solo trae los nombres. En la nube, en Render: el servidor > **Environment**. |
 | El servidor y la base de la nube (plan, región, versión de PostgreSQL) | `render.yaml`. Render aplica los cambios al unirlos a `main`. |
@@ -441,8 +457,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 ## Cambiar una tabla
 
 1. Cambia el modelo en el `tablas.py` del módulo.
-2. Crea la migración con el siguiente número (la última es la 0004):
-   `uv run alembic revision --autogenerate --rev-id 0005 -m "que cambio"`
+2. Crea la migración con el siguiente número (la última es la 0007):
+   `uv run alembic revision --autogenerate --rev-id 0008 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
 4. Aplícala: `uv run auto-ibaguer preparar-base`
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.

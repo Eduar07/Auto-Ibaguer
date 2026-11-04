@@ -2,27 +2,35 @@
 
 Usa la misma conversación que usará WhatsApp (app.bot.conversacion), así que lo que se
 pida aquí entra a la fila de verdad de tu computador. Los avisos que la fila deja en la
-bandeja de salida para ese celular (llamado, vehículo listo...) también aparecen en la
-charla. Solo existe en desarrollo: en producción la página no está.
+bandeja de salida para ese celular (llamado, vehículo listo...) y lo que le escriba el
+administrador desde Comentarios también aparecen en la charla.
+
+Lo que se dicen queda anotado en las bandejas, como por WhatsApp: así cuenta para las 24
+horas de WhatsApp y se ve en el diálogo de responder de Comentarios. Nada de esto sale por
+WhatsApp. Solo existe en desarrollo: en producción la página no está.
 """
 
 import secrets
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import tiempo
 from app.bot import conversacion
-from app.bot.avisos import mensaje_del_aviso
-from app.bot.mensajes import Entrada
+from app.bot.mensajes import Entrada, Mensaje
 from app.catalogo.parametros import leer_parametros
+from app.clientes import servicio as clientes
 from app.clientes.errores import TelefonoInvalido
-from app.clientes.reglas import normalizar_telefono
+from app.clientes.reglas import PREFIJO_DE_PRUEBA, celular_inventado, normalizar_telefono
 from app.config import obtener_entorno
-from app.integraciones import gemini
-from app.integraciones.tablas import MensajeSaliente
+from app.integraciones import bandeja_salida, gemini
+from app.integraciones.bandeja_salida import TIPO_DEL_ADMINISTRADOR
+from app.integraciones.tablas import EstadoMensaje, MensajeEntrante, MensajeSaliente
+from app.integraciones.whatsapp import mensaje_del_bot
 from app.turnos.estados import TipoAviso
 from app.web.comun import Admin, SesionBD, html, pagina, verificar_origen
 
@@ -34,12 +42,10 @@ def solo_en_desarrollo() -> None:
 
 router = APIRouter(dependencies=[Depends(solo_en_desarrollo), Depends(verificar_origen)])
 
+# Lo que le llega a la charla desde afuera: los avisos de la fila y lo que le escribe el
+# administrador desde Comentarios (las respuestas del bot ya llegan con cada mensaje).
 TIPOS_DE_AVISO = [tipo.value for tipo in TipoAviso]
-
-
-def celular_de_prueba() -> str:
-    """Un celular inventado, que empieza por 5799: ningún celular colombiano empieza así."""
-    return f"5799{secrets.randbelow(10**8):08d}"
+TIPOS_QUE_LLEGAN = [*TIPOS_DE_AVISO, TIPO_DEL_ADMINISTRADOR]
 
 
 def _ultimo_aviso(sesion: Session, telefono: str) -> int:
@@ -52,7 +58,7 @@ def _ultimo_aviso(sesion: Session, telefono: str) -> int:
 @router.get("/probar-bot", response_class=HTMLResponse)
 def pagina_probar_bot(request: Request, sesion: SesionBD, _: Admin, celular: str = "") -> Response:
     error = None
-    telefono = celular_de_prueba()
+    telefono = celular_inventado()
     if celular.strip():
         try:
             telefono = normalizar_telefono(celular)
@@ -60,7 +66,7 @@ def pagina_probar_bot(request: Request, sesion: SesionBD, _: Admin, celular: str
             error = str(invalido)
     contexto = {
         "telefono": telefono,
-        "inventado": telefono.startswith("5799"),
+        "inventado": telefono.startswith(PREFIJO_DE_PRUEBA),
         # Solo los avisos que salgan desde ahora: los viejos de ese celular no se repiten.
         "desde": _ultimo_aviso(sesion, telefono),
         "error": error,
@@ -78,14 +84,55 @@ def escribirle_al_bot(
     opcion: Annotated[str, Form()] = "",
     titulo: Annotated[str, Form()] = "",
 ) -> Response:
+    try:
+        telefono = normalizar_telefono(telefono)
+    except TelefonoInvalido as invalido:
+        raise HTTPException(status_code=400, detail=str(invalido)) from invalido
     entrada = Entrada(telefono=telefono, texto=texto or None, opcion=opcion or None)
+    ahora = tiempo.ahora()
     # Igual que por WhatsApp: si Gemini está conectado, entiende lo que escribes y contesta
     # las preguntas y la charla con la ficha del negocio.
     con_gemini = gemini.para_el_bot(leer_parametros(sesion))
-    respuestas = conversacion.atender(sesion, entrada, interprete=con_gemini, redactor=con_gemini)
+    respuestas = conversacion.atender(
+        sesion, entrada, ahora=ahora, interprete=con_gemini, redactor=con_gemini
+    )
+    _anotar(sesion, entrada, titulo, respuestas, ahora)
     sesion.commit()
     contexto = {"telefono": telefono, "escrito": titulo or texto, "respuestas": respuestas}
     return html(request, "_charla_del_bot.html", contexto)
+
+
+def _anotar(
+    sesion: Session, entrada: Entrada, titulo: str, respuestas: list[Mensaje], ahora: datetime
+) -> None:
+    """Lo que se dijeron queda en las bandejas como si fuera por WhatsApp, pero ya atendido
+    y ya enviado (aquí mismo): el reloj no lo vuelve a atender ni lo manda."""
+    if entrada.opcion:
+        tipo, contenido = "interactive", {"opcion": entrada.opcion, "titulo": titulo or None}
+    else:
+        tipo, contenido = "text", {"texto": entrada.texto or ""}
+    sesion.add(
+        MensajeEntrante(
+            id_meta=f"prueba-{secrets.token_hex(12)}",
+            telefono=entrada.telefono,
+            tipo=tipo,
+            contenido=contenido,
+            recibido_en=ahora,
+            procesado_en=ahora,
+        )
+    )
+    cliente = clientes.buscar_por_telefono(sesion, entrada.telefono)
+    for respuesta in respuestas:
+        mensaje = bandeja_salida.encolar_respuesta(
+            sesion,
+            telefono=entrada.telefono,
+            mensaje=respuesta,
+            ahora=ahora,
+            cliente_id=cliente.id if cliente else None,
+        )
+        mensaje.estado = EstadoMensaje.ENVIADO
+        mensaje.enviado_en = ahora
+    sesion.flush()
 
 
 @router.get("/probar-bot/avisos", response_class=HTMLResponse)
@@ -98,15 +145,28 @@ def avisos_para_el_celular(
             .where(
                 MensajeSaliente.telefono == telefono,
                 MensajeSaliente.id > desde,
-                MensajeSaliente.tipo.in_(TIPOS_DE_AVISO),
+                MensajeSaliente.tipo.in_(TIPOS_QUE_LLEGAN),
             )
             .order_by(MensajeSaliente.id)
         )
     )
-    parametros = leer_parametros(sesion)
     contexto = {
         "telefono": telefono,
         "desde": nuevos[-1].id if nuevos else desde,
-        "avisos": [mensaje_del_aviso(m.tipo, m.contenido, parametros) for m in nuevos],
+        "avisos": [_como_llega(sesion, mensaje) for mensaje in nuevos],
     }
     return html(request, "_avisos_del_bot.html", contexto)
+
+
+def _como_llega(sesion: Session, mensaje: MensajeSaliente) -> dict[str, Any]:
+    """El mensaje como lo ve el cliente, con una etiqueta que dice de dónde salió."""
+    if mensaje.tipo == TIPO_DEL_ADMINISTRADOR:
+        por = (mensaje.contenido or {}).get("por") or "el administrador"
+        etiqueta, de_una_persona = f"Lo escribió {por} en Comentarios", True
+    else:
+        etiqueta, de_una_persona = "Aviso de la fila", False
+    return {
+        "mensaje": mensaje_del_bot(sesion, mensaje),
+        "etiqueta": etiqueta,
+        "de_una_persona": de_una_persona,
+    }

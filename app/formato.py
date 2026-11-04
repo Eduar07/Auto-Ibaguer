@@ -117,6 +117,21 @@ def dia_relativo(dia: date, hoy: date) -> str:
     return fecha(dia)
 
 
+def cuando_sera(momento: datetime, hoy: date) -> str:
+    """Un momento que viene, como se dice después de "hasta": "las 4:15 p.m." (hoy),
+    "mañana a la 1:15 p.m." u otro día "el 17 de octubre a las 8:00 a.m.".
+
+    Como en `hora`, el momento ya debe venir en la hora de Bogotá.
+    """
+    dia = momento.date()
+    a_la_hora = hora_con_articulo(momento)
+    if dia <= hoy:
+        return a_la_hora
+    if dia == hoy + timedelta(days=1):
+        return f"mañana a {a_la_hora}"
+    return f"el {dia_relativo(dia, hoy)} a {a_la_hora}"
+
+
 def cuando_fue(dia: date, hoy: date) -> str:
     """Un día pasado, como se dice en una frase: "hoy", "ayer", "el sábado" (en la última
     semana), "el 17 de octubre" o, si fue otro año, "el 17 de octubre de 2025"."""

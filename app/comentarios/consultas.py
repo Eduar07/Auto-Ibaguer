@@ -7,6 +7,8 @@ from datetime import date, datetime
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
+from app import tiempo
+from app.bot.tablas import PausaDelBot
 from app.catalogo.tablas import Fila, Servicio
 from app.clientes.tablas import Cliente
 from app.comentarios.servicio import ComentarioNoExiste
@@ -32,6 +34,8 @@ class ComentarioEnLista:
     servicio: str | None
     atendido_en: datetime | None
     atendido_por: str | None  # el usuario del administrador
+    # Si el administrador le está respondiendo: hasta qué hora el bot no le contesta.
+    pausa_hasta: datetime | None = None
 
     @property
     def atendido(self) -> bool:
@@ -44,23 +48,31 @@ def por_atender(sesion: Session) -> int:
 
 
 def lista(
-    sesion: Session, *, solo_por_atender: bool, cuantos: int = CUANTOS
+    sesion: Session,
+    *,
+    solo_por_atender: bool,
+    cuantos: int = CUANTOS,
+    ahora: datetime | None = None,
 ) -> list[ComentarioEnLista]:
     """Los más recientes primero."""
-    consulta = _consulta().order_by(Comentario.creado_en.desc(), Comentario.id.desc())
+    consulta = _consulta(ahora).order_by(Comentario.creado_en.desc(), Comentario.id.desc())
     if solo_por_atender:
         consulta = consulta.where(Comentario.atendido_en.is_(None))
     return [_en_lista(*fila) for fila in sesion.execute(consulta.limit(cuantos))]
 
 
-def uno(sesion: Session, comentario_id: int) -> ComentarioEnLista:
-    fila = sesion.execute(_consulta().where(Comentario.id == comentario_id)).first()
+def uno(sesion: Session, comentario_id: int, *, ahora: datetime | None = None) -> ComentarioEnLista:
+    fila = sesion.execute(_consulta(ahora).where(Comentario.id == comentario_id)).first()
     if fila is None:
         raise ComentarioNoExiste("Ese comentario ya no existe.")
     return _en_lista(*fila)
 
 
-def _consulta() -> Select:
+def _consulta(ahora: datetime | None) -> Select:
+    # Solo la pausa vigente: la que ya pasó es como si no existiera.
+    pausa = (PausaDelBot.telefono == Comentario.telefono) & (
+        PausaDelBot.hasta > (ahora or tiempo.ahora())
+    )
     return (
         select(
             Comentario,
@@ -70,12 +82,14 @@ def _consulta() -> Select:
             Turno.fecha,
             Servicio.nombre,
             Administrador.usuario,
+            PausaDelBot.hasta,
         )
         .outerjoin(Cliente, Cliente.id == Comentario.cliente_id)
         .outerjoin(Turno, Turno.id == Comentario.turno_id)
         .outerjoin(Fila, Fila.id == Turno.fila_id)
         .outerjoin(Servicio, Servicio.id == Turno.servicio_id)
         .outerjoin(Administrador, Administrador.id == Comentario.atendido_por)
+        .outerjoin(PausaDelBot, pausa)
     )
 
 
@@ -87,6 +101,7 @@ def _en_lista(
     turno_fecha: date | None,
     servicio: str | None,
     atendido_por: str | None,
+    pausa_hasta: datetime | None,
 ) -> ComentarioEnLista:
     return ComentarioEnLista(
         id=comentario.id,
@@ -101,4 +116,5 @@ def _en_lista(
         servicio=servicio,
         atendido_en=comentario.atendido_en,
         atendido_por=atendido_por,
+        pausa_hasta=pausa_hasta,
     )

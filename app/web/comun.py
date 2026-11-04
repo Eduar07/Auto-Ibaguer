@@ -107,10 +107,17 @@ def _cuando(momento: datetime) -> str:
     return f"{_dia_relativo(local.date())} · {formato.hora(local)}"
 
 
+def _cuando_sera(momento: datetime) -> str:
+    """ "las 4:15 p.m." (hoy) o "mañana a la 1:15 p.m.", en Bogotá: para decir "hasta..."."""
+    hoy = tiempo.hora_local(tiempo.ahora()).date()
+    return formato.cuando_sera(tiempo.hora_local(momento), hoy)
+
+
 plantillas.env.globals.update(
     texto_volver=_texto_volver,
     dia_relativo=_dia_relativo,
     cuando=_cuando,
+    cuando_sera=_cuando_sera,
     EstadoTurno=EstadoTurno,
     MedioPago=MedioPago,
     nombre_del_estado=NOMBRE_DEL_ESTADO,

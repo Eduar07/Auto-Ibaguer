@@ -1,0 +1,33 @@
+{#- La conversación por WhatsApp con quien dejó el comentario, en el diálogo de responder:
+    lo que escribió, lo que le contestó el bot y lo que le escribió el administrador. Se
+    vuelve a pedir sola cada 10 segundos; si nada cambió, el servidor no manda nada. Cuando
+    algo cambió (`al_dia`), también llegan la pausa del bot y la tarjeta del comentario. -#}
+{% set estados = {
+  "pendiente": "Por enviar",
+  "enviado": "Enviado",
+  "fallido": "No salió",
+  "descartado": "No se envió",
+} %}
+<section id="charla-cliente" class="charla-cliente" aria-label="La conversación por WhatsApp"
+         hx-get="/comentarios/{{ c.id }}/charla" hx-trigger="every 10s" hx-target="this" hx-swap="outerHTML"
+         hx-vals='{{ {"huella": huella}|tojson }}'>
+  {% for dia, lineas in dias %}
+  <p class="charla-cliente__dia"><span>{{ dia_relativo(dia) }}</span></p>
+  {% for linea in lineas %}
+  {% set quien = linea.quien.value %}
+  {# De lo que salió se dice si llegó; del bot, solo si hubo un problema. #}
+  {% set estado = linea.estado.value if linea.estado else None %}
+  {% set mostrar_estado = estado and (quien == "administrador" or estado != "enviado") %}
+  <div class="linea linea--{{ quien }}">
+    {% if quien == "administrador" %}<span class="linea__quien">{{ linea.por or "Administrador" }}</span>
+    {% elif quien == "bot" %}<span class="linea__quien">Bot</span>{% endif %}
+    <p>{{ linea.dice|whatsapp }}</p>
+    <span class="linea__pie">{{ linea.cuando|hora }}{% if mostrar_estado %} · <span class="linea__estado linea__estado--{{ estado }}">{{ estados[estado] }}</span>{% endif %}</span>
+    {% if linea.error and estado != "enviado" %}<span class="linea__error">{{ linea.error }}</span>{% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="charla-cliente__vacia">Todavía no hay mensajes de WhatsApp con este celular.</p>
+  {% endfor %}
+</section>
+{% if al_dia %}{% with oob=True %}{% include "_pausa_del_bot.html" %}{% include "_comentario.html" %}{% endwith %}{% endif %}

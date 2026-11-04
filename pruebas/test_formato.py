@@ -1,10 +1,10 @@
 """Cómo se ven los datos en el dashboard: miles, fechas, duraciones y celulares."""
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
-from app.formato import cuando_fue, duracion, fecha_larga, miles, telefono_oculto
+from app.formato import cuando_fue, cuando_sera, duracion, fecha_larga, miles, telefono_oculto
 
 
 @pytest.mark.parametrize(
@@ -67,3 +67,17 @@ def test_telefono_oculto(telefono, texto):
 )
 def test_cuando_fue_como_se_dice_en_una_frase(dia, texto):
     assert cuando_fue(dia, date(2026, 10, 26)) == texto  # un lunes
+
+
+@pytest.mark.parametrize(
+    ("momento", "texto"),
+    [
+        (datetime(2026, 10, 26, 16, 15), "las 4:15 p.m."),  # hoy: no hace falta decirlo
+        (datetime(2026, 10, 26, 13, 5), "la 1:05 p.m."),
+        (datetime(2026, 10, 27, 7, 50), "mañana a las 7:50 a.m."),
+        (datetime(2026, 11, 2, 8, 0), "el 2 de noviembre a las 8:00 a.m."),
+        (datetime(2027, 1, 4, 9, 30), "el 4 de enero de 2027 a las 9:30 a.m."),
+    ],
+)
+def test_cuando_sera_como_se_dice_despues_de_hasta(momento, texto):
+    assert cuando_sera(momento, date(2026, 10, 26)) == texto  # un lunes

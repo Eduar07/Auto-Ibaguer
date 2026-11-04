@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app import tiempo
 from app.bot.mensajes import recortar
 from app.config import obtener_entorno
-from app.integraciones.bandeja_salida import TIPO_RESPUESTA
+from app.integraciones.bandeja_salida import TIPO_DEL_ADMINISTRADOR, TIPO_RESPUESTA
 from app.integraciones.tablas import EstadoMensaje, MensajeEntrante, MensajeSaliente
 from app.web.comun import Admin, SesionBD, pagina, verificar_origen
 
@@ -103,6 +103,10 @@ def _lo_que_dijo(mensaje: MensajeEntrante) -> str:
 def _lo_que_dice(mensaje: MensajeSaliente) -> str:
     if mensaje.tipo == TIPO_RESPUESTA:
         return recortar((mensaje.contenido or {}).get("texto", ""), 120)
+    if mensaje.tipo == TIPO_DEL_ADMINISTRADOR:
+        contenido = mensaje.contenido or {}
+        por = contenido.get("por") or "Administrador"
+        return recortar(f"{por}: {contenido.get('texto', '')}", 120)
     return QUE_AVISO.get(mensaje.tipo, mensaje.tipo)
 
 

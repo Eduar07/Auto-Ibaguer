@@ -1,9 +1,10 @@
 """La bandeja de salida: dejar un mensaje y enviarlo, con reintentos.
 
 Nadie le habla a WhatsApp directamente: quien produce un mensaje lo deja aquí, en la
-misma operación que el cambio que lo produjo. La fila deja sus avisos (`encolar`) y el
-bot sus respuestas (`encolar_respuesta`). Si el cambio quedó guardado, el mensaje sale;
-si algo se deshace, el mensaje tampoco existe.
+misma operación que el cambio que lo produjo. La fila deja sus avisos (`encolar`), el
+bot sus respuestas (`encolar_respuesta`) y el administrador lo que le escribe a un
+cliente desde Comentarios (`encolar_del_administrador`). Si el cambio quedó guardado, el
+mensaje sale; si algo se deshace, el mensaje tampoco existe.
 
 Después, `enviar_pendientes` toma los que ya toca enviar y se los pasa al que envía
 (app.integraciones.whatsapp). Si WhatsApp no lo acepta, se vuelve a intentar más tarde,
@@ -53,6 +54,7 @@ def encolar(
         turno_id=turno_id,
         tipo=tipo,
         contenido=contenido,
+        creado_en=ahora,
         proximo_intento_en=ahora,
     )
     sesion.add(mensaje)
@@ -78,6 +80,30 @@ def encolar_respuesta(
         telefono=telefono,
         tipo=TIPO_RESPUESTA,
         contenido=mensaje.a_datos(),
+        ahora=ahora,
+        cliente_id=cliente_id,
+    )
+
+
+# Lo que el administrador le escribe a un cliente desde Comentarios (hito 7b): sale tal
+# cual, como texto. `por` es el usuario que lo escribió, para verlo en la conversación.
+TIPO_DEL_ADMINISTRADOR = "del_administrador"
+
+
+def encolar_del_administrador(
+    sesion: Session,
+    *,
+    telefono: str,
+    texto: str,
+    por: str,
+    ahora: datetime,
+    cliente_id: int | None = None,
+) -> MensajeSaliente:
+    return encolar(
+        sesion,
+        telefono=telefono,
+        tipo=TIPO_DEL_ADMINISTRADOR,
+        contenido={"texto": texto, "por": por},
         ahora=ahora,
         cliente_id=cliente_id,
     )

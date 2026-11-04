@@ -1,6 +1,6 @@
 """Reúne todas las tablas en un solo lugar.
 
-Alembic y las pruebas importan este archivo para conocer las 17 tablas.
+Alembic y las pruebas importan este archivo para conocer las 18 tablas.
 Cuando un módulo nuevo agregue tablas (Fase 2 y 3), se importa aquí.
 """
 

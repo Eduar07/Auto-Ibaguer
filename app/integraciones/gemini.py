@@ -56,8 +56,21 @@ lista mi moto?".
 - cancelar: ya no va a ir o quiere cancelar su turno. Por ejemplo: "ya no voy a poder ir", \
 "me salió un imprevisto, no alcanzo".
 - pico_y_placa: pregunta por el pico y placa.
-- otro: cualquier otra cosa (horarios, formas de pago, dirección, saludos, quejas) o si no \
-está claro qué quiere.
+- mis_lavadas: pregunta cuántas veces ha lavado con el lavadero o cuándo fue la última. \
+Por ejemplo: "cuántas lavadas llevo con ustedes?", "cuándo fue la última vez que fui?".
+- queja: se queja de algo que ya pasó: cómo lo atendieron, cómo quedó el vehículo, un \
+cobro, un daño o lo que se demoraron. Por ejemplo: "me atendieron mal", "el carro quedó \
+mal lavado", "su servicio es pésimo", "me rayaron la puerta".
+- felicitacion: felicita o agradece el servicio. Por ejemplo: "su servicio es muy bueno", \
+"la moto quedó como nueva, gracias".
+- hablar_con_persona: quiere hablar con una persona (el administrador, el dueño, un \
+asesor) o que lo llamen. Por ejemplo: "necesito hablar con el encargado", "me pueden \
+llamar?".
+- otro: cualquier otra cosa (horarios, formas de pago, dirección, saludos) o si no está \
+claro qué quiere.
+
+Si pregunta cuánto falta o cuánto tendría que esperar, es ver_fila o mi_turno. Si se \
+queja de algo que ya pasó, es queja, aunque nombre un servicio, un precio o un vehículo.
 
 vehiculo: el vehículo del que habla, uno de: {vehiculos}. "carro" si dice carro sin decir \
 cuál de esos es. "ninguno" si no habla de un vehículo.

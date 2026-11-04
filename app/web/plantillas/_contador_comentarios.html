@@ -1,0 +1,10 @@
+{#- Cuántos comentarios faltan por atender, junto a "Comentarios" en el menú (arriba en el
+    computador y abajo en el celular). Se vuelven a pedir los dos cada minuto, y apenas el
+    administrador marca o borra uno (/comentarios/contador). -#}
+{% macro contador(id, oob=False) -%}
+<span id="{{ id }}" class="contador"{% if oob %} hx-swap-oob="true"{% endif %}{% if not comentarios_pendientes %} hidden{% endif %}>{{ comentarios_pendientes }}<span class="solo-lector"> por atender</span></span>
+{%- endmacro %}
+{%- if solo_contadores %}
+{{ contador("contador-comentarios", oob=True) }}
+{{ contador("contador-comentarios-celular", oob=True) }}
+{%- endif %}

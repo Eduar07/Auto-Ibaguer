@@ -21,6 +21,10 @@ class Intencion(StrEnum):
     MI_TURNO = "mi_turno"
     CANCELAR = "cancelar"
     PICO_Y_PLACA = "pico_y_placa"
+    MIS_LAVADAS = "mis_lavadas"  # cuántas lleva con el lavadero
+    QUEJA = "queja"  # se queja de algo que ya pasó
+    FELICITACION = "felicitacion"
+    HABLAR_CON_PERSONA = "hablar_con_persona"  # quiere que le responda alguien, no el bot
     OTRO = "otro"  # cualquier otra cosa, o no está claro
 
 

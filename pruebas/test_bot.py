@@ -123,7 +123,8 @@ def test_lo_que_no_entiende_muestra_el_menu(sesion: Session):
     chat = Chat(sesion).escribe("hola")
 
     chat.escribe("quiero saber si atienden motos grandes")
-    assert "Por ahora entiendo los botones y las palabras *mi turno* y *cancelar*" in chat.texto
+    assert chat.texto.startswith("No te entendí bien.")
+    assert "pedir *hablar con una persona*" in chat.texto  # la salida que siempre tiene
     assert chat.opciones == MENU
 
     chat.manda_un_audio()
@@ -224,6 +225,16 @@ def test_sin_aceptar_el_aviso_de_datos_no_se_guarda_nada(sesion: Session):
     assert "Sin tu autorización no guardamos tus datos" in chat.texto
     assert chat.opciones == ["Ver la fila", "Servicios y precios"]
     assert sesion.scalar(select(func.count()).select_from(Cliente)) == 0
+
+
+def test_escribir_no_gracias_contesta_la_pregunta_y_no_es_una_despedida(sesion: Session):
+    chat = Chat(sesion).escribe("hola").toca("Pedir turno")
+
+    chat.escribe("No gracias")
+
+    assert "Sin tu autorización no guardamos tus datos" in chat.texto
+    # En el menú, en cambio, sí es una despedida.
+    assert chat.escribe("no gracias").texto == "¡Con gusto! Que tengas un buen día."
 
 
 def test_la_placa_se_revisa_y_no_puede_ser_de_otro_cliente(sesion: Session):

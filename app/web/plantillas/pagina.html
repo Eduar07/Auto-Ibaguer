@@ -2,11 +2,13 @@
     diálogo, los avisos y, en el celular, la barra de abajo para cambiar de sección. -#}
 {% extends "base.html" %}
 {% import "_iconos.html" as iconos %}
+{% import "_contador_comentarios.html" as contadores with context %}
 
 {% block cuerpo %}
 {% set secciones = [
   ("fila", "/fila", "Fila en vivo", "Fila", "fila"),
   ("clientes", "/clientes", "Clientes", "Clientes", "cliente"),
+  ("comentarios", "/comentarios", "Comentarios", "Comentarios", "actividad"),
   ("configuracion", "/configuracion", "Configuración", "Ajustes", "ajustes"),
 ] %}
 <header class="encabezado">
@@ -14,9 +16,10 @@
     <a class="marca" href="/fila">{{ iconos.icono("gota", 28) }}<span class="marca__nombre">Auto Ibaguer</span></a>
     <nav class="navegacion" aria-label="Secciones del dashboard">
       {% for clave, ruta, nombre, _, _ in secciones %}
-      <a href="{{ ruta }}"{% if seccion == clave %} aria-current="page"{% endif %}>{{ nombre }}</a>
+      <a href="{{ ruta }}"{% if seccion == clave %} aria-current="page"{% endif %}>{{ nombre }}{% if clave == "comentarios" %}{{ contadores.contador("contador-comentarios") }}{% endif %}</a>
       {% endfor %}
     </nav>
+    <div hidden hx-get="/comentarios/contador" hx-trigger="every 60s, comentarios-cambiados from:body" hx-swap="none"></div>
     <div class="encabezado__acciones">
       <span class="estado-bot{% if not bot_activo %} estado-bot--apagado{% endif %}">
         <span class="estado-bot__punto" aria-hidden="true"></span>{{ "Bot activo" if bot_activo else "Bot apagado" }}
@@ -36,7 +39,7 @@
 
 <nav class="navegacion-celular" aria-label="Secciones">
   {% for clave, ruta, _, corto, icono in secciones %}
-  <a href="{{ ruta }}"{% if seccion == clave %} aria-current="page"{% endif %}>{{ iconos.icono(icono, 22) }}{{ corto }}</a>
+  <a href="{{ ruta }}"{% if seccion == clave %} aria-current="page"{% endif %}>{{ iconos.icono(icono, 22) }}{{ corto }}{% if clave == "comentarios" %}{{ contadores.contador("contador-comentarios-celular") }}{% endif %}</a>
   {% endfor %}
 </nav>
 

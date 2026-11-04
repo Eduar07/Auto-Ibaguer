@@ -1,4 +1,4 @@
-"""Hito 2: las 16 tablas existen y los datos de Auto Ibaguer quedan cargados."""
+"""Hito 2: las tablas existen y los datos de Auto Ibaguer quedan cargados."""
 
 import pytest
 from alembic import command
@@ -37,6 +37,8 @@ TABLAS_DE_LA_FASE_1 = {
     "mensaje_entrante",
     "mensaje_saliente",
 }
+# Hito 7b: las quejas, felicitaciones y pedidos de hablar con una persona.
+TODAS_LAS_TABLAS = TABLAS_DE_LA_FASE_1 | {"comentario"}
 
 MENU_ESPERADO = {
     ("Básico", "Automóvil"): 40_000,
@@ -60,9 +62,9 @@ def contar_registros(sesion: Session) -> dict[str, int]:
     return {m.__tablename__: len(sesion.scalars(select(m)).all()) for m in modelos}
 
 
-def test_existen_las_16_tablas(motor: Engine):
+def test_existen_las_17_tablas(motor: Engine):
     tablas = set(inspect(motor).get_table_names()) - {"alembic_version"}
-    assert tablas == TABLAS_DE_LA_FASE_1
+    assert tablas == TODAS_LAS_TABLAS
 
 
 @pytest.mark.usefixtures("motor")

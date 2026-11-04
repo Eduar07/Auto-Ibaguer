@@ -65,12 +65,30 @@ FRASES: tuple[FraseDePrueba, ...] = (
     # --- Pico y placa ---
     FraseDePrueba("qué placas tienen pico y placa hoy", Q.PICO_Y_PLACA),
     FraseDePrueba("mañana tengo pico y placa con la moto?", Q.PICO_Y_PLACA, vehiculo="Moto"),
+    # --- Mis lavadas ---
+    FraseDePrueba("me gustaría saber cuántas lavadas llevo con ustedes", Q.MIS_LAVADAS),
+    FraseDePrueba("cuándo fue la última vez que lavé la moto?", Q.MIS_LAVADAS),
+    FraseDePrueba("cuántas veces he ido a lavar el carro donde ustedes", Q.MIS_LAVADAS),
+    # --- Quejas ---
+    FraseDePrueba("oiga me atendieron mal", Q.QUEJA),
+    FraseDePrueba("el carro quedó mal lavado", Q.QUEJA),
+    FraseDePrueba("oigan su servicio es pésimo", Q.QUEJA),
+    FraseDePrueba("el señor que me atendió fue muy grosero", Q.QUEJA),
+    FraseDePrueba("me rayaron la puerta de la camioneta", Q.QUEJA, vehiculo="Camioneta"),
+    FraseDePrueba("me cobraron el encerado y no me lo hicieron", Q.QUEJA),
+    # --- Felicitaciones ---
+    FraseDePrueba("oiga su servicio es bueno", Q.FELICITACION),
+    FraseDePrueba("la moto quedó como nueva, muchas gracias", Q.FELICITACION, vehiculo="Moto"),
+    FraseDePrueba("los felicito, excelente atención", Q.FELICITACION),
+    # --- Hablar con una persona ---
+    FraseDePrueba("necesito hablar con el encargado", Q.HABLAR_CON_PERSONA),
+    FraseDePrueba("me puede llamar alguien por favor?", Q.HABLAR_CON_PERSONA),
+    FraseDePrueba("quiero hablar con una persona, no con un robot", Q.HABLAR_CON_PERSONA),
     # --- Otra cosa ---
     FraseDePrueba("a qué hora abren el domingo?", Q.OTRO),
     FraseDePrueba("reciben nequi?", Q.OTRO),
     FraseDePrueba("dónde quedan?", Q.OTRO),
     FraseDePrueba("jajaja ok", Q.OTRO),
-    FraseDePrueba("el señor que me atendió fue muy grosero", Q.OTRO),
     # --- Con datos personales: deben llegar tapados ---
     FraseDePrueba("quiero turno para la moto ABC12D", Q.PEDIR_TURNO, vehiculo="Moto"),
     FraseDePrueba("llámenme al 300 123 4567 que ya no voy", Q.CANCELAR),

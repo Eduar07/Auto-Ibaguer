@@ -7,6 +7,7 @@ from sqlalchemy.engine import make_url
 
 from app.cli import configuracion_alembic, migrar
 from pruebas.base_de_pruebas import URL_PRUEBAS, borrar_base, recrear_base
+from pruebas.test_tablas_y_datos import TODAS_LAS_TABLAS
 
 
 # Pide la base de pruebas primero: si PostgreSQL está apagado, se detiene con un mensaje claro.
@@ -25,13 +26,13 @@ def test_la_migracion_sube_baja_y_vuelve_a_subir():
 
     try:
         migrar(url, configurar_logs=False)
-        assert len(tablas()) == 16
+        assert tablas() == TODAS_LAS_TABLAS
 
         command.downgrade(configuracion_alembic(url, configurar_logs=False), "base")
         assert tablas() == set()
 
         migrar(url, configurar_logs=False)
-        assert len(tablas()) == 16
+        assert tablas() == TODAS_LAS_TABLAS
     finally:
         motor.dispose()
         borrar_base(url)

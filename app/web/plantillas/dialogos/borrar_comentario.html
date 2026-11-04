@@ -1,0 +1,20 @@
+{% import "_iconos.html" as iconos %}
+<form class="dialogo__caja" hx-post="/comentarios/{{ c.id }}/borrar" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Borrar este comentario</h2>
+    <p>Por ejemplo, si quien lo escribió pide que se borre (Ley 1581) o si no era un comentario.</p>
+  </div>
+
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <blockquote class="comentario__cita">{{ c.texto }}</blockquote>
+    <p class="nota nota--suelta">{{ iconos.icono("info", 18) }}<span>Se borra lo que escribió{% if c.telefono %} y el número que quedó guardado con el comentario{% endif %}. No se puede deshacer.</span></p>
+  </div>
+
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande boton--peligro">Sí, borrarlo</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>No, volver</button>
+  </div>
+</form>

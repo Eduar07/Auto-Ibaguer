@@ -1,0 +1,29 @@
+{% extends "pagina.html" %}
+
+{% block titulo %}Comentarios · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Comentarios</h1>
+      <p>Las quejas, las felicitaciones y quién pidió hablar con una persona, como llegan por WhatsApp. Cuando lo resuelvas, márcalo como atendido.</p>
+    </div>
+  </div>
+
+  <nav class="indice" aria-label="Qué comentarios ver">
+    <a href="/comentarios?ver=pendientes"{% if ver == "pendientes" %} aria-current="page"{% endif %}>Por atender</a>
+    <a href="/comentarios?ver=todos"{% if ver == "todos" %} aria-current="page"{% endif %}>Todos</a>
+  </nav>
+
+  {% if comentarios %}
+  <div class="comentarios">
+    {% for c in comentarios %}{% include "_comentario.html" %}{% endfor %}
+  </div>
+  {% elif ver == "pendientes" %}
+  <p class="panel suave">No hay comentarios por atender. Cuando un cliente se queje, felicite el servicio o pida hablar con alguien, aparece aquí.</p>
+  {% else %}
+  <p class="panel suave">Todavía no ha llegado ningún comentario.</p>
+  {% endif %}
+</main>
+{% endblock %}

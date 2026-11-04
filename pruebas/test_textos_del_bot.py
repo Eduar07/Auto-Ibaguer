@@ -76,6 +76,8 @@ LARGO_DE_CADA_DATO = {
     "avisar": 1,
     "filas": 300,  # una línea por fila
     "servicios": 600,  # si no cabe, el bot quita las descripciones o lo recorta
+    "lavadas": 15,  # "1234 lavadas"
+    "ultima": 30,  # "el 30 de septiembre de 2025"
 }
 
 

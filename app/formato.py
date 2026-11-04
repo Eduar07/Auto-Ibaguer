@@ -115,3 +115,16 @@ def dia_relativo(dia: date, hoy: date) -> str:
     if dia.year == hoy.year:
         return f"{dia.day} de {MESES[dia.month - 1]}"
     return fecha(dia)
+
+
+def cuando_fue(dia: date, hoy: date) -> str:
+    """Un día pasado, como se dice en una frase: "hoy", "ayer", "el sábado" (en la última
+    semana), "el 17 de octubre" o, si fue otro año, "el 17 de octubre de 2025"."""
+    dias = (hoy - dia).days
+    if dias <= 0:
+        return "hoy"
+    if dias == 1:
+        return "ayer"
+    if dias < 7:
+        return f"el {DIAS[dia.weekday()]}"
+    return f"el {dia_relativo(dia, hoy)}"

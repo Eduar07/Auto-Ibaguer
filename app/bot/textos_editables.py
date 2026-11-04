@@ -1,8 +1,8 @@
 """Los textos del bot que el administrador puede cambiar (Configuración > Textos del bot).
 
 Son los que más leen los clientes: el saludo, el turno confirmado, los avisos de la
-fila... Los demás (un número de turno mal escrito, una placa de otro cliente...) se
-quedan en app/bot/textos.py.
+fila, lo que contesta a una queja... Los demás (un número de turno mal escrito, una
+placa de otro cliente...) se quedan en app/bot/textos.py.
 
 Un texto cambiado se guarda en la tabla `configuracion` ("texto_bot.saludo") y el bot lo
 usa desde el siguiente mensaje (app.bot.textos.Textos). Si se guarda igual al original,
@@ -51,11 +51,14 @@ DATOS: dict[str, str] = {
     "avisar": "cuántos turnos faltan cuando se le avisa",
     "filas": "cómo está cada fila",
     "servicios": "los servicios con su precio",
+    "lavadas": "cuántas lavadas lleva (por ejemplo, 7 lavadas)",
+    "ultima": "cuándo fue su última lavada (hoy, ayer, el sábado...)",
 }
 
 _MENU = (BOTONES["pedir"], BOTONES["fila"], BOTONES["precios"])
 _FILA_Y_PRECIOS = (BOTONES["fila"], BOTONES["precios"])
 _LLAMADO = (BOTONES["en_camino"], BOTONES["llegue"])
+_PERMISO = (BOTONES["responder_si"], BOTONES["responder_no"])
 
 
 @dataclass(frozen=True)
@@ -379,6 +382,102 @@ GRUPOS: tuple[Grupo, ...] = (
             ),
         ),
     ),
+    Grupo(
+        "quejas",
+        "Quejas y hablar con una persona",
+        (
+            Editable(
+                "queja_cliente",
+                "Queja de un cliente",
+                "Cuando un cliente se queja. La queja te llega en Comentarios.",
+                opcionales=frozenset({"nombre"}),
+            ),
+            Editable(
+                "queja",
+                "Queja de alguien que no es cliente",
+                "Igual, pero de alguien que nunca ha pedido turno: se le pide permiso para "
+                "guardar su número.",
+                botones=_PERMISO,
+            ),
+            Editable(
+                "queja_permiso",
+                "Vuelve a pedir el permiso",
+                "Si cuenta más de lo que pasó en vez de tocar un botón.",
+                botones=_PERMISO,
+            ),
+            Editable(
+                "queja_anonima",
+                "Si no da permiso",
+                "Cuando toca No, gracias: la queja te llega sin su número.",
+            ),
+            Editable(
+                "persona",
+                "Pide hablar con una persona",
+                "Cuando un cliente pide hablar con alguien. Te llega en Comentarios.",
+                opcionales=frozenset({"nombre", "telefono"}),
+            ),
+            Editable(
+                "persona_permiso",
+                "Pide hablar con una persona, sin ser cliente",
+                "Se le pide permiso para guardar su número.",
+                botones=_PERMISO,
+            ),
+            Editable(
+                "persona_sin_permiso",
+                "Si no da permiso para responderle",
+                "Cuando toca No, gracias después de pedir hablar con alguien.",
+            ),
+            Editable(
+                "contacto_si",
+                "Si da permiso",
+                "Cuando toca Sí, que me responda.",
+            ),
+            Editable(
+                "detalle_recibido",
+                "Cuando cuenta más",
+                "Después de la queja o del pedido de hablar con alguien, cuando escribe más.",
+            ),
+        ),
+    ),
+    Grupo(
+        "felicitaciones",
+        "Felicitaciones y lavadas",
+        (
+            Editable(
+                "felicitacion_cliente",
+                "Felicitación de un cliente",
+                "Cuando un cliente felicita el servicio. Te llega en Comentarios.",
+                opcionales=frozenset({"nombre"}),
+                botones=_MENU,
+            ),
+            Editable(
+                "felicitacion",
+                "Felicitación de alguien que no es cliente",
+                "Igual, de alguien que nunca ha pedido turno.",
+                botones=_MENU,
+            ),
+            Editable(
+                "mis_lavadas",
+                "Cuántas lavadas lleva",
+                "Cuando un cliente pregunta cuántas lavadas lleva.",
+                opcionales=frozenset({"nombre", "ultima"}),
+                botones=(BOTONES["pedir"],),
+            ),
+            Editable(
+                "sin_lavadas",
+                "Todavía no tiene lavadas",
+                "Cuando pregunta y todavía no ha lavado con ustedes.",
+                opcionales=frozenset({"nombre"}),
+                botones=(BOTONES["pedir"],),
+            ),
+            Editable(
+                "mis_lavadas_sin_registro",
+                "Lavadas de alguien que no es cliente",
+                "Cuando pregunta alguien con un número que no está entre los clientes.",
+                botones=(BOTONES["pedir"],),
+            ),
+        ),
+    ),
 )
 
 EDITABLES: dict[str, Editable] = {
@@ -470,6 +569,8 @@ def ejemplos(parametros: Parametros) -> dict[str, object]:
         "servicios": "*Básico* · $40.000\n"
         "Lavado exterior a presión, champú, secado y brillo de llantas\n\n"
         "*Encerado* · $60.000\nBásico + cera protectora para la pintura",
+        "lavadas": "7 lavadas",
+        "ultima": "el sábado",
     }
 
 

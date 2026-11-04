@@ -1,0 +1,43 @@
+{#- Un comentario en la pantalla Comentarios. Al marcarlo (atendido o pendiente), el
+    servidor devuelve esta misma tarjeta, ya cambiada. -#}
+{% import "_iconos.html" as iconos %}
+{% set tipos = {
+  "queja": ("Queja", "rojo"),
+  "felicitacion": ("Felicitación", "verde"),
+  "quiere_hablar": ("Quiere hablar con alguien", "azul"),
+} %}
+{% set nombre_del_tipo, color = tipos[c.tipo.value] %}
+<article class="panel comentario{% if c.atendido %} comentario--atendido{% endif %}" id="comentario-{{ c.id }}" aria-labelledby="comentario-{{ c.id }}-tipo">
+  <div class="comentario__cabeza">
+    <span class="insignia insignia--{{ color }}" id="comentario-{{ c.id }}-tipo">{{ nombre_del_tipo }}</span>
+    <span class="suave">{{ cuando(c.creado_en) }}</span>
+  </div>
+
+  <p class="comentario__texto">{{ c.texto }}</p>
+
+  <p class="comentario__quien">
+    {% if c.cliente_id %}
+    <a href="/clientes?cliente={{ c.cliente_id }}">{{ c.cliente }}</a>
+    {%- if c.telefono %} · {{ c.telefono|telefono_oculto }} · <a href="tel:+{{ c.telefono }}">Llamar</a>{% endif %}
+    {%- if c.turno %} · último turno {{ c.turno }}, {{ dia_relativo(c.turno_fecha)|lower }}{% if c.servicio %} ({{ c.servicio }}){% endif %}{% endif %}
+    {% elif c.telefono %}
+    No es cliente: dio permiso para que le respondan · {{ c.telefono|telefono_oculto }} · <a href="tel:+{{ c.telefono }}">Llamar</a>
+    {% else %}
+    No es cliente y no dejó su número: no hay cómo responderle.
+    {% endif %}
+  </p>
+
+  <div class="comentario__acciones">
+    {% if c.atendido %}
+    <span class="comentario__atendido">{{ iconos.icono("listo", 18, 2.5) }}Atendido{% if c.atendido_por %} por {{ c.atendido_por }}{% endif %} · {{ cuando(c.atendido_en) }}</span>
+    <button type="button" class="boton-texto" hx-post="/comentarios/{{ c.id }}/pendiente"
+            hx-target="#comentario-{{ c.id }}" hx-swap="outerHTML">Volver a pendiente</button>
+    {% else %}
+    <button type="button" class="boton" hx-post="/comentarios/{{ c.id }}/atendido"
+            hx-target="#comentario-{{ c.id }}" hx-swap="outerHTML" hx-disabled-elt="this">
+      {{ iconos.icono("listo", 18, 2.5) }}Marcar como atendido
+    </button>
+    {% endif %}
+    <button type="button" class="boton-texto peligro" hx-get="/comentarios/{{ c.id }}/borrar" hx-target="#dialogo-contenido">Borrar</button>
+  </div>
+</article>

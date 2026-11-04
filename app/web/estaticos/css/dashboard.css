@@ -575,7 +575,7 @@ legend { padding: 0; margin-bottom: 8px; }
 
 /* Barra de secciones del celular */
 .navegacion-celular {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
   background: var(--superficie); border-top: 1px solid var(--borde); padding: 4px 4px max(8px, env(safe-area-inset-bottom));
 }
 .navegacion-celular a {
@@ -730,6 +730,34 @@ legend { padding: 0; margin-bottom: 8px; }
 .tabla-mensajes td:last-child .suave { display: block; margin-top: 4px; font-size: 12px; }
 .tabla-mensajes__error { display: block; margin-top: 4px; color: var(--rojo-oscuro); font-size: 13px; }
 .tabla-mensajes__error--superado { color: var(--tinta-suave); }
+
+/* --- Comentarios ---------------------------------------------------------------------- */
+
+/* Cuántos faltan por atender, junto a "Comentarios" en el menú. */
+.contador {
+  min-width: 20px; height: 20px; padding: 0 6px; margin-left: 8px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--naranja); color: #fff; font-size: 12px; font-weight: 700; line-height: 1;
+}
+.navegacion-celular a { position: relative; }
+.navegacion-celular .contador { position: absolute; top: 4px; left: calc(50% + 6px); margin: 0; }
+.indice a[aria-current="page"], .indice a[aria-current="page"]:hover { background: var(--tinta); border-color: var(--tinta); color: #fff; }
+.comentarios { display: flex; flex-direction: column; gap: 12px; max-width: 860px; }
+.comentario { gap: 10px; }
+.comentario__cabeza {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; font-size: 14px;
+}
+.comentario__texto { font-size: 16px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+.comentario--atendido .comentario__texto { color: var(--tinta-gris); }
+.comentario__quien { font-size: 14px; line-height: 1.5; color: var(--tinta-suave); }
+.comentario__quien a { font-weight: 600; }
+.comentario__acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.comentario__acciones .peligro { margin-left: auto; }
+.comentario__atendido { display: inline-flex; align-items: center; gap: 6px; color: var(--verde); font-size: 14px; font-weight: 600; }
+.comentario__cita {
+  margin: 0; padding: 12px 14px; border-left: 3px solid var(--borde-fuerte); border-radius: 0 10px 10px 0;
+  background: var(--fondo); font-size: 15px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere;
+}
 
 /* --- Textos del bot ----------------------------------------------------------------- */
 

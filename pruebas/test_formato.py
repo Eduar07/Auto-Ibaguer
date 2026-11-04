@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from app.formato import duracion, fecha_larga, miles, telefono_oculto
+from app.formato import cuando_fue, duracion, fecha_larga, miles, telefono_oculto
 
 
 @pytest.mark.parametrize(
@@ -52,3 +52,18 @@ def test_duracion(minutos, texto):
 )
 def test_telefono_oculto(telefono, texto):
     assert telefono_oculto(telefono) == texto
+
+
+@pytest.mark.parametrize(
+    ("dia", "texto"),
+    [
+        (date(2026, 10, 26), "hoy"),
+        (date(2026, 10, 25), "ayer"),
+        (date(2026, 10, 24), "el sábado"),
+        (date(2026, 10, 20), "el martes"),  # hace 6 días: todavía es "esta semana"
+        (date(2026, 10, 19), "el 19 de octubre"),
+        (date(2025, 12, 30), "el 30 de diciembre de 2025"),
+    ],
+)
+def test_cuando_fue_como_se_dice_en_una_frase(dia, texto):
+    assert cuando_fue(dia, date(2026, 10, 26)) == texto  # un lunes

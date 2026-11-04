@@ -387,9 +387,9 @@ def test_si_gemini_no_entiende_o_falla_el_bot_sigue_con_botones(sesion: Session,
     cliente.escribe("reciben nequi?")
     assert cliente.texto.startswith("¡Hola! Bienvenido a Auto Ibaguer.")  # primer mensaje
     cliente.escribe("y a qué hora abren?")
-    assert cliente.texto.startswith("Por ahora entiendo los botones")
+    assert cliente.texto.startswith("No te entendí bien.")
     cliente.escribe("y dónde quedan?")
-    assert cliente.texto.startswith("Por ahora entiendo los botones")
+    assert cliente.texto.startswith("No te entendí bien.")
     assert "El intérprete falló; el bot siguió con los botones." in caplog.text
 
 

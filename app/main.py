@@ -22,6 +22,7 @@ from app.integraciones import whatsapp
 from app.reloj import proceso as reloj
 from app.web import (
     clientes,
+    comentarios,
     comun,
     configuracion,
     en_vivo,
@@ -76,6 +77,7 @@ for modulo in (
     entrar,
     fila,
     clientes,
+    comentarios,
     configuracion,
     textos_del_bot,
     mensajes,

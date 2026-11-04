@@ -1,12 +1,16 @@
 """La conversación del bot por WhatsApp: qué contesta a cada mensaje y qué hace en la fila.
 
 Funciona con botones y unas pocas palabras (mi turno, cancelar, ya estoy aquí, en camino,
-gracias). Lo demás que el cliente escribe con sus palabras lo entiende un intérprete
-(Gemini, app.bot.interprete), que solo dice qué quiere: lo que el bot contesta y hace es
-lo mismo que si hubiera tocado el botón. Si el intérprete no está o falla, el bot sigue
-con botones. Las reglas no viven aquí: el bot llama a los mismos casos de uso que el
-dashboard (pedir turno, cancelar, marcar llegada...), así que lo que pasa en el chat se ve
-al instante en la fila y al revés.
+hablar con una persona, mis lavadas, gracias). Lo demás que el cliente escribe con sus
+palabras lo entiende un intérprete (Gemini, app.bot.interprete), que solo dice qué
+quiere: lo que el bot contesta y hace es lo mismo que si hubiera tocado el botón. Si el
+intérprete no está o falla, el bot sigue con botones. Las reglas no viven aquí: el bot
+llama a los mismos casos de uso que el dashboard (pedir turno, cancelar, marcar
+llegada...), así que lo que pasa en el chat se ve al instante en la fila y al revés.
+
+Las quejas, las felicitaciones y los pedidos de hablar con una persona le llegan al
+administrador en el dashboard (Comentarios, app.comentarios). De quien no es cliente no
+se guarda el número sin su permiso.
 
 `atender` recibe lo que el cliente escribió o tocó y devuelve los mensajes para
 contestarle. No los envía ni confirma nada: quien lo llama (WhatsApp, o la página
@@ -41,8 +45,10 @@ from app.clientes import servicio as clientes
 from app.clientes.errores import NombreInvalido, PlacaDeOtroCliente, PlacaInvalida
 from app.clientes.reglas import nombre_bonito, normalizar_telefono, validar_placa
 from app.clientes.tablas import Cliente, TipoConsulta, Vehiculo
+from app.comentarios import servicio as comentarios
+from app.comentarios.tablas import LARGO_MAXIMO, TipoComentario
 from app.errores import ReglaDelNegocio
-from app.formato import DIAS, duracion, hora_con_articulo, horario, pesos
+from app.formato import DIAS, cuando_fue, duracion, hora_con_articulo, horario, pesos
 from app.formato import telefono as telefono_legible
 from app.turnos import casos_de_uso as casos
 from app.turnos import consultas, reglas
@@ -75,6 +81,11 @@ class Paso(StrEnum):
     PRECIOS = "precios"
     CANCELAR = "cancelar"
     NUMERO_DE_TURNO = "numero_de_turno"
+    # Después de una queja o de pedir hablar con alguien: lo que escriba se agrega a ese
+    # comentario, para el administrador.
+    DETALLE = "detalle"
+    # A quien no es cliente se le pregunta si guardamos su número para responderle.
+    PERMISO_CONTACTO = "permiso_contacto"
 
 
 # En estos pasos el bot espera que el cliente escriba; en los demás, que toque un botón.
@@ -83,6 +94,8 @@ PASOS_DE_TEXTO = frozenset({Paso.NOMBRE, Paso.PLACA, Paso.NUMERO_DE_TURNO})
 # demás (aceptar los datos, confirmar el turno, cancelar...) se responde con los botones,
 # o con un sí o un no claros: son decisiones que no se adivinan.
 PASOS_QUE_ENTIENDE_GEMINI = frozenset({Paso.VEHICULO, Paso.PRECIOS, Paso.SERVICIO})
+# Las preguntas que también se contestan escribiendo un sí o un no claros ("no gracias").
+PASOS_DE_SI_O_NO = frozenset({Paso.AVISO_DATOS, Paso.CONFIRMAR, Paso.PERMISO_CONTACTO})
 
 # El prefijo del id de cada botón dice a qué paso pertenece: un botón de un mensaje
 # viejo ya no sirve. Los del menú y los del turno ("En camino", "Ya estoy aquí") sirven
@@ -96,7 +109,22 @@ PASO_DEL_BOTON = {
     "segundo": Paso.SEGUNDO_TURNO,
     "precios": Paso.PRECIOS,
     "cancelar": Paso.CANCELAR,
+    "responder": Paso.PERMISO_CONTACTO,
 }
+
+# Lo que el cliente pide con sus palabras mientras cuenta lo que pasó, y el bot también
+# hace (después de anotarlo): ver su turno, la fila, los precios, cancelar...
+PIDE_ALGO_MAS = frozenset(
+    {
+        Intencion.PEDIR_TURNO,
+        Intencion.VER_FILA,
+        Intencion.PRECIOS,
+        Intencion.MI_TURNO,
+        Intencion.CANCELAR,
+        Intencion.PICO_Y_PLACA,
+        Intencion.MIS_LAVADAS,
+    }
+)
 
 # --- Palabras que el bot reconoce ------------------------------------------------------------
 
@@ -114,6 +142,51 @@ SOLO_SALUDO |= {"holi", "hey", "saludos", "vecino", "amigo", "senor", "senora", 
 SI = frozenset({"si", "dale", "ok", "listo", "claro", "de acuerdo", "acepto", "confirmo"})
 NO = frozenset({"no", "mejor no", "no gracias"})
 PALABRAS_DE_CARRO = frozenset({"carro", "carros", "auto", "autos"})
+
+# Pedir hablar con una persona y no con el bot ("quiero hablar con un asesor"). Se
+# reconoce aunque Gemini no esté: es la salida que el cliente siempre debe tener.
+SIEMPRE_ES_UNA_PERSONA = frozenset({"asesor", "asesora", "humano", "humana"})
+PERSONAS = frozenset(
+    {
+        "persona",
+        "alguien",
+        "administrador",
+        "administradora",
+        "encargado",
+        "encargada",
+        "dueno",
+        "duena",
+        "gerente",
+        "jefe",
+    }
+)
+HABLAR = frozenset({"hablar", "hablo", "comunicar", "comunicarme", "comunicarse", "atienda"})
+MIS_LAVADAS = ("mis lavadas", "cuantas lavadas", "mis lavados", "cuantos lavados")
+# Si Gemini no está o no respondió, estas palabras bastan para saber que es una queja: a
+# quien se queja no se le contesta "no te entendí".
+QUEJAS = (
+    "queja",
+    "quejo",
+    "reclamo",
+    "pesimo",
+    "pesima",
+    "mal servicio",
+    "atendieron mal",
+    "atienden mal",
+    "mal atendid",
+    "mal lavad",
+    "quedo mal",
+    "quedaron mal",
+    "quedo sucio",
+    "quedo sucia",
+    "groser",
+    "me rayaron",
+    "me danaron",
+    "no me gusto",
+)
+# Lo que se escribe para cerrar, sin contar nada más: "ok", "gracias", "eso es todo".
+SOLO_PARA_CERRAR = DESPEDIDAS | {"ok", "okey", "listo", "dale", "bueno", "vale", "bien"}
+SOLO_PARA_CERRAR |= {"si", "no", "nada", "ya", "eso", "es", "todo", "muchas", "mil", "perfecto"}
 
 
 def normalizar(texto_escrito: str) -> str:
@@ -136,6 +209,31 @@ def _dice(normal: str, frases: tuple[str, ...]) -> bool:
                 return True
             inicio = normal.find(frase, inicio + 1)
     return False
+
+
+def _avisa_que_llego(normal: str) -> bool:
+    return normal in LLEGADA_EXACTA or _dice(normal, LLEGADA)
+
+
+def _avisa_que_va_en_camino(normal: str) -> bool:
+    return normal in EN_CAMINO_EXACTO or _dice(normal, EN_CAMINO)
+
+
+def _pide_hablar_con_alguien(normal: str) -> bool:
+    """ "quiero hablar con alguien", "que me atienda una persona", "un asesor por favor"."""
+    palabras = set(normal.split())
+    if palabras & SIEMPRE_ES_UNA_PERSONA:
+        return True
+    return bool(palabras & HABLAR) and bool(palabras & PERSONAS)
+
+
+def _pregunta_sus_lavadas(normal: str) -> bool:
+    return any(frase in normal for frase in MIS_LAVADAS)
+
+
+def _solo_para_cerrar(normal: str) -> bool:
+    palabras = normal.split()
+    return 0 < len(palabras) <= 4 and set(palabras) <= SOLO_PARA_CERRAR
 
 
 def elegir_por_texto(escrito: str, pregunta: Mensaje) -> str | None:
@@ -254,12 +352,16 @@ class _Atencion:
         if self.entrada.opcion:
             return self._boton(self.entrada.opcion)
         escrito = (self.entrada.texto or "").strip()
-        if self.entrada.otro or not escrito:
-            return self._menu("solo_texto")
         normal = normalizar(escrito)
+        if self.paso == Paso.DETALLE:
+            return self._detalle(escrito, normal)
+        if self.entrada.otro or not escrito:
+            if self.paso == Paso.PERMISO_CONTACTO:
+                return [_con_nota(self.texto("detalle_solo_texto"), self._pregunta())]
+            return self._menu("solo_texto")
         if not normal:
             return self._menu("no_entendi")
-        palabra_clave = self._palabra_clave(normal)
+        palabra_clave = self._palabra_clave(normal, escrito)
         if palabra_clave is not None:
             return palabra_clave
         if self.paso in PASOS_DE_TEXTO:
@@ -278,13 +380,16 @@ class _Atencion:
             if not set(normal.split()) <= SOLO_SALUDO:
                 # Escribió con sus palabras ("cuánto vale lavar la camionetica").
                 entendido = self._entender(escrito)
+                if entendido is None and _dice(normal, QUEJAS):
+                    # Sin Gemini (o si no respondió), una queja igual se reconoce.
+                    entendido = Interpretacion(Intencion.QUEJA)
                 if entendido is not None and entendido.intencion != Intencion.OTRO:
-                    return self._hacer(entendido)
+                    return self._hacer(entendido, escrito)
             saluda = self.empieza or normal.split()[0] in SALUDOS
             return self._saludo() if saluda else self._menu("no_entendi")
         return self._respuesta_escrita(normal, escrito)
 
-    def _palabra_clave(self, normal: str) -> list[Mensaje] | None:
+    def _palabra_clave(self, normal: str, escrito: str) -> list[Mensaje] | None:
         palabras = normal.split()
         if FRASE_DEL_QR in normal:
             return self._llego_por_el_qr()
@@ -293,11 +398,17 @@ class _Atencion:
             return self._preguntar_si_cancela()
         if "mi turno" in normal:
             return self._mi_turno()
-        if normal in LLEGADA_EXACTA or _dice(normal, LLEGADA):
+        if _avisa_que_llego(normal):
             return self._llegada()
-        if normal in EN_CAMINO_EXACTO or _dice(normal, EN_CAMINO):
+        if _avisa_que_va_en_camino(normal):
             return self._en_camino()
+        if _pide_hablar_con_alguien(normal):
+            return self._hablar_con_una_persona(escrito)
+        if _pregunta_sus_lavadas(normal):
+            return self._mis_lavadas()
         if DESPEDIDAS & set(palabras) and len(palabras) <= 4:
+            if normal in NO and self.paso in PASOS_DE_SI_O_NO:
+                return None  # "no gracias" le contesta la pregunta: vale como el botón del no
             self._volver_al_menu()
             return [Mensaje(self.texto("despedida"))]
         return None
@@ -310,12 +421,16 @@ class _Atencion:
             return self._preguntar_cual_carro()
         # "sí" o "no" a una pregunta de sí o no. Con dos turnos para cancelar, "sí" no dice
         # cuál: ahí toca usar los botones.
-        de_si_o_no = self.paso in (Paso.AVISO_DATOS, Paso.CONFIRMAR) or (
+        de_si_o_no = self.paso in PASOS_DE_SI_O_NO or (
             self.paso == Paso.CANCELAR and len(pregunta.opciones) == 2
         )
         if elegida is None and de_si_o_no:
             si, no = pregunta.opciones[0].id, pregunta.opciones[-1].id
             elegida = si if normal in SI else no if normal in NO else None
+        if elegida is None and self.paso == Paso.PERMISO_CONTACTO:
+            # Contó más de lo que pasó en vez de tocar un botón: se anota y se pregunta otra vez.
+            self._anotar(escrito)
+            return [_con_nota(self.texto("anotado"), pregunta)]
         if elegida is None and self.paso in PASOS_QUE_ENTIENDE_GEMINI:
             # "la camionetica", "el que trae cera"... o cambió de tema ("está muy lleno?").
             entendido = self._entender(escrito)
@@ -323,8 +438,10 @@ class _Atencion:
                 if self.paso == Paso.PRECIOS and entendido.vehiculo == CARRO:
                     return self._preguntar_cual_carro()
                 elegida = self._opcion_entendida(entendido)
+                if elegida is None and entendido.intencion == Intencion.FELICITACION:
+                    return self._felicitacion(escrito)
                 if elegida is None and self._cambia_de_tema(entendido):
-                    return self._hacer(entendido)
+                    return self._hacer(entendido, escrito)
         if elegida is not None:
             return self._boton(elegida)
         return [_con_nota(self.texto("toca_una_opcion"), pregunta)]
@@ -342,7 +459,7 @@ class _Atencion:
             logger.exception("El intérprete falló; el bot siguió con los botones.")
             return None
 
-    def _hacer(self, entendido: Interpretacion) -> list[Mensaje]:
+    def _hacer(self, entendido: Interpretacion, escrito: str) -> list[Mensaje]:
         """Lo que el cliente pidió con sus palabras, como si hubiera tocado el botón."""
         match entendido.intencion:
             case Intencion.PEDIR_TURNO:
@@ -357,13 +474,29 @@ class _Atencion:
                 return self._preguntar_si_cancela()  # siempre pregunta antes, con botones
             case Intencion.PICO_Y_PLACA:
                 return self._menu("pico_y_placa")
+            case Intencion.MIS_LAVADAS:
+                return self._mis_lavadas()
+            case Intencion.QUEJA:
+                return self._queja(escrito)
+            case Intencion.FELICITACION:
+                return self._felicitacion(escrito)
+            case Intencion.HABLAR_CON_PERSONA:
+                return self._hablar_con_una_persona(escrito)
         return self._menu("no_entendi")
 
     def _cambia_de_tema(self, entendido: Interpretacion) -> bool:
         """En medio de una pregunta, ¿pidió otra cosa? Preguntar el precio mientras pide
         turno no cuenta: la lista de servicios ya trae los precios."""
-        otra_cosa = (Intencion.VER_FILA, Intencion.MI_TURNO, Intencion.CANCELAR)
-        if entendido.intencion in (*otra_cosa, Intencion.PICO_Y_PLACA):
+        otra_cosa = (
+            Intencion.VER_FILA,
+            Intencion.MI_TURNO,
+            Intencion.CANCELAR,
+            Intencion.PICO_Y_PLACA,
+            Intencion.MIS_LAVADAS,
+            Intencion.QUEJA,
+            Intencion.HABLAR_CON_PERSONA,
+        )
+        if entendido.intencion in otra_cosa:
             return True
         return self.paso == Paso.PRECIOS and entendido.intencion == Intencion.PEDIR_TURNO
 
@@ -425,6 +558,7 @@ class _Atencion:
             "segundo": self._segundo_turno,
             "precios": self._eligio_precios,
             "cancelar": self._cancelar,
+            "responder": self._permiso_para_responder,
         }
         if prefijo == "placa":
             self.datos["placa"] = None
@@ -485,6 +619,7 @@ class _Atencion:
             Paso.PRECIOS: self._pregunta_precios,
             Paso.CANCELAR: self._pregunta_cancelar,
             Paso.NUMERO_DE_TURNO: lambda: Mensaje(self.texto("pedir_numero_de_turno")),
+            Paso.PERMISO_CONTACTO: self._pregunta_permiso,
         }
         pregunta = preguntas.get(self.paso)
         return pregunta() if pregunta is not None else self._mensaje_del_menu("menu")
@@ -1107,6 +1242,186 @@ class _Atencion:
             ]
         return [Mensaje(self.texto("en_camino"))]
 
+    # --- Quejas, felicitaciones y hablar con una persona -------------------------------------
+
+    def _queja(self, escrito: str) -> list[Mensaje]:
+        """Se queja de algo que pasó. La queja le llega de una vez al administrador
+        (Comentarios, en el dashboard); el bot pide perdón y le deja contar más."""
+        comentario = comentarios.registrar(
+            self.sesion, TipoComentario.QUEJA, escrito, cliente=self.cliente, ahora=self.ahora
+        )
+        self._volver_al_menu()
+        self.datos = {"comentario": comentario.id, "tipo": TipoComentario.QUEJA.value}
+        if self.cliente is None:
+            # Sin su permiso no se guarda su número: se le pregunta si quiere que le respondan.
+            self.paso = Paso.PERMISO_CONTACTO
+            return [self._con_botones_de_permiso(self.texto("queja"))]
+        self.paso = Paso.DETALLE
+        return [Mensaje(self.texto("queja_cliente", nombre=_primer_nombre(self.cliente)))]
+
+    def _hablar_con_una_persona(self, escrito: str) -> list[Mensaje]:
+        """Quiere que le responda alguien y no el bot: le llega al administrador."""
+        self._volver_al_menu()
+        if self.cliente is None:
+            # Se guarda solo si acepta que guardemos su número: sin él no hay a quién responder.
+            self.paso = Paso.PERMISO_CONTACTO
+            self.datos = {"pide_persona": _sin_pasarse(escrito)}
+            return [self._pregunta()]
+        comentario = comentarios.registrar(
+            self.sesion,
+            TipoComentario.QUIERE_HABLAR,
+            escrito,
+            cliente=self.cliente,
+            ahora=self.ahora,
+        )
+        self.paso = Paso.DETALLE
+        self.datos = {"comentario": comentario.id, "tipo": TipoComentario.QUIERE_HABLAR.value}
+        return [
+            Mensaje(
+                self.texto(
+                    "persona",
+                    nombre=_primer_nombre(self.cliente),
+                    telefono=self._telefono_del_negocio(),
+                )
+            )
+        ]
+
+    def _con_botones_de_permiso(self, texto: str) -> Mensaje:
+        return Mensaje(
+            texto,
+            botones=(
+                Opcion("responder.si", BOTONES["responder_si"]),
+                Opcion("responder.no", BOTONES["responder_no"]),
+            ),
+        )
+
+    def _pregunta_permiso(self) -> Mensaje:
+        nombre = "persona_permiso" if "pide_persona" in self.datos else "queja_permiso"
+        return self._con_botones_de_permiso(self.texto(nombre))
+
+    def _permiso_para_responder(self, respuesta: str) -> list[Mensaje]:
+        pide_persona = self.datos.get("pide_persona")
+        comentario_id = self.datos.get("comentario")
+        self._volver_al_menu()
+        if respuesta != "si":
+            if pide_persona is not None:
+                telefono = self._telefono_del_negocio()
+                return [Mensaje(self.texto("persona_sin_permiso", telefono=telefono))]
+            return [Mensaje(self.texto("queja_anonima"))]
+        tipo = TipoComentario.QUEJA
+        if pide_persona is not None:
+            tipo = TipoComentario.QUIERE_HABLAR
+            nuevo = comentarios.registrar(self.sesion, tipo, pide_persona, ahora=self.ahora)
+            comentario_id = nuevo.id
+        if comentario_id is not None:
+            # Aceptó: desde ahora el comentario lleva su número, para responderle.
+            comentarios.dar_permiso(self.sesion, comentario_id, self.telefono, ahora=self.ahora)
+        self.paso = Paso.DETALLE
+        self.datos = {"comentario": comentario_id, "tipo": tipo.value}
+        return [Mensaje(self.texto("contacto_si"))]
+
+    def _anotar(self, escrito: str) -> None:
+        """Agrega lo que escribió al comentario que está contando (o a lo que pidió, si
+        todavía no ha dado permiso para guardarlo). Si el comentario ya no existe (lo
+        borraron en el dashboard mientras tanto), se guarda uno nuevo: sus palabras no se
+        pierden."""
+        if "pide_persona" in self.datos:
+            self.datos["pide_persona"] = _sin_pasarse(f"{self.datos['pide_persona']}\n{escrito}")
+            return
+        comentario_id = self.datos.get("comentario")
+        if comentario_id is not None and comentarios.agregar_detalle(
+            self.sesion, comentario_id, escrito
+        ):
+            return
+        try:
+            tipo = TipoComentario(self.datos.get("tipo", TipoComentario.QUEJA))
+        except ValueError:
+            tipo = TipoComentario.QUEJA
+        nuevo = comentarios.registrar(
+            self.sesion, tipo, escrito, cliente=self.cliente, ahora=self.ahora
+        )
+        self.datos["comentario"] = nuevo.id
+
+    def _detalle(self, escrito: str, normal: str) -> list[Mensaje]:
+        """Lo que escribe después de quejarse o de pedir hablar con alguien: es para el
+        administrador, con sus palabras, y se agrega al comentario. Si además pide algo
+        que el bot sabe hacer (cancelar, ver su turno...), también se hace."""
+        if self.entrada.otro or not escrito:
+            return [Mensaje(self.texto("detalle_solo_texto"))]
+        if normal and set(normal.split()) <= SOLO_SALUDO:
+            return self._saludo()  # "hola": empieza otra conversación
+        if not _solo_para_cerrar(normal):
+            self._anotar(escrito)
+        self._volver_al_menu()
+        return [Mensaje(self.texto("detalle_recibido")), *self._ademas(normal, escrito)]
+
+    def _ademas(self, normal: str, escrito: str) -> list[Mensaje]:
+        """En lo que contó, ¿pide también algo que el bot sabe hacer? Se hace después de
+        anotarlo. Un mensaje corto es un pedido ("ya llegué"); uno largo es un relato ("ya
+        llegué a la casa y vi el rayón"), y en un relato no se marca nada en la fila."""
+        if _solo_para_cerrar(normal):
+            return []
+        corto = len(normal.split()) <= 4
+        if "cancel" in normal:
+            # Siempre pregunta antes, con botones; si no tiene turnos, no hay qué cancelar.
+            return self._preguntar_si_cancela() if self._activos() else []
+        if corto and "mi turno" in normal:
+            return self._mi_turno()
+        if corto and _avisa_que_llego(normal):
+            return self._llegada()
+        if corto and _avisa_que_va_en_camino(normal):
+            return self._en_camino()
+        if _pregunta_sus_lavadas(normal):
+            return self._mis_lavadas()
+        entendido = self._entender(escrito)
+        if entendido is None or entendido.intencion not in PIDE_ALGO_MAS:
+            return []
+        if entendido.intencion == Intencion.CANCELAR and not self._activos():
+            return []
+        return self._hacer(entendido, escrito)
+
+    def _felicitacion(self, escrito: str) -> list[Mensaje]:
+        """Felicita el servicio: se le agradece y le llega al administrador."""
+        comentarios.registrar(
+            self.sesion,
+            TipoComentario.FELICITACION,
+            escrito,
+            cliente=self.cliente,
+            ahora=self.ahora,
+        )
+        nombre, datos = "felicitacion", {}
+        if self.cliente is not None:
+            nombre, datos = "felicitacion_cliente", {"nombre": _primer_nombre(self.cliente)}
+        if self.paso == Paso.MENU:
+            self._volver_al_menu()
+            return [self._mensaje_del_menu(nombre, **datos)]
+        # En medio de otra pregunta (pidiendo turno, por ejemplo): se agradece y se sigue.
+        return [_con_nota(self.texto(nombre, **datos), self._pregunta())]
+
+    # --- Sus lavadas ------------------------------------------------------------------------
+
+    def _mis_lavadas(self) -> list[Mensaje]:
+        """Cuántas lavadas lleva y cuándo fue la última, con los datos del sistema."""
+        self._volver_al_menu()
+        pedir = (Opcion("menu.pedir", BOTONES["pedir"]),)
+        if self.cliente is None:
+            return [Mensaje(self.texto("mis_lavadas_sin_registro"), botones=pedir)]
+        cuantas, ultima = clientes.lavadas(self.sesion, self.cliente.id)
+        nombre = _primer_nombre(self.cliente)
+        if cuantas == 0 or ultima is None:
+            return [Mensaje(self.texto("sin_lavadas", nombre=nombre), botones=pedir)]
+        return [
+            Mensaje(
+                self.texto(
+                    "mis_lavadas",
+                    nombre=nombre,
+                    lavadas=f"{cuantas} lavada{'s' if cuantas != 1 else ''}",
+                    ultima=cuando_fue(ultima, tiempo.hora_local(self.ahora).date()),
+                ),
+                botones=pedir,
+            )
+        ]
+
     # --- Código QR del mostrador -------------------------------------------------------------
 
     def _llego_por_el_qr(self) -> list[Mensaje]:
@@ -1168,6 +1483,11 @@ def _con_nota(nota: str, pregunta: Mensaje) -> Mensaje:
 
 def _entero(texto_escrito: str) -> int | None:
     return int(texto_escrito) if texto_escrito.isdigit() else None
+
+
+def _sin_pasarse(texto: str) -> str:
+    """Lo que escribió el cliente, sin pasarse de lo que se guarda de un comentario."""
+    return recortar(texto.strip(), LARGO_MAXIMO)
 
 
 def _primer_nombre(cliente: Cliente | None) -> str:

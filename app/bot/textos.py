@@ -22,8 +22,8 @@ TEXTOS: dict[str, str] = {
     "¿En qué te ayudamos?",
     "saludo_cliente": "¡Hola, {nombre}! Qué bueno saludarte de nuevo. ¿En qué te ayudamos?",
     "menu": "¿En qué más te ayudamos?",
-    "no_entendi": "Por ahora entiendo los botones y las palabras *mi turno* y *cancelar*. "
-    "¿En qué te ayudamos?",
+    "no_entendi": "No te entendí bien. Puedes tocar una opción, escribir *mi turno* o "
+    "*cancelar*, o pedir *hablar con una persona*.",
     "solo_texto": "Por ahora solo entiendo mensajes escritos y los botones. ¿En qué te ayudamos?",
     "boton_vencido": "Ese botón ya no está vigente. ¿En qué te ayudamos?",
     "toca_una_opcion": "Toca una de las opciones, por favor.",
@@ -116,6 +116,40 @@ TEXTOS: dict[str, str] = {
     "escríbelo otra vez.",
     "numero_otro_celular": "Ese turno tiene otro celular registrado. Pídele al administrador "
     "que lo revise.",
+    # --- Quejas y hablar con una persona (le llegan al administrador en Comentarios) ---
+    "queja_cliente": "Qué pena, {nombre}, con lo que pasó. Ya le avisamos al administrador "
+    "para que lo revise y te responda lo antes posible. Si quieres, cuéntanos más: qué pasó "
+    "y cuándo.",
+    "queja": "Qué pena con lo que pasó. Ya le avisamos al administrador. ¿Quieres que te "
+    "responda? Para eso guardamos tu número de WhatsApp, solo para responderte. También "
+    "puedes contarnos más de lo que pasó.",
+    "queja_permiso": "¿Quieres que el administrador te responda? Para eso guardamos tu número "
+    "de WhatsApp, solo para responderte.",
+    "queja_anonima": "Entendido, no guardamos tu número. Tu comentario le llega al "
+    "administrador sin tus datos. Gracias por ayudarnos a mejorar.",
+    "persona": "Listo, {nombre}. Ya le avisamos al administrador para que te responda lo "
+    "antes posible. Si quieres, cuéntanos de qué se trata. Si es urgente, llama al {telefono}.",
+    "persona_permiso": "Con gusto te comunicamos con el administrador. Para que te responda "
+    "guardamos tu número de WhatsApp, solo para eso. ¿Estás de acuerdo?",
+    "persona_sin_permiso": "Entendido, no guardamos tu número. Si quieres hablar con el "
+    "administrador, llama al {telefono}.",
+    "contacto_si": "Listo, el administrador te responde lo antes posible. Si quieres, "
+    "cuéntanos más mientras tanto.",
+    "detalle_recibido": "Gracias, ya quedó anotado para el administrador.",
+    "anotado": "Lo anotamos.",
+    "detalle_solo_texto": "Por ahora no podemos ver fotos, audios ni videos por aquí. "
+    "Escríbenos con palabras, por favor.",
+    # --- Felicitaciones ---
+    "felicitacion": "¡Muchas gracias! Nos alegra mucho que te guste el servicio. Se lo "
+    "contamos al equipo.",
+    "felicitacion_cliente": "¡Muchas gracias, {nombre}! Nos alegra mucho que te guste el "
+    "servicio. Se lo contamos al equipo.",
+    # --- Sus lavadas ---
+    "mis_lavadas": "{nombre}, llevas {lavadas} con nosotros; la más reciente fue {ultima}. "
+    "¡Gracias por preferirnos!",
+    "sin_lavadas": "{nombre}, todavía no tienes lavadas con nosotros. ¿Pedimos la primera?",
+    "mis_lavadas_sin_registro": "No encontramos lavadas con este número de WhatsApp. Las "
+    "contamos cuando pides turno por aquí o das este número en el local.",
     # --- Avisos de la fila (salen de la bandeja de salida) ---
     "aviso_anticipado": "Tu turno *{turno}* está cerca: {adelante}. Sal hacia el lavadero "
     "para que llegues a tiempo.",
@@ -153,6 +187,8 @@ BOTONES: dict[str, str] = {
     "no_cancelar": "No, mantenerlo",
     "en_camino": "En camino",
     "llegue": "Ya estoy aquí",
+    "responder_si": "Sí, que me responda",
+    "responder_no": "No, gracias",
 }
 
 

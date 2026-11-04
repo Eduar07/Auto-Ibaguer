@@ -8,9 +8,9 @@ Reglas del documento que viven aquí:
 """
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app import tiempo
@@ -25,8 +25,9 @@ from app.clientes.errores import (
 )
 from app.clientes.reglas import nombre_bonito, normalizar_telefono, validar_placa
 from app.clientes.tablas import Cliente, Consulta, TipoConsulta, Vehiculo
+from app.comentarios import servicio as comentarios
 from app.integraciones.tablas import MensajeEntrante, MensajeSaliente
-from app.turnos.estados import ESTADOS_ACTIVOS
+from app.turnos.estados import ESTADOS_ACTIVOS, EstadoTurno
 from app.turnos.reglas import numero_de_turno
 from app.turnos.tablas import Pago, Turno, TurnoHistorial
 
@@ -171,6 +172,23 @@ def vehiculo_con_placa(sesion: Session, vehiculo: Vehiculo, texto: str) -> Vehic
     return nuevo
 
 
+# --- Sus lavadas ---------------------------------------------------------------------------
+
+
+# Una lavada cuenta desde que el vehículo queda listo, aunque todavía no lo haya pagado.
+LAVADAS_HECHAS = (EstadoTurno.LISTO, EstadoTurno.PAGADO)
+
+
+def lavadas(sesion: Session, cliente_id: int) -> tuple[int, date | None]:
+    """Cuántas lavadas lleva el cliente y el día de la última (None si no lleva ninguna)."""
+    cuantas, ultima = sesion.execute(
+        select(func.count(), func.max(Turno.fecha)).where(
+            Turno.cliente_id == cliente_id, Turno.estado.in_(LAVADAS_HECHAS)
+        )
+    ).one()
+    return cuantas, ultima
+
+
 # --- Editar y borrar ---------------------------------------------------------------------
 
 
@@ -259,6 +277,8 @@ def borrar_datos(sesion: Session, cliente_id: int, *, ahora: datetime | None = N
             or_(SesionBot.cliente_id == cliente.id, SesionBot.telefono == cliente.telefono)
         )
     )
+    # Sus quejas y felicitaciones las escribió él, con sus palabras: también se borran.
+    comentarios.borrar_los_del_cliente(sesion, cliente)
     # Las consultas quedan para contar cuánta gente pregunta, pero ya sin saber quién.
     sesion.execute(
         update(Consulta).where(Consulta.cliente_id == cliente.id).values(cliente_id=None)

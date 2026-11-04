@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app import formato, tiempo
 from app.catalogo.parametros import leer_parametros
+from app.comentarios.consultas import por_atender as comentarios_por_atender
 from app.config import obtener_entorno
 from app.db.sesion import obtener_sesion
 from app.turnos.estados import NOMBRE_DEL_ESTADO, EstadoTurno, MedioPago
@@ -100,9 +101,16 @@ def _dia_relativo(dia: date) -> str:
     return formato.dia_relativo(dia, tiempo.hora_local(tiempo.ahora()).date())
 
 
+def _cuando(momento: datetime) -> str:
+    """ "Hoy · 3:15 p.m.", "Ayer · 9:02 a.m." o "17 de octubre · 8:30 a.m.", en Bogotá."""
+    local = tiempo.hora_local(momento)
+    return f"{_dia_relativo(local.date())} · {formato.hora(local)}"
+
+
 plantillas.env.globals.update(
     texto_volver=_texto_volver,
     dia_relativo=_dia_relativo,
+    cuando=_cuando,
     EstadoTurno=EstadoTurno,
     MedioPago=MedioPago,
     nombre_del_estado=NOMBRE_DEL_ESTADO,
@@ -216,9 +224,14 @@ def pagina(
     *,
     seccion: str,
 ) -> HTMLResponse:
-    """Una pantalla completa, con el encabezado: en qué sección está y si el bot está activo."""
-    bot_activo = leer_parametros(sesion).bot_activo
-    return html(request, plantilla, {**contexto, "seccion": seccion, "bot_activo": bot_activo})
+    """Una pantalla completa, con el encabezado: en qué sección está, si el bot está activo y
+    cuántos comentarios de los clientes faltan por atender."""
+    encabezado = {
+        "seccion": seccion,
+        "bot_activo": leer_parametros(sesion).bot_activo,
+        "comentarios_pendientes": comentarios_por_atender(sesion),
+    }
+    return html(request, plantilla, {**contexto, **encabezado})
 
 
 def pagina_actual(request: Request) -> str:

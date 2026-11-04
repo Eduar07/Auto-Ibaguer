@@ -145,25 +145,47 @@ def test_le_pide_a_gemini_una_respuesta_con_formato_fijo():
     ]
     instrucciones = cuerpo["systemInstruction"]["parts"][0]["text"]
     assert "lavadero de carros y motos" in instrucciones and "Auto Ibaguer" in instrucciones
+    # Los nombres de la API de AI Studio: "responseFormat" es solo de Vertex AI y el nivel
+    # de pensamiento va dentro de thinkingConfig (la librería oficial de Google, google-genai).
     configuracion = cuerpo["generationConfig"]
-    formato = configuracion["responseFormat"]["text"]
-    assert formato["mimeType"] == "APPLICATION_JSON"
-    propiedades = formato["schema"]["properties"]
+    assert configuracion["responseMimeType"] == "application/json"
+    propiedades = configuracion["responseJsonSchema"]["properties"]
     assert propiedades["intencion"]["enum"] == [i.value for i in Intencion]
     assert propiedades["vehiculo"]["enum"] == ["Automóvil", "Camioneta", "Moto", "carro", "ninguno"]
-    assert configuracion["thinkingLevel"] == "minimal"
+    assert configuracion["thinkingConfig"] == {"thinkingLevel": "MINIMAL"}
+    assert "responseFormat" not in configuracion
+    assert "thinkingLevel" not in configuracion
 
 
-def test_a_un_modelo_2_x_se_le_apaga_el_pensamiento_a_su_manera():
+@pytest.mark.parametrize(
+    ("modelo", "pensamiento"),
+    [
+        ("gemini-2.5-flash-lite", {"thinkingBudget": 0}),
+        ("gemini-3.6-flash", {"thinkingLevel": "MINIMAL"}),
+        ("gemini-flash-lite-latest", {"thinkingLevel": "MINIMAL"}),
+        ("gemini-3.1-pro-preview", {"thinkingLevel": "LOW"}),  # los Pro no bajan de LOW
+    ],
+)
+def test_cada_modelo_piensa_lo_menos_posible_a_su_manera(modelo, pensamiento):
     google = GoogleDeMentira(
         respuesta_de_gemini({"intencion": "otro", "vehiculo": "ninguno", "servicio": "ninguno"})
     )
 
-    con_google(google, "gemini-2.5-flash-lite").interpretar("hola", CATALOGO)
+    con_google(google, modelo).interpretar("hola", CATALOGO)
 
     configuracion = google.cuerpo()["generationConfig"]
-    assert configuracion["thinkingConfig"] == {"thinkingBudget": 0}
+    assert configuracion["thinkingConfig"] == pensamiento
     assert "thinkingLevel" not in configuracion
+
+
+def test_un_modelo_2_x_pro_piensa_lo_que_necesita():
+    google = GoogleDeMentira(
+        respuesta_de_gemini({"intencion": "otro", "vehiculo": "ninguno", "servicio": "ninguno"})
+    )
+
+    con_google(google, "gemini-2.5-pro").interpretar("hola", CATALOGO)
+
+    assert "thinkingConfig" not in google.cuerpo()["generationConfig"]  # no se puede apagar
 
 
 def test_lee_la_respuesta_aunque_traiga_lo_que_penso_o_venga_entre_comillas():

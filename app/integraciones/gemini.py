@@ -83,10 +83,11 @@ def esquema(catalogo: Catalogo) -> dict[str, Any]:
 
 def _sin_pensar(modelo: str) -> dict[str, Any]:
     """Para clasificar un mensaje no hace falta que el modelo "piense" antes: así responde
-    rápido. Los modelos 2.x lo apagan con thinkingBudget y los nuevos con thinkingLevel."""
+    rápido. Los modelos 2.x lo apagan con thinkingBudget; desde los 3, thinkingBudget da
+    error y se usa thinkingLevel, que en los Pro no baja de LOW."""
     if modelo.startswith("gemini-2"):
         return {} if "pro" in modelo else {"thinkingConfig": {"thinkingBudget": 0}}
-    return {"thinkingLevel": "minimal"}
+    return {"thinkingConfig": {"thinkingLevel": "LOW" if "pro" in modelo else "MINIMAL"}}
 
 
 def peticion(mensaje: str, catalogo: Catalogo, *, modelo: str, negocio: str) -> dict[str, Any]:
@@ -98,10 +99,11 @@ def peticion(mensaje: str, catalogo: Catalogo, *, modelo: str, negocio: str) -> 
     return {
         "systemInstruction": {"parts": [{"text": instrucciones}]},
         "contents": [{"role": "user", "parts": [{"text": ocultar_datos(mensaje)}]}],
+        # Los nombres que entiende la API de Gemini de AI Studio (generateContent). El
+        # "responseFormat" nuevo es solo de Vertex AI: aquí daría error.
         "generationConfig": {
-            "responseFormat": {
-                "text": {"mimeType": "APPLICATION_JSON", "schema": esquema(catalogo)}
-            },
+            "responseMimeType": "application/json",
+            "responseJsonSchema": esquema(catalogo),
             "maxOutputTokens": 256,
             **_sin_pensar(modelo),
         },

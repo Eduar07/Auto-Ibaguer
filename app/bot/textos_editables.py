@@ -133,6 +133,14 @@ GRUPOS: tuple[Grupo, ...] = (
                 botones=_MENU,
             ),
             Editable(
+                "sin_gemini",
+                "Cuando Gemini no responde",
+                "Cuando Gemini está conectado pero no respondió a tiempo o se acabó la cuota: "
+                "el mensaje puede estar bien escrito, así que se le pide intentar de nuevo.",
+                opcionales=frozenset({"telefono"}),
+                botones=_MENU,
+            ),
+            Editable(
                 "despedida",
                 "Despedida",
                 "Cuando el cliente escribe gracias o chao.",
@@ -501,6 +509,19 @@ GRUPOS: tuple[Grupo, ...] = (
                 "pregunta te llega en Comentarios.",
                 opcionales=frozenset({"nombre"}),
                 botones=_MENU,
+            ),
+            Editable(
+                "pregunta_pasada",
+                "Pregunta que la ficha no sabe, después de Gemini",
+                "Con Gemini, después de que dice con sus palabras que eso no lo tiene "
+                "confirmado. La pregunta te llega en Comentarios.",
+                opcionales=frozenset({"nombre"}),
+            ),
+            Editable(
+                "pregunta_en_el_camino",
+                "Pregunta que la ficha no sabe, mientras pide turno",
+                "Si pregunta algo que la ficha no sabe en medio de pedir un turno: se anota y "
+                "el bot sigue con el turno.",
             ),
             Editable(
                 "pregunta_sin_respuesta",

@@ -1,12 +1,16 @@
 """Lo que dice el bot. Los textos son propios y nunca los inventa una IA.
 
 Hay dos excepciones, y en las dos el bot revisa lo que escribe Gemini (app.bot.redactor):
-- La respuesta a una pregunta sobre el negocio o a la charla: la escribe Gemini con la
-  ficha del negocio. Si no sirve, sale el texto fijo de aquí ("charla",
-  "pregunta_al_administrador").
+- La respuesta a una pregunta sobre el negocio, a la charla o a un mensaje que no se
+  entiende: la escribe Gemini con la ficha del negocio. Si no sirve, sale el texto fijo
+  de aquí ("charla", "pregunta_al_administrador", "no_entendi").
 - Los saludos, agradecimientos y despedidas de CON_SUS_PALABRAS: Gemini los dice con sus
   palabras, según la conversación, con la misma idea del texto de aquí (o del que cambió el
   administrador). Si no sirve, sale el texto tal cual.
+
+Si Gemini está conectado pero no respondió (se acabó la cuota, no contestó a tiempo...),
+el bot no le dice al cliente "no te entendí": le dice que lo intente otra vez
+("sin_gemini"), porque el mensaje puede estar perfectamente escrito.
 
 Cada texto tiene un nombre y huecos entre llaves ({numero}, {hora}...) que el bot llena
 con los datos del sistema. *así* sale en negrilla en WhatsApp.
@@ -35,6 +39,10 @@ TEXTOS: dict[str, str] = {
     "solo_texto": "Por ahora solo entiendo mensajes escritos y los botones. ¿En qué te ayudamos?",
     "boton_vencido": "Ese botón ya no está vigente. ¿En qué te ayudamos?",
     "toca_una_opcion": "Toca una de las opciones, por favor.",
+    "toca_el_si": "Para eso, toca *{opcion}*, por favor.",
+    "vehiculo_que_no_lava": "Por ahora lavamos {vehiculos}: para ese vehículo no tenemos servicio.",
+    "sin_gemini": "Uy, no alcancé a leer bien tu mensaje. Intenta de nuevo en un momento o "
+    "usa los botones; si es urgente, llama al {telefono}.",
     "despedida": "¡Con gusto! Que tengas un buen día.",
     "pico_y_placa": "Por ahora no damos información de pico y placa por aquí. ¿En qué más te "
     "ayudamos?",
@@ -133,14 +141,14 @@ TEXTOS: dict[str, str] = {
     "puedes contarnos más de lo que pasó.",
     "queja_permiso": "¿Quieres que el administrador te responda? Para eso guardamos tu número "
     "de WhatsApp, solo para responderte.",
-    "queja_anonima": "Entendido, no guardamos tu número. Tu comentario le llega al "
-    "administrador sin tus datos. Gracias por ayudarnos a mejorar.",
+    "queja_anonima": "Listo, tu comentario ya le llegó al administrador. Gracias por "
+    "ayudarnos a mejorar.",
     "persona": "Listo, {nombre}. Ya le avisamos al administrador para que te responda lo "
     "antes posible. Si quieres, cuéntanos de qué se trata. Si es urgente, llama al {telefono}.",
     "persona_permiso": "Con gusto te comunicamos con el administrador. Para que te responda "
     "guardamos tu número de WhatsApp, solo para eso. ¿Estás de acuerdo?",
-    "persona_sin_permiso": "Entendido, no guardamos tu número. Si quieres hablar con el "
-    "administrador, llama al {telefono}.",
+    "persona_sin_permiso": "Listo, sin problema. Si quieres hablar con el administrador, "
+    "llama al {telefono}.",
     "contacto_si": "Listo, el administrador te responde lo antes posible. Si quieres, "
     "cuéntanos más mientras tanto.",
     "detalle_recibido": "Gracias, ya quedó anotado para el administrador.",
@@ -164,8 +172,12 @@ TEXTOS: dict[str, str] = {
     "para que te responda lo antes posible.",
     "pregunta_sin_respuesta": "Esa no la sé todavía. ¿Quieres que el administrador te "
     "responda? Para eso guardamos tu número de WhatsApp, solo para responderte.",
-    "pregunta_anonima": "Entendido, no guardamos tu número. Si quieres la respuesta, llama al "
+    "pregunta_anonima": "Listo, sin problema. Si después quieres saberlo, puedes llamar al "
     "{telefono}.",
+    # Después de que Gemini dice que eso no lo tiene confirmado (lo que sí sabe y lo que no).
+    "pregunta_pasada": "Ya se la pasé al administrador, {nombre}, para que te responda por aquí.",
+    # Mientras pide un turno: la pregunta queda anotada y el bot sigue con lo que iba.
+    "pregunta_en_el_camino": "Esa no la sé todavía, pero se la dejé anotada al administrador.",
     # --- Mensajes graves: el bot no improvisa (líneas verificadas en noviembre de 2026) ---
     "ayuda_urgente": "Siento mucho que te sientas así. No tienes que pasar por esto sin ayuda: "
     "puedes hablar ya mismo, gratis y a cualquier hora, con la Línea 106 de salud mental, o "
@@ -187,14 +199,22 @@ TEXTOS: dict[str, str] = {
     "pagar en el local. Gracias por elegir {negocio}.",
 }
 
-# Los botones y opciones que se repiten.
 # Con Gemini, estos el bot los dice con sus palabras según la conversación, para no saludar
-# ni despedirse siempre igual. Solo los que no traen datos que haya que cuidar: los turnos,
-# los precios, la fila, los avisos, el aviso de datos y las quejas salen siempre tal cual.
+# ni despedirse siempre igual. Solo los que no traen datos que haya que cuidar (el horario
+# del saludo se revisa contra la ficha): los turnos, los precios, la fila, los avisos, el
+# aviso de datos y las quejas salen siempre tal cual.
 CON_SUS_PALABRAS = frozenset(
-    {"saludo_cliente", "despedida", "detalle_recibido", "felicitacion", "felicitacion_cliente"}
+    {
+        "saludo",
+        "saludo_cliente",
+        "despedida",
+        "detalle_recibido",
+        "felicitacion",
+        "felicitacion_cliente",
+    }
 )
 
+# Los botones y opciones que se repiten.
 BOTONES: dict[str, str] = {
     "pedir": "Pedir turno",
     "fila": "Ver la fila",

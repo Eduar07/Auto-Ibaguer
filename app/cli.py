@@ -24,9 +24,9 @@ from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot import redactor
-from app.bot.conversacion import PREGUNTA_O_CHARLA, catalogo_del_bot
+from app.bot.conversacion import catalogo_del_bot, servicios_de_la_ficha
 from app.bot.frases_de_prueba import FRASES, FraseDePrueba
-from app.bot.interprete import Intencion, Interpretacion
+from app.bot.interprete import SI, Contexto, Intencion, Interpretacion
 from app.bot.textos import Textos
 from app.catalogo.datos_iniciales import cargar_datos_iniciales
 from app.catalogo.parametros import leer_parametros
@@ -38,6 +38,7 @@ from app.db.revision import Revision, revisar
 from app.db.sesion import obtener_motor
 from app.errores import ReglaDelNegocio
 from app.formato import duracion, hora, hora_con_articulo, miles
+from app.formato import horario as horario_legible
 from app.integraciones import gemini, whatsapp
 from app.turnos import casos_de_uso as casos
 from app.turnos.errores import FueraDeHorario
@@ -263,60 +264,59 @@ def _como_salio(frase: FraseDePrueba, entendido: Interpretacion | None) -> str |
     if entendido is None:
         return "no respondió"
     faltas = []
-    if entendido.intencion != frase.intencion:
+    if entendido.intencion not in (frase.intencion, *frase.tambien):
         faltas.append(f"intención {frase.intencion.value}")
     if frase.vehiculo and entendido.vehiculo != frase.vehiculo:
         faltas.append(f"vehículo {frase.vehiculo}")
     if frase.servicio and entendido.servicio != frase.servicio:
         faltas.append(f"servicio {frase.servicio}")
+    if frase.si_o_no and entendido.si_o_no != frase.si_o_no:
+        faltas.append(f"que conteste {'sí' if frase.si_o_no == SI else 'no'}")
     return "esperaba " + ", ".join(faltas) if faltas else None
 
 
 def _lo_que_entendio(entendido: Interpretacion) -> str:
     partes = [entendido.intencion.value, entendido.vehiculo, entendido.servicio]
+    if entendido.si_o_no:
+        partes.append(f"contesta {entendido.si_o_no}")
     return ", ".join(parte for parte in partes if parte)
 
 
-def _lo_que_contesta(
-    con_gemini: gemini.Gemini, tipo: Intencion, frase: FraseDePrueba, ficha: str
-) -> str:
-    """Lo que el bot le contestaría a una pregunta o a la charla, como en WhatsApp."""
-    respuesta = con_gemini.redactar(tipo, frase.texto, ficha, antes=frase.antes)
-    if respuesta is None:
-        return f"contesta el texto fijo ({con_gemini.ultimo_problema or 'no respondió'})"
-    if tipo == Intencion.PREGUNTA and not respuesta.sabe:
-        return "no lo sabe: se la pasa al administrador"
-    revisada = redactor.revisar(respuesta.texto, ficha)
-    if revisada is None:
-        return f"contesta el texto fijo (lo que escribió rompía una regla: «{respuesta.texto}»)"
-    return f"contesta «{revisada}»"
-
-
-# Para ver cómo dice con sus palabras un saludo y una despedida (CON_SUS_PALABRAS).
-MUESTRAS_CON_SUS_PALABRAS = (
-    ("saludo_cliente", {"nombre": "Ana"}, "hola"),
-    ("despedida", {}, "listo, muchas gracias"),
+# Con estas el bot espera que Gemini escriba la respuesta (las demás las contesta el sistema).
+CONVERSACION = frozenset(
+    {
+        Intencion.SALUDO,
+        Intencion.DESPEDIDA,
+        Intencion.FELICITACION,
+        Intencion.PREGUNTA,
+        Intencion.CHARLA,
+        Intencion.OTRO,
+    }
 )
 
 
-def _como_lo_dice(con_gemini: gemini.Gemini, fijo: str, mensaje: str, ficha: str) -> str:
-    """Cómo diría el bot un texto fijo con las palabras de Gemini, como en WhatsApp."""
-    dicho = con_gemini.con_sus_palabras(fijo, mensaje, ficha)
-    if dicho is None:
-        return f"lo dice tal cual ({con_gemini.ultimo_problema or 'no respondió'})"
-    revisado = redactor.revisar(dicho, f"{ficha}\n{fijo}")
-    if revisado is None:
-        return f"lo dice tal cual (lo que escribió rompía una regla: «{dicho}»)"
-    return f"dice «{revisado}»"
+def _lo_que_contesta(entendido: Interpretacion, permitido: str) -> str | None:
+    """Lo que el bot le diría al cliente con lo que escribió Gemini, como en WhatsApp."""
+    if not entendido.respuesta:
+        if entendido.intencion in CONVERSACION:
+            return "no escribió la respuesta: sale un texto fijo"
+        return None
+    revision = redactor.revisar_con_motivo(entendido.respuesta, permitido)
+    if revision.texto is None:
+        return f"sale un texto fijo: lo que escribió {revision.motivo} «{entendido.respuesta}»"
+    if entendido.intencion == Intencion.PREGUNTA and not entendido.sabe:
+        return f"no está en la ficha: dice «{revision.texto}» y se la pasa al administrador"
+    return f"contesta «{revision.texto}»"
 
 
 def probar_gemini(modelo: str | None, pausa: float) -> int:
     """Corre las frases de prueba (app/bot/frases_de_prueba.py) contra el modelo de verdad.
 
-    Sirve para decidir si un modelo nuevo se puede usar con clientes. A las preguntas y a
-    la charla les muestra, además, lo que contestaría el bot con la ficha del negocio. Las
-    frases "con memoria" van con lo que se venían diciendo antes. Entre petición y petición
-    espera `pausa` segundos, para no pasarse del límite del plan gratis.
+    Sirve para decidir si un modelo nuevo se puede usar con clientes. Cada frase es una
+    sola consulta, como en WhatsApp: muestra lo que entendió y lo que contestaría el bot
+    con la ficha del negocio. Las frases "con memoria" van con lo que se venían diciendo
+    antes. Entre consulta y consulta espera `pausa` segundos, para no pasarse del límite
+    del plan gratis.
     """
     entorno = obtener_entorno()
     if not entorno.gemini_clave:
@@ -325,17 +325,39 @@ def probar_gemini(modelo: str | None, pausa: float) -> int:
     with Session(obtener_motor()) as sesion:
         parametros = leer_parametros(sesion)
         catalogo = catalogo_del_bot(sesion)
-    ficha = redactor.ficha_completa(parametros, catalogo)
+        servicios = servicios_de_la_ficha(sesion)
+    ficha = redactor.ficha_completa(parametros, catalogo, servicios)
+    textos = Textos(parametros.textos_bot)
+    horario = horario_legible(
+        parametros.dias_atencion, parametros.hora_apertura, parametros.hora_cierre
+    )
+    # Como le escribiría alguien que todavía no es cliente.
+    guias = (
+        ("saludo", textos("saludo", negocio=parametros.nombre_negocio, horario=horario)),
+        ("despedida", textos("despedida")),
+        ("felicitacion", textos("felicitacion")),
+    )
+    permitido = "\n".join([ficha, *(texto for _, texto in guias)])
     modelo = (modelo or parametros.modelo_gemini).strip().lower()
     interprete = gemini.Gemini(entorno.gemini_clave, modelo, negocio=parametros.nombre_negocio)
-    print(f"Probando {len(FRASES)} frases con {modelo}:")
+    print(
+        f"Probando {len(FRASES)} frases con {modelo}: una consulta por frase, cada "
+        f"{pausa:g} segundos."
+    )
     bien = 0
     for numero, frase in enumerate(FRASES):
         if numero:
             time.sleep(pausa)
-        entendido = interprete.interpretar(frase.texto, catalogo, antes=frase.antes)
+        contexto = Contexto(
+            catalogo, ficha=ficha, antes=frase.antes, en_que_va=frase.en_que_va, guias=guias
+        )
+        entendido = interprete.interpretar(frase.texto, contexto)
         falla = _como_salio(frase, entendido)
-        cual = f"«{frase.texto}»" + (" (con memoria)" if frase.antes else "")
+        cual = (f"[{frase.prueba}] " if frase.prueba else "") + f"«{frase.texto}»"
+        if frase.antes:
+            cual += " (con memoria)"
+        if frase.en_que_va:
+            cual += " (en medio de una pregunta del bot)"
         if falla is None:
             bien += 1
             print(f"  bien   {cual} → {_lo_que_entendio(entendido)}")
@@ -344,21 +366,15 @@ def probar_gemini(modelo: str | None, pausa: float) -> int:
                 f"entendió {_lo_que_entendio(entendido)}" if entendido else ""
             )
             print(f"  MAL    {cual} → {falla} ({detalle})")
-        if entendido is not None and entendido.intencion in PREGUNTA_O_CHARLA:
-            time.sleep(pausa)
-            contesta = _lo_que_contesta(interprete, entendido.intencion, frase, ficha)
+        contesta = _lo_que_contesta(entendido, permitido) if entendido is not None else None
+        if contesta:
             print(f"         {contesta}")
-    print("Saludos y despedidas con sus palabras (tampoco cuentan):")
-    textos = Textos(parametros.textos_bot)
-    for nombre, datos, mensaje in MUESTRAS_CON_SUS_PALABRAS:
-        time.sleep(pausa)
-        fijo = textos(nombre, **datos)
-        print(f"  «{fijo}»\n         {_como_lo_dice(interprete, fijo, mensaje, ficha)}")
     porcentaje = round(100 * bien / len(FRASES))
     print(f"{bien} de {len(FRASES)} bien ({porcentaje} %).")
-    print("Lo que contesta a las preguntas y a la charla no cuenta: léelo y mira si te gusta.")
+    print("Lo que contesta no cuenta en ese número: léelo y mira si te gusta el tono.")
     if bien < len(FRASES):
         print("Revisa las que salieron MAL antes de usar este modelo con clientes.")
+        print("Si dicen «429», es la cuota del plan gratis: espera un rato o sube la --pausa.")
     return 0 if bien == len(FRASES) else 1
 
 
@@ -407,8 +423,8 @@ def main(argv: list[str] | None = None) -> int:
     probar.add_argument(
         "--pausa",
         type=float,
-        default=4.0,
-        help="Segundos entre frase y frase (4 para el plan gratis; 0 con el de pago)",
+        default=6.0,
+        help="Segundos entre frase y frase (6 para el plan gratis; 0 con el de pago)",
     )
 
     argumentos = lector.parse_args(argv)

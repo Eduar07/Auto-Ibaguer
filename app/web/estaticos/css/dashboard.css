@@ -918,6 +918,13 @@ legend { padding: 0; margin-bottom: 8px; }
 .burbuja--bot p { background: #fff; border-top-left-radius: 4px; }
 .burbuja--yo { align-self: flex-end; }
 .burbuja--yo p { background: #d9fdd3; border-top-right-radius: 4px; }
+/* Cómo decidió el bot la respuesta (solo en Probar el bot): pequeño y gris, para no
+   confundirse con lo que le llega al cliente. */
+.charla__traza {
+  align-self: flex-start; max-width: 85%; display: flex; gap: 6px; align-items: flex-start;
+  padding: 0 4px; font-size: 12px; line-height: 1.4; color: var(--tinta-gris);
+}
+.charla__traza .icono { flex: none; margin-top: 2px; }
 .burbuja__etiqueta { font-size: 12px; font-weight: 700; color: var(--naranja-texto); padding-left: 4px; }
 .burbuja__etiqueta--persona { color: var(--azul-texto); }
 .burbuja__botones, .burbuja__opciones { display: flex; flex-direction: column; gap: 4px; }

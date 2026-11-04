@@ -18,6 +18,7 @@ from app import tiempo
 from app.catalogo.datos_iniciales import cargar_datos_iniciales
 from app.cli import MENSAJE_SIN_BASE, migrar
 from app.db.sesion import obtener_sesion
+from app.integraciones import gemini
 from app.main import app
 from app.web import entrar, sesiones
 from app.web.administradores import guardar_administrador
@@ -61,6 +62,13 @@ def sesion(conexion: Connection) -> Iterator[Session]:
     """Sesión del ORM para las pruebas. Todo lo que guarde se deshace al final."""
     with Session(bind=conexion, join_transaction_mode="create_savepoint") as sesion:
         yield sesion
+
+
+@pytest.fixture(autouse=True)
+def avisos_de_gemini_de_cero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cada prueba empieza sin problemas de Gemini ya anotados en el registro. Se avisa una
+    vez cada 5 minutos: lo que anotó una prueba no debe callar el aviso de la siguiente."""
+    monkeypatch.setattr(gemini, "_ULTIMA_VEZ", {})
 
 
 # --- El dashboard, como lo usa el navegador ----------------------------------------------

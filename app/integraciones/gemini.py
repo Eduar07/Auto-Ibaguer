@@ -7,6 +7,8 @@ Hace dos cosas, cada una con su propia petición:
 - redactar: solo para una pregunta sobre el negocio o la charla, escribe la respuesta con
   la ficha del negocio y siguiendo la conversación (app.bot.redactor). El bot la revisa
   antes de mandarla.
+- con_sus_palabras: dice un saludo, un agradecimiento o una despedida del bot con otras
+  palabras, según la conversación (app.bot.textos.CON_SUS_PALABRAS). También se revisa.
 
 Las dos piden JSON con un formato fijo. Si Gemini no responde en 5 segundos, falla o
 contesta algo raro, devuelve None y el bot sigue con botones o con un texto fijo. El
@@ -237,6 +239,14 @@ TAREAS = {
     ),
 }
 
+# Para decir un texto fijo con sus palabras: la misma idea, sin quitar ni agregar nada.
+TAREA_CON_SUS_PALABRAS = (
+    "El bot tiene que decir esto: «{texto}». Dilo con tus palabras, siguiendo la conversación "
+    "y el tono del cliente, para no sonar siempre igual. Conserva lo que dice: los nombres, "
+    "los datos y lo que se le avisó al administrador, sin quitar nada importante y sin "
+    'agregar nada nuevo. Pon "sabe": true.'
+)
+
 ESQUEMA_DE_RESPUESTA: dict[str, Any] = {
     "type": "object",
     "properties": {"respuesta": {"type": "string"}, "sabe": {"type": "boolean"}},
@@ -254,7 +264,31 @@ def peticion_de_respuesta(
     negocio: str,
     antes: Sequence[Anterior] = (),
 ) -> dict[str, Any]:
-    instrucciones = REDACCION.format(negocio=negocio, tarea=TAREAS[tipo], ficha=ficha)
+    return _peticion_de_redaccion(TAREAS[tipo], mensaje, ficha, modelo, negocio, antes)
+
+
+def peticion_con_sus_palabras(
+    texto: str,
+    mensaje: str,
+    ficha: str,
+    *,
+    modelo: str,
+    negocio: str,
+    antes: Sequence[Anterior] = (),
+) -> dict[str, Any]:
+    tarea = TAREA_CON_SUS_PALABRAS.format(texto=texto)
+    return _peticion_de_redaccion(tarea, mensaje, ficha, modelo, negocio, antes)
+
+
+def _peticion_de_redaccion(
+    tarea: str,
+    mensaje: str,
+    ficha: str,
+    modelo: str,
+    negocio: str,
+    antes: Sequence[Anterior],
+) -> dict[str, Any]:
+    instrucciones = REDACCION.format(negocio=negocio, tarea=tarea, ficha=ficha)
     return {
         "systemInstruction": {"parts": [{"text": instrucciones}]},
         "contents": [{"role": "user", "parts": [{"text": con_lo_anterior(mensaje, antes)}]}],
@@ -368,6 +402,22 @@ class Gemini:
         if redactada is None and self.ultimo_problema is None:
             return self._no_sirvio("contestó algo que no tiene el formato pedido.", despues)
         return redactada
+
+    def con_sus_palabras(
+        self, texto: str, mensaje: str, ficha: str, antes: Sequence[Anterior] = ()
+    ) -> str | None:
+        """Un texto fijo del bot dicho con otras palabras (sin revisar: eso lo hace el bot)."""
+        self.ultimo_problema = None
+        cuerpo = peticion_con_sus_palabras(
+            texto, mensaje, ficha, modelo=self.modelo, negocio=self.negocio, antes=antes
+        )
+        despues = "El bot usó el texto tal cual."
+        redactada = leer_redaccion(self._pedir(cuerpo, despues))
+        if redactada is None:
+            if self.ultimo_problema is None:
+                self._no_sirvio("contestó algo que no tiene el formato pedido.", despues)
+            return None
+        return redactada.texto or None
 
     def _pedir(self, cuerpo: dict[str, Any], despues: str | None = None) -> Any:
         """Lo que contestó Gemini, ya leído como JSON; None (y el problema anotado) si no."""

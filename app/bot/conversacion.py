@@ -47,12 +47,17 @@ from app.bot.mensajes import Entrada, Lista, Mensaje, Opcion, recortar
 from app.bot.redactor import Redactor, Respuesta, ficha_completa, pide_ayuda_urgente, revisar
 from app.bot.sesiones import PASO_INICIAL
 from app.bot.tablas import PausaDelBot, SesionBot
-from app.bot.textos import BOTONES, Textos
+from app.bot.textos import BOTONES, CON_SUS_PALABRAS, Textos
 from app.catalogo.parametros import Parametros, leer_parametros
 from app.catalogo.tablas import Fila, Servicio, ServicioPrecio, TipoVehiculo
 from app.clientes import servicio as clientes
 from app.clientes.errores import NombreInvalido, PlacaDeOtroCliente, PlacaInvalida
-from app.clientes.reglas import nombre_bonito, normalizar_telefono, validar_placa
+from app.clientes.reglas import (
+    nombre_bonito,
+    normalizar_telefono,
+    placa_en_el_texto,
+    validar_placa,
+)
 from app.clientes.tablas import Cliente, TipoConsulta, Vehiculo
 from app.comentarios import servicio as comentarios
 from app.comentarios.tablas import LARGO_MAXIMO, TipoComentario
@@ -324,6 +329,17 @@ def _abrir_conversacion(sesion: Session, telefono: str, ahora: datetime) -> tupl
     return conversacion, empieza
 
 
+def _pistas(entendido: Interpretacion, escrito: str) -> dict[str, str]:
+    """Lo que el cliente ya dijo al pedir el turno con sus palabras: el vehículo y el
+    servicio que entendió Gemini, y la placa que escribió (a Gemini le llega tapada)."""
+    pistas = {
+        "vehiculo": entendido.vehiculo,
+        "servicio": entendido.servicio,
+        "placa": placa_en_el_texto(escrito),
+    }
+    return {clave: valor for clave, valor in pistas.items() if valor}
+
+
 class _Atencion:
     """Todo lo que hace falta para contestar un mensaje."""
 
@@ -354,6 +370,7 @@ class _Atencion:
         if self.cliente is not None:
             self._vincular(self.cliente)
         self._lo_anterior: tuple[Anterior, ...] | None = None
+        self._la_ficha: str | None = None
 
     def guardar(self) -> None:
         self.conversacion.paso_actual = self.paso
@@ -449,7 +466,7 @@ class _Atencion:
             if normal in NO and self.paso in PASOS_DE_SI_O_NO:
                 return None  # "no gracias" le contesta la pregunta: vale como el botón del no
             self._volver_al_menu()
-            return [Mensaje(self.texto("despedida"))]
+            return [Mensaje(self._dicho("despedida"))]
         return None
 
     def _respuesta_escrita(self, normal: str, escrito: str) -> list[Mensaje]:
@@ -524,7 +541,7 @@ class _Atencion:
         """Lo que el cliente pidió con sus palabras, como si hubiera tocado el botón."""
         match entendido.intencion:
             case Intencion.PEDIR_TURNO:
-                return self._empezar_turno()
+                return self._empezar_turno(_pistas(entendido, escrito))
             case Intencion.VER_FILA:
                 return self._ver_la_fila()
             case Intencion.PRECIOS:
@@ -649,7 +666,10 @@ class _Atencion:
     def _saludo(self) -> list[Mensaje]:
         self._volver_al_menu()
         if self.cliente is not None:
-            return [self._mensaje_del_menu("saludo_cliente", nombre=_primer_nombre(self.cliente))]
+            # Con Gemini, con sus palabras: no saluda siempre igual. Con el menú, que es la
+            # puerta de entrada.
+            nombre = _primer_nombre(self.cliente)
+            return [_con_el_menu(self._dicho("saludo_cliente", nombre=nombre))]
         return [
             self._mensaje_del_menu(
                 "saludo", negocio=self.parametros.nombre_negocio, horario=self._horario()
@@ -735,11 +755,16 @@ class _Atencion:
 
     # --- Pedir turno: aviso de datos y nombre -----------------------------------------------
 
-    def _empezar_turno(self) -> list[Mensaje]:
+    def _empezar_turno(self, pistas: dict[str, str] | None = None) -> list[Mensaje]:
+        """`pistas`: lo que ya dijo con sus palabras (el vehículo, el servicio, la placa).
+        Sin ellas, las de los precios que acaba de ver. Lo que ya dijo no se le pregunta."""
         no_hay = self._no_hay_turnos()
         if no_hay is not None:
             return no_hay
+        pistas = pistas or self.datos.get("pistas")
         self._volver_al_menu()
+        if pistas:
+            self.datos["pistas"] = dict(pistas)
         if self.cliente is None:
             # Cliente nuevo: sin aceptar el aviso de datos no se guarda nada.
             self.paso = Paso.AVISO_DATOS
@@ -781,6 +806,63 @@ class _Atencion:
 
     # --- Pedir turno: vehículo y placa --------------------------------------------------------
 
+    def _pista(self, cual: str, *, usar: bool = True) -> str | None:
+        """Lo que el cliente ya dijo con sus palabras para este turno ("vehiculo",
+        "servicio", "placa") o los precios que vio ("precios_de"). Cada pista se usa una
+        sola vez: si después cambia algo en el resumen, ya lo elige él."""
+        pistas = self.datos.get("pistas") or {}
+        valor = pistas.get(cual)
+        if usar and valor is not None:
+            # Un diccionario nuevo, sin tocar el que se leyó de la base.
+            resto = {clave: dato for clave, dato in pistas.items() if clave != cual}
+            if resto:
+                self.datos["pistas"] = resto
+            else:
+                self.datos.pop("pistas", None)
+        return valor
+
+    def _vehiculo_dicho(
+        self, conocidos: list[tuple[Vehiculo, TipoVehiculo]]
+    ) -> list[Mensaje] | None:
+        """Si ya dijo cuál ("la moto", "la ABC12D", o vio los precios de moto), no se le
+        pregunta. None: no lo dijo, o no alcanza para saber cuál (dos motos, o "carro" con
+        dos carros): ahí se pregunta."""
+        placa = self._pista("placa", usar=False)
+        for vehiculo, tipo in conocidos:
+            if placa and vehiculo.placa == placa:
+                self._pista("placa")
+                self._pista("vehiculo")
+                return self._usar_vehiculo(vehiculo, tipo)
+        dijo = self._pista("vehiculo")
+        nombre = dijo or self._pista("precios_de")
+        if not nombre:
+            return None
+        tipo = self._tipo_por_nombre(nombre)  # None si dijo "carro" sin decir cuál
+        if tipo is None and nombre != CARRO:
+            return None
+        candidatos = [
+            (vehiculo, suyo)
+            for vehiculo, suyo in conocidos
+            if (suyo.id == tipo.id if tipo is not None else suyo.nombre != "Moto")
+        ]
+        if len(candidatos) == 1:
+            return self._usar_vehiculo(*candidatos[0])
+        # Uno nuevo de ese tipo si lo dijo, o si vio esos precios y no tiene vehículos.
+        if not candidatos and tipo is not None and (dijo or not conocidos):
+            return self._eligio_vehiculo(f"tipo.{tipo.id}")
+        return None
+
+    def _placa_dicha(self, tipo: TipoVehiculo) -> str | None:
+        """La placa que ya escribió ("quiero lavar la moto ABC12D"), si es de ese tipo de
+        vehículo. Si no tiene el formato, se le pregunta como siempre, sin regañarlo."""
+        placa = self._pista("placa")
+        if not placa:
+            return None
+        try:
+            return validar_placa(placa, tipo.patron_placa, tipo.nombre)
+        except PlacaInvalida:
+            return None
+
     def _vehiculos_conocidos(self) -> list[tuple[Vehiculo, TipoVehiculo]]:
         if self.cliente is None:
             return []
@@ -794,9 +876,17 @@ class _Atencion:
 
     def _preguntar_vehiculo(self, *, aunque_lo_conozca: bool = False) -> list[Mensaje]:
         conocidos = self._vehiculos_conocidos()
-        if len(conocidos) == 1 and not aunque_lo_conozca:
-            # Si ya se conoce el vehículo, no se pregunta. Se puede cambiar en el resumen.
-            return self._usar_vehiculo(*conocidos[0])
+        if aunque_lo_conozca:
+            self.datos.pop("pistas", None)  # quiere cambiarlo: ahora lo elige él
+        else:
+            nombro_otro = self._pista("vehiculo", usar=False) is not None
+            dicho = self._vehiculo_dicho(conocidos)
+            if dicho is not None:
+                return dicho
+            if len(conocidos) == 1 and not nombro_otro:
+                # Si ya se conoce el vehículo, no se pregunta. Se puede cambiar en el resumen.
+                # Si nombró otro ("el carro", y el suyo es una moto), se le pregunta.
+                return self._usar_vehiculo(*conocidos[0])
         self.paso = Paso.VEHICULO
         self.datos["otro_vehiculo"] = not conocidos
         return [self._pregunta()]
@@ -850,6 +940,9 @@ class _Atencion:
             return [self._pregunta()]
         if placa_conocida is None:
             self.paso = Paso.PLACA
+            dicha = self._placa_dicha(tipo)
+            if dicha is not None:
+                return self._escribio_placa(dicha)  # como si la hubiera escrito ahora
             return [self._pregunta()]
         return self._preguntar_servicio()
 
@@ -903,7 +996,21 @@ class _Atencion:
 
     def _preguntar_servicio(self) -> list[Mensaje]:
         self.paso = Paso.SERVICIO
+        servicio = self._servicio_dicho()
+        if servicio is not None:
+            return self._eligio_servicio(str(servicio.id))  # como si lo hubiera tocado
         return [self._pregunta()]
+
+    def _servicio_dicho(self) -> Servicio | None:
+        """El servicio que ya nombró ("quiero un general para la camioneta"), si existe para
+        su vehículo."""
+        nombre = self._pista("servicio")
+        if not nombre:
+            return None
+        for servicio, _ in self._servicios(self._tipo()):
+            if normalizar(servicio.nombre) == normalizar(nombre):
+                return servicio
+        return None
 
     def _pregunta_servicio(self) -> Mensaje:
         tipo = self._tipo()
@@ -1154,6 +1261,8 @@ class _Atencion:
             return [_con_nota(self.texto("toca_una_opcion"), self._pregunta())]
         self._registrar_consulta(TipoConsulta.PRECIOS, tipo.id)
         self._volver_al_menu()
+        # Si después toca "Pedir turno", se piensa que es para este vehículo (_vehiculo_dicho).
+        self.datos["pistas"] = {"precios_de": tipo.nombre}
         servicios = self._servicios(tipo)
         botones = (
             Opcion("menu.pedir", BOTONES["pedir"]),
@@ -1411,7 +1520,7 @@ class _Atencion:
         if not _solo_para_cerrar(normal):
             self._anotar(escrito)
         self._volver_al_menu()
-        return [Mensaje(self.texto("detalle_recibido")), *self._ademas(normal, escrito)]
+        return [Mensaje(self._dicho("detalle_recibido")), *self._ademas(normal, escrito)]
 
     def _lo_de_la_fila(self, normal: str) -> list[Mensaje] | None:
         """Lo que pide sobre su turno en medio de otra cosa (lo que cuenta de una queja, o
@@ -1461,11 +1570,14 @@ class _Atencion:
         nombre, datos = "felicitacion", {}
         if self.cliente is not None:
             nombre, datos = "felicitacion_cliente", {"nombre": _primer_nombre(self.cliente)}
+        dicho = self._con_sus_palabras(nombre, **datos)
         if self.paso == Paso.MENU:
             self._volver_al_menu()
+            if dicho is not None:
+                return [Mensaje(dicho)]  # como la charla: sin el menú pegado
             return [self._mensaje_del_menu(nombre, **datos)]
         # En medio de otra pregunta (pidiendo turno, por ejemplo): se agradece y se sigue.
-        return [_con_nota(self.texto(nombre, **datos), self._pregunta())]
+        return [_con_nota(dicho or self.texto(nombre, **datos), self._pregunta())]
 
     # --- Preguntas sobre el negocio, charla y mensajes graves ---------------------------------
 
@@ -1487,12 +1599,48 @@ class _Atencion:
             return [_con_el_menu(self.texto("charla"))]
         return [Mensaje(respuesta.texto)]
 
+    def _ficha(self) -> str:
+        """Lo que el redactor sabe del negocio (se arma una sola vez por mensaje)."""
+        if self._la_ficha is None:
+            self._la_ficha = ficha_completa(self.parametros, catalogo_del_bot(self.sesion))
+        return self._la_ficha
+
+    def _dicho(self, nombre_del_texto: str, **datos: object) -> str:
+        """El texto, con las palabras de Gemini si se puede (_con_sus_palabras)."""
+        return self._con_sus_palabras(nombre_del_texto, **datos) or self.texto(
+            nombre_del_texto, **datos
+        )
+
+    def _con_sus_palabras(self, nombre_del_texto: str, **datos: object) -> str | None:
+        """Un saludo, un agradecimiento o una despedida (CON_SUS_PALABRAS) dicho por Gemini
+        con sus palabras, según la conversación, y revisado como la charla: puede repetir lo
+        del texto, pero no inventar. None si no hay Gemini, no respondió o rompió una regla:
+        ahí sale el texto tal cual."""
+        if self.redactor is None or nombre_del_texto not in CON_SUS_PALABRAS:
+            return None
+        fijo = self.texto(nombre_del_texto, **datos)
+        ficha = self._ficha()
+        try:
+            dicho = self.redactor.con_sus_palabras(
+                fijo, self.entrada.texto or "", ficha, antes=self._antes()
+            )
+        except Exception:
+            logger.exception("El redactor falló; el bot usó el texto tal cual.")
+            return None
+        if not dicho:
+            return None
+        revisado = revisar(dicho, f"{ficha}\n{fijo}")
+        if revisado is None:
+            # Nunca se escribe lo que dijo: solo que no pasó la revisión.
+            logger.warning("Lo que dijo con sus palabras rompía una regla; salió el texto fijo.")
+        return revisado
+
     def _redactar(self, tipo: Intencion, escrito: str) -> Respuesta | None:
         """La respuesta revisada. None si no hay redactor, no respondió, no sabe (en una
         pregunta) o lo que escribió rompe una regla (app.bot.redactor.revisar)."""
         if self.redactor is None:
             return None
-        ficha = ficha_completa(self.parametros, catalogo_del_bot(self.sesion))
+        ficha = self._ficha()
         try:
             respuesta = self.redactor.redactar(tipo, escrito, ficha, antes=self._antes())
         except Exception:

@@ -43,12 +43,6 @@ CATALOGO = Catalogo(
 )
 
 
-@pytest.fixture(autouse=True)
-def avisos_de_cero(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Cada prueba empieza sin problemas de Gemini ya anotados en el registro."""
-    monkeypatch.setattr(gemini, "_ULTIMA_VEZ", {})
-
-
 # --- Tapar los datos personales -----------------------------------------------------------------
 
 
@@ -516,6 +510,9 @@ def test_el_comando_corre_las_frases_y_dice_cuantas_salieron_bien(
             vio[mensaje] = tuple(antes)
             return esperadas[mensaje]
 
+        def con_sus_palabras(self, texto: str, _mensaje: str, _ficha: str, antes=()) -> str:
+            return "¡Hola, Ana! Qué gusto verte por aquí otra vez."
+
         def redactar(self, tipo: Intencion, mensaje: str, _ficha: str, antes=()) -> Respuesta:
             if mensaje == "te amo":
                 return Respuesta("Te damos un lavado gratis.")  # rompe una regla
@@ -539,6 +536,12 @@ def test_el_comando_corre_las_frases_y_dice_cuantas_salieron_bien(
     [con_memoria] = [frase for frase in FRASES if frase.texto == "sí porfa"]
     assert vio["sí porfa"] == con_memoria.antes != ()
     assert vio["estoy cansado"] == ()
+    # Y cómo dice con sus palabras un saludo y una despedida.
+    assert "Saludos y despedidas con sus palabras (tampoco cuentan):" in salida
+    saludo = "¡Hola, Ana! Qué bueno saludarte de nuevo. ¿En qué te ayudamos?"
+    assert f"  «{saludo}»\n         dice «¡Hola, Ana! Qué gusto verte por aquí otra vez.»" in salida
+    final = "Revisa las que salieron MAL antes de usar este modelo con clientes."
+    assert salida.rstrip().endswith(final)  # el resumen sigue de último
 
 
 def test_el_comando_sin_clave_dice_que_falta(entorno, capsys):

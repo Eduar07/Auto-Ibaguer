@@ -1,8 +1,12 @@
-"""Lo que dice el bot. Los textos son propios: siempre iguales, nunca los inventa una IA.
+"""Lo que dice el bot. Los textos son propios y nunca los inventa una IA.
 
-La única excepción es la respuesta a una pregunta sobre el negocio o a la charla, que la
-escribe Gemini con la ficha del negocio y el bot revisa (app.bot.redactor). Si no sirve,
-sale el texto fijo de aquí ("charla", "pregunta_al_administrador").
+Hay dos excepciones, y en las dos el bot revisa lo que escribe Gemini (app.bot.redactor):
+- La respuesta a una pregunta sobre el negocio o a la charla: la escribe Gemini con la
+  ficha del negocio. Si no sirve, sale el texto fijo de aquí ("charla",
+  "pregunta_al_administrador").
+- Los saludos, agradecimientos y despedidas de CON_SUS_PALABRAS: Gemini los dice con sus
+  palabras, según la conversación, con la misma idea del texto de aquí (o del que cambió el
+  administrador). Si no sirve, sale el texto tal cual.
 
 Cada texto tiene un nombre y huecos entre llaves ({numero}, {hora}...) que el bot llena
 con los datos del sistema. *así* sale en negrilla en WhatsApp.
@@ -184,6 +188,13 @@ TEXTOS: dict[str, str] = {
 }
 
 # Los botones y opciones que se repiten.
+# Con Gemini, estos el bot los dice con sus palabras según la conversación, para no saludar
+# ni despedirse siempre igual. Solo los que no traen datos que haya que cuidar: los turnos,
+# los precios, la fila, los avisos, el aviso de datos y las quejas salen siempre tal cual.
+CON_SUS_PALABRAS = frozenset(
+    {"saludo_cliente", "despedida", "detalle_recibido", "felicitacion", "felicitacion_cliente"}
+)
+
 BOTONES: dict[str, str] = {
     "pedir": "Pedir turno",
     "fila": "Ver la fila",

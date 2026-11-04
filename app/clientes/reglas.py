@@ -50,6 +50,24 @@ def normalizar_placa(texto: str) -> str:
     return re.sub(r"[\s.\-]", "", texto).upper()
 
 
+# Una placa dentro de un mensaje: 3 letras y 3 caracteres (ABC123, ABC12D), pegados o con
+# un espacio o guion en medio.
+_PLACA_EN_EL_TEXTO = re.compile(r"\b([A-Za-z]{3})([ -]?)(\d{2}[0-9A-Za-z])\b")
+
+
+def placa_en_el_texto(texto: str) -> str | None:
+    """La placa que trae un mensaje ("quiero lavar la moto abc12d" -> "ABC12D"), o None si
+    no trae una o trae varias. Con un espacio en medio, solo si las letras van en
+    mayúscula: "por 120 mil" no es una placa, "ABC 123" sí. El formato de cada tipo de
+    vehículo lo revisa validar_placa."""
+    encontradas = {
+        (letras + resto).upper()
+        for letras, separador, resto in _PLACA_EN_EL_TEXTO.findall(texto)
+        if separador != " " or letras.isupper()
+    }
+    return encontradas.pop() if len(encontradas) == 1 else None
+
+
 def validar_placa(texto: str, patron: str, tipo_vehiculo: str) -> str:
     """Devuelve la placa limpia si tiene el formato del tipo de vehículo.
 

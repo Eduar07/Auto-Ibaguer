@@ -27,6 +27,7 @@ from app.bot import redactor
 from app.bot.conversacion import PREGUNTA_O_CHARLA, catalogo_del_bot
 from app.bot.frases_de_prueba import FRASES, FraseDePrueba
 from app.bot.interprete import Intencion, Interpretacion
+from app.bot.textos import Textos
 from app.catalogo.datos_iniciales import cargar_datos_iniciales
 from app.catalogo.parametros import leer_parametros
 from app.catalogo.tablas import TipoVehiculo
@@ -291,6 +292,24 @@ def _lo_que_contesta(
     return f"contesta «{revisada}»"
 
 
+# Para ver cómo dice con sus palabras un saludo y una despedida (CON_SUS_PALABRAS).
+MUESTRAS_CON_SUS_PALABRAS = (
+    ("saludo_cliente", {"nombre": "Ana"}, "hola"),
+    ("despedida", {}, "listo, muchas gracias"),
+)
+
+
+def _como_lo_dice(con_gemini: gemini.Gemini, fijo: str, mensaje: str, ficha: str) -> str:
+    """Cómo diría el bot un texto fijo con las palabras de Gemini, como en WhatsApp."""
+    dicho = con_gemini.con_sus_palabras(fijo, mensaje, ficha)
+    if dicho is None:
+        return f"lo dice tal cual ({con_gemini.ultimo_problema or 'no respondió'})"
+    revisado = redactor.revisar(dicho, f"{ficha}\n{fijo}")
+    if revisado is None:
+        return f"lo dice tal cual (lo que escribió rompía una regla: «{dicho}»)"
+    return f"dice «{revisado}»"
+
+
 def probar_gemini(modelo: str | None, pausa: float) -> int:
     """Corre las frases de prueba (app/bot/frases_de_prueba.py) contra el modelo de verdad.
 
@@ -329,6 +348,12 @@ def probar_gemini(modelo: str | None, pausa: float) -> int:
             time.sleep(pausa)
             contesta = _lo_que_contesta(interprete, entendido.intencion, frase, ficha)
             print(f"         {contesta}")
+    print("Saludos y despedidas con sus palabras (tampoco cuentan):")
+    textos = Textos(parametros.textos_bot)
+    for nombre, datos, mensaje in MUESTRAS_CON_SUS_PALABRAS:
+        time.sleep(pausa)
+        fijo = textos(nombre, **datos)
+        print(f"  «{fijo}»\n         {_como_lo_dice(interprete, fijo, mensaje, ficha)}")
     porcentaje = round(100 * bien / len(FRASES))
     print(f"{bien} de {len(FRASES)} bien ({porcentaje} %).")
     print("Lo que contesta a las preguntas y a la charla no cuenta: léelo y mira si te gusta.")

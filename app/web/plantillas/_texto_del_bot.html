@@ -39,9 +39,12 @@
           </ul>
         </div>
         {% else %}
-        <p class="ayuda" id="datos-{{ e.clave }}">Este mensaje no lleva datos: es siempre igual.</p>
+        <p class="ayuda" id="datos-{{ e.clave }}">Este mensaje no lleva datos{% if not e.con_sus_palabras %}: es siempre igual{% endif %}.</p>
         {% endif %}
         <p class="ayuda">*así* sale en negrilla y _así_ en cursiva, como en WhatsApp.</p>
+        {% if e.con_sus_palabras %}
+        <p class="nota nota--info nota--suelta texto-bot__con-sus-palabras">Con Gemini conectado, el bot dice este mensaje con sus palabras, según la conversación, para no repetirse: la misma idea, con los mismos datos. Si Gemini no responde, sale tal cual.</p>
+        {% endif %}
       </div>
       <div class="texto-bot__vista" id="vista-{{ e.clave }}" aria-live="polite">
         {% include "_vista_previa_texto.html" %}

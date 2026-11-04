@@ -40,6 +40,13 @@ class Redactor(Protocol):
         self, tipo: Intencion, mensaje: str, ficha: str, antes: Sequence[Anterior] = ()
     ) -> Respuesta | None: ...
 
+    def con_sus_palabras(
+        self, texto: str, mensaje: str, ficha: str, antes: Sequence[Anterior] = ()
+    ) -> str | None:
+        """Un texto fijo del bot (un saludo, una despedida) dicho con sus palabras según la
+        conversación: la misma idea, para no repetirse. None si no responde."""
+        ...
+
 
 def ficha_completa(parametros: Parametros, catalogo: Catalogo) -> str:
     """Todo lo que el redactor sabe del negocio: lo que dice el sistema (horario, teléfono,
@@ -66,6 +73,7 @@ def ficha_completa(parametros: Parametros, catalogo: Catalogo) -> str:
 
 _ENLACE = re.compile(r"https?://\S+|www\.\S+|\b[\w-]+\.(?:com|co|net|org|app|me)\b", re.I)
 _NUMERO = re.compile(r"\d(?:[\d.,\s-]*\d)?")
+_HORA = re.compile(r"\b\d{1,2}:\d{2}\b")  # "8:15": una hora que no esté en la ficha, no
 _EMOJI = re.compile(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]")
 # Los que se ven como un emoji (sin contar el tono de piel ni los que los unen).
 _EMOJI_QUE_SE_VE = re.compile(
@@ -99,8 +107,10 @@ def _numeros(texto: str) -> set[str]:
 def revisar(texto: str, ficha: str) -> str | None:
     """La respuesta lista para mandar, o None si rompe una regla (el bot usa un texto fijo).
 
-    Estas reglas no dependen de que Gemini obedezca: un precio, un descuento, un enlace o
-    un número que no estén en la ficha no salen, diga lo que diga el mensaje del cliente.
+    Estas reglas no dependen de que Gemini obedezca: un precio, un descuento, un enlace, una
+    hora o un número que no estén en la ficha no salen, diga lo que diga el mensaje del
+    cliente. `ficha` es todo lo que se puede decir: la ficha del negocio y, si Gemini está
+    diciendo un texto fijo con sus palabras, ese texto. Emojis, hasta dos.
     """
     if len(_EMOJI_QUE_SE_VE.findall(texto)) > EMOJIS_MAXIMOS:
         texto = _EMOJI.sub("", texto)
@@ -116,6 +126,8 @@ def revisar(texto: str, ficha: str) -> str | None:
         return None
     if not _numeros(limpio) <= _numeros(ficha):
         return None  # un precio, un teléfono o una cifra que se inventó
+    if any(hora not in ficha for hora in _HORA.findall(limpio)):
+        return None  # una hora que no sale de la ficha ("te esperamos a las 8:15")
     if any(promesa not in en_la_ficha for promesa in _PROMESAS.findall(normal)):
         return None
     if _DICE_SER_PERSONA.search(normal):

@@ -41,6 +41,9 @@ class RedactorDeMentira:
         self.respuestas = list(respuestas)
         self.pedidos: list[tuple[Intencion, str, str]] = []
         self.antes: list[tuple[Anterior, ...]] = []  # lo que vio de la conversación
+        # Para decir con sus palabras: el texto fijo -> lo que dice (o un error).
+        self.dichos: dict[str, str | Exception] = {}
+        self.con_sus_palabras_pedidos: list[tuple[str, str]] = []
 
     def redactar(
         self, tipo: Intencion, mensaje: str, ficha: str, antes: Sequence[Anterior] = ()
@@ -51,6 +54,16 @@ class RedactorDeMentira:
         if isinstance(respuesta, Exception):
             raise respuesta
         return respuesta
+
+    def con_sus_palabras(
+        self, texto: str, mensaje: str, ficha: str, antes: Sequence[Anterior] = ()
+    ) -> str | None:
+        """Lo que diga `dichos` (por el texto fijo); si no, nada: sale el texto tal cual."""
+        self.con_sus_palabras_pedidos.append((texto, mensaje))
+        dicho = self.dichos.get(texto)
+        if isinstance(dicho, Exception):
+            raise dicho
+        return dicho
 
 
 class ChatConRespuestas(Chat):

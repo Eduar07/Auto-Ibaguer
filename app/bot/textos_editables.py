@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app import formato, tiempo
 from app.bot import textos
 from app.bot.mensajes import Lista, Mensaje, Opcion
-from app.bot.textos import BOTONES, TEXTOS, Textos, huecos, llenar
+from app.bot.textos import BOTONES, CON_SUS_PALABRAS, TEXTOS, Textos, huecos, llenar
 from app.catalogo.parametros import PREFIJO_TEXTO_DEL_BOT, Parametros
 from app.catalogo.tablas import Configuracion
 from app.errores import ReglaDelNegocio
@@ -87,6 +87,11 @@ class Editable:
     @property
     def obligatorios(self) -> frozenset[str]:
         return frozenset(self.datos) - self.opcionales
+
+    @property
+    def con_sus_palabras(self) -> bool:
+        """Con Gemini, el bot lo dice con sus palabras (app.bot.textos.CON_SUS_PALABRAS)."""
+        return self.clave in CON_SUS_PALABRAS
 
 
 @dataclass(frozen=True)

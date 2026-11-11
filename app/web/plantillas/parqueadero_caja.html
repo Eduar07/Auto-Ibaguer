@@ -15,6 +15,9 @@
   </div>
   {{ atajos("caja") }}
 
+  {% if caja_de_otro_dia %}
+  <div class="error">Esta caja viene de un día anterior. Ciérrala contando el cajón y abre la de hoy: así cada día cuadra aparte.</div>
+  {% endif %}
   {% if caja %}
   <section class="panel" aria-labelledby="t-caja">
     <div class="panel__cabeza">

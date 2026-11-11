@@ -69,6 +69,11 @@ def _hoy() -> date:
     return tiempo.hora_local(tiempo.ahora()).date()
 
 
+def _caja_de_otro_dia(caja: CajaParqueadero | None) -> bool:
+    """La caja abierta viene de un día anterior: alguien olvidó cerrarla al final del día."""
+    return caja is not None and tiempo.hora_local(caja.abierta_en).date() < _hoy()
+
+
 # --- La pantalla principal: entrada, salida y quién está adentro -------------------------
 
 
@@ -82,11 +87,19 @@ def _lista_adentro(request: Request, sesion: Session, **eventos: Any) -> Respons
     return con_eventos(respuesta, **eventos) if eventos else respuesta
 
 
+def _por_cobrar(sesion: Session) -> list[consultas.FilaMensualidad]:
+    """Las mensualidades vencidas o sin pagar, para tenerlas a la vista donde se atiende."""
+    return [fila for fila in consultas.mensualidades(sesion) if fila.por_cobrar]
+
+
 @router.get("", response_class=HTMLResponse)
 def pagina_parqueadero(request: Request, sesion: SesionBD, _: Admin) -> Response:
+    caja = casos.caja_abierta(sesion)
     contexto = {
         **_contexto_adentro(sesion),
-        "caja": casos.caja_abierta(sesion),
+        "caja": caja,
+        "caja_de_otro_dia": _caja_de_otro_dia(caja),
+        "por_cobrar": _por_cobrar(sesion),
         "ajustes": leer_ajustes(sesion),
     }
     return pagina(request, sesion, "parqueadero.html", contexto, seccion="parqueadero")
@@ -95,6 +108,11 @@ def pagina_parqueadero(request: Request, sesion: SesionBD, _: Admin) -> Response
 @router.get("/adentro", response_class=HTMLResponse)
 def fragmento_adentro(request: Request, sesion: SesionBD, _: Admin) -> Response:
     return _lista_adentro(request, sesion)
+
+
+@router.get("/por-cobrar", response_class=HTMLResponse)
+def fragmento_por_cobrar(request: Request, sesion: SesionBD, _: Admin) -> Response:
+    return html(request, "_parqueadero_por_cobrar.html", {"por_cobrar": _por_cobrar(sesion)})
 
 
 @router.post("/entradas", response_class=HTMLResponse)
@@ -129,10 +147,13 @@ def registrar_entrada(
             aviso=f"{parqueo.placa} entró. Es mensualista al día hasta el {hasta}.",
             limpiar_entrada=True,
         )
+    aviso = f"{parqueo.placa} entró con el ticket {parqueo.id}."
+    if liquidacion.debe_la_mensualidad:
+        aviso += " Debe la mensualidad: cóbrale el mes."
     return _lista_adentro(
         request,
         sesion,
-        aviso=f"{parqueo.placa} entró con el ticket {parqueo.id}.",
+        aviso=aviso,
         imprimir=f"/parqueadero/tickets/{parqueo.id}",
         limpiar_entrada=True,
     )
@@ -307,6 +328,7 @@ def _contexto_caja(sesion: Session, caja: CajaParqueadero | None) -> dict[str, A
     hoy = _hoy()
     return {
         "caja": caja,
+        "caja_de_otro_dia": _caja_de_otro_dia(caja),
         "resumen": consultas.resumen_de_caja(sesion, caja) if caja else None,
         "movimientos": consultas.movimientos_de_caja(sesion, caja.id) if caja else [],
         "cerradas": consultas.cajas_cerradas(sesion),
@@ -665,7 +687,11 @@ def dar_de_baja(
 
 
 def _contexto_pago(
-    sesion: Session, mensualidad: Mensualidad, formulario: dict[str, Any], error: str | None = None
+    sesion: Session,
+    mensualidad: Mensualidad,
+    formulario: dict[str, Any],
+    error: str | None = None,
+    salida: int | None = None,
 ) -> dict[str, Any]:
     return {
         "mensualidad": mensualidad,
@@ -674,11 +700,24 @@ def _contexto_pago(
         "caja": casos.caja_abierta(sesion),
         "medios": MEDIOS,
         "error": error,
+        # Se abrió desde el cobro de una salida: al pagar, vuelve a esa salida.
+        "salida": salida,
     }
 
 
+def _salida_adentro(sesion: Session, parqueo_id: int | None) -> Parqueo | None:
+    parqueo = sesion.get(Parqueo, parqueo_id) if parqueo_id is not None else None
+    return parqueo if parqueo is not None and parqueo.estado is EstadoParqueo.ADENTRO else None
+
+
 @router.get("/mensualidades/{mensualidad_id}/pagar", response_class=HTMLResponse)
-def dialogo_pagar(request: Request, sesion: SesionBD, _: Admin, mensualidad_id: int) -> Response:
+def dialogo_pagar(
+    request: Request,
+    sesion: SesionBD,
+    _: Admin,
+    mensualidad_id: int,
+    salida: int | None = None,
+) -> Response:
     mensualidad = _mensualidad_o_404(sesion, mensualidad_id)
     desde, hasta = casos.periodo_sugerido(sesion, mensualidad, _hoy())
     formulario = {
@@ -687,7 +726,10 @@ def dialogo_pagar(request: Request, sesion: SesionBD, _: Admin, mensualidad_id: 
         "valor": mensualidad.valor_mensual,
         "medio_pago": MedioPago.EFECTIVO.value,
     }
-    contexto = _contexto_pago(sesion, mensualidad, formulario)
+    parqueo = _salida_adentro(sesion, salida)
+    contexto = _contexto_pago(
+        sesion, mensualidad, formulario, salida=parqueo.id if parqueo else None
+    )
     return html(request, "dialogos/parqueadero_pagar_mensualidad.html", contexto)
 
 
@@ -708,6 +750,7 @@ def pagar_mensualidad(
     hasta: Annotated[str, Form()] = "",
     valor: Annotated[str, Form()] = "",
     medio_pago: Annotated[str, Form()] = "",
+    salida: Annotated[str, Form()] = "",
 ) -> Response:
     mensualidad = _mensualidad_o_404(sesion, mensualidad_id)
     formulario = {
@@ -716,6 +759,7 @@ def pagar_mensualidad(
         "valor": leer_pesos(valor),
         "medio_pago": medio_pago,
     }
+    salida_id = entero(salida)
     recibo: dict[str, Any] = {}
 
     def hacer() -> str:
@@ -734,16 +778,32 @@ def pagar_mensualidad(
             administrador_id=administrador.id,
         )
         recibo["imprimir"] = f"/parqueadero/mensualidades/pagos/{pago.id}/ticket"
+        recibo["mensualidad_pagada"] = True  # la lista de "por cobrar" se actualiza sola
         return (
             f"Mensualidad de {mensualidad.placa} pagada hasta el {formato.fecha(pago.hasta)}: "
             f"{formato.pesos(pago.valor)} en {pago.medio_pago.value}."
         )
 
     def al_fallar(error: str) -> Response:
-        contexto = _contexto_pago(sesion, mensualidad, formulario, error)
+        contexto = _contexto_pago(sesion, mensualidad, formulario, error, salida=salida_id)
         return html(request, "dialogos/parqueadero_pagar_mensualidad.html", contexto)
 
-    return _guardar(request, sesion, hacer, al_fallar, extra=recibo)
+    if salida_id is None:
+        return _guardar(request, sesion, hacer, al_fallar, extra=recibo)
+
+    # Se cobró desde la salida de su vehículo: vuelve a esa salida, que ya lo ve al día.
+    try:
+        mensaje = hacer()
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        return al_fallar(str(error))
+    parqueo = _salida_adentro(sesion, salida_id)
+    if parqueo is None:  # mientras tanto lo sacaron desde otro celular
+        return sin_cambios(cerrar_dialogo=True, aviso=mensaje, **recibo)
+    contexto = _contexto_salida(sesion, parqueo, _formulario_salida_inicial())
+    respuesta = html(request, "dialogos/parqueadero_salida.html", contexto)
+    return con_eventos(respuesta, aviso=mensaje, **recibo)
 
 
 @router.get("/mensualidades/pagos/{pago_id}/ticket", response_class=HTMLResponse)

@@ -1,0 +1,14 @@
+{#- Las mensualidades vencidas o sin pagar, arriba de la pantalla donde se atiende. Se vuelve a
+    pedir cada dos minutos y apenas se cobra un mes (evento "mensualidad-pagada"). -#}
+{% if por_cobrar %}
+{% set n = por_cobrar|length %}
+<div class="error">
+  {{ n }} mensualidad{{ "es" if n != 1 }} por cobrar:
+  {% for f in por_cobrar[:8] -%}
+  <span class="placa-texto">{{ f.mensualidad.placa }}</span>
+  {%- if f.debe_desde %} (debe desde el {{ f.debe_desde.day }}/{{ f.debe_desde.month }}){% else %} (sin pagos){% endif %}
+  {{- ", " if not loop.last }}
+  {%- endfor %}{% if n > 8 %} y {{ n - 8 }} más{% endif %}.
+  <a href="/parqueadero/mensualidades">Cobrarlas</a>
+</div>
+{% endif %}

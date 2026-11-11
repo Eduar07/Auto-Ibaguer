@@ -3,6 +3,7 @@
 Solo lee; no cambia nada (eso vive en casos_de_uso).
 """
 
+from collections import defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -32,6 +33,7 @@ class VehiculoAdentro:
     valor_a_la_fecha: int
     mensualista_hasta: date | None
     observaciones: str | None
+    mensualidad_vencida: bool = False  # tiene mensualidad, pero hoy no está pagada
 
 
 def adentro(sesion: Session, ahora: datetime | None = None) -> list[VehiculoAdentro]:
@@ -56,6 +58,7 @@ def adentro(sesion: Session, ahora: datetime | None = None) -> list[VehiculoAden
                 valor_a_la_fecha=liquidacion.valor,
                 mensualista_hasta=liquidacion.al_dia_hasta,
                 observaciones=parqueo.observaciones,
+                mensualidad_vencida=liquidacion.debe_la_mensualidad,
             )
         )
     return vehiculos
@@ -170,34 +173,59 @@ def cajas_cerradas(sesion: Session, limite: int = 30) -> list[ResumenDeCaja]:
 @dataclass(frozen=True)
 class FilaMensualidad:
     mensualidad: Mensualidad
+    # Al día: hasta dónde va lo pagado. Vencida: el último día que pagó.
     pagada_hasta: date | None
     estado: str  # "al_dia", "vence_pronto", "vencida", "sin_pagos"
     dias_restantes: int | None  # negativo: hace cuántos días venció
+
+    @property
+    def por_cobrar(self) -> bool:
+        return self.estado in ("vencida", "sin_pagos")
+
+    @property
+    def debe_desde(self) -> date | None:
+        """Vencida: el primer día que no ha pagado."""
+        if self.estado != "vencida" or self.pagada_hasta is None:
+            return None
+        return self.pagada_hasta + timedelta(days=1)
+
+
+def _fila(
+    mensualidad: Mensualidad, periodos: list[tuple[date, date]], hoy: date
+) -> FilaMensualidad:
+    if not periodos:
+        return FilaMensualidad(mensualidad, None, "sin_pagos", None)
+    al_dia = reglas.cubierta_hasta(periodos, hoy)
+    if al_dia is None:
+        pasados = [fin for _, fin in periodos if fin < hoy]
+        ultimo = max(pasados) if pasados else None
+        dias = (ultimo - hoy).days if ultimo is not None else None
+        return FilaMensualidad(mensualidad, ultimo, "vencida", dias)
+    dias = (al_dia - hoy).days
+    estado = "vence_pronto" if dias <= DIAS_PARA_AVISAR else "al_dia"
+    return FilaMensualidad(mensualidad, al_dia, estado, dias)
 
 
 def mensualidades(
     sesion: Session, ahora: datetime | None = None, *, incluir_de_baja: bool = False
 ) -> list[FilaMensualidad]:
-    """Las mensualidades, primero las vencidas (las que hay que cobrar)."""
+    """Las mensualidades, primero las que hay que cobrar (vencidas y sin pagos)."""
     hoy = tiempo.hora_local(ahora or tiempo.ahora()).date()
     consulta = select(Mensualidad).order_by(Mensualidad.placa)
     if not incluir_de_baja:
         consulta = consulta.where(Mensualidad.activa)
-    filas = []
-    for mensualidad in sesion.scalars(consulta):
-        hasta = casos.pagada_hasta(sesion, mensualidad.id)
-        al_dia = casos.cubierta_hasta(sesion, mensualidad.id, hoy)
-        if hasta is None:
-            estado = "sin_pagos"
-        elif al_dia is None:
-            estado = "vencida"
-        elif al_dia - hoy <= timedelta(days=DIAS_PARA_AVISAR):
-            estado = "vence_pronto"
-        else:
-            estado = "al_dia"
-        fin = al_dia or hasta
-        dias = (fin - hoy).days if fin is not None else None
-        filas.append(FilaMensualidad(mensualidad, fin, estado, dias))
+    lista = sesion.scalars(consulta).all()
+    # Todos los pagos en una sola consulta, no dos por mensualidad: la lista se pide seguido.
+    periodos: dict[int, list[tuple[date, date]]] = defaultdict(list)
+    if lista:
+        pagos = sesion.execute(
+            select(
+                PagoMensualidad.mensualidad_id, PagoMensualidad.desde, PagoMensualidad.hasta
+            ).where(PagoMensualidad.mensualidad_id.in_([m.id for m in lista]))
+        )
+        for mensualidad_id, desde, hasta in pagos:
+            periodos[mensualidad_id].append((desde, hasta))
+    filas = [_fila(mensualidad, periodos[mensualidad.id], hoy) for mensualidad in lista]
     orden = {"vencida": 0, "sin_pagos": 1, "vence_pronto": 2, "al_dia": 3}
     return sorted(filas, key=lambda fila: (orden[fila.estado], fila.mensualidad.placa))
 

@@ -104,11 +104,22 @@ Por horas, con minutos de gracia después de cada hora. Con carro a $3.000, moto
 
 ### La caja
 
-Solo hay una caja abierta a la vez. Sin caja abierta se pueden registrar entradas, pero no cobrar. Al cerrarla cuentas el efectivo del cajón, incluida la base: debe haber la base más todo lo cobrado en efectivo (salidas y mensualidades). Lo de Nequi, Daviplata y tarjeta se muestra aparte porque no está en el cajón.
+Solo hay una caja abierta a la vez. Sin caja abierta se pueden registrar entradas, pero no cobrar. Al cerrarla cuentas el efectivo del cajón, incluida la base: debe haber la base más todo lo cobrado en efectivo (salidas y mensualidades), y el sistema dice si cuadró, sobró o faltó. Lo de Nequi, Daviplata y tarjeta se muestra aparte porque no está en el cajón: eso lo comparas con lo que dicen esas apps.
+
+Lo normal es cerrarla al final de cada día y abrir una nueva al otro día, para que cada día cuadre aparte. Si una caja sigue abierta de un día anterior, la pantalla lo avisa en rojo.
 
 ### Mensualidades
 
-El valor lo pones tú en cada mensualidad, y al cobrar cada mes se puede cambiar. Cada pago cubre 30 días seguidos contando el primero (del 10 de noviembre al 9 de diciembre) y el sistema propone el siguiente periodo justo después del último pagado. No deja cobrar dos veces los mismos días.
+El valor lo pones tú en cada mensualidad, y al cobrar cada mes se puede cambiar. Cada pago cubre 30 días seguidos contando el primero (del 10 de noviembre al 9 de diciembre) y el sistema propone el siguiente periodo justo después del último pagado, aunque pague unos días tarde: si se le venció el 10 y paga el 13, el mes va del 11 al 10 (si no, cada atraso le regalaría días). Si lleva más de un mes sin pagar, el mes empieza el día que paga. En el cobro puedes cambiar las fechas. No deja cobrar dos veces los mismos días.
+
+Cuando a alguien se le vence la mensualidad, lo ves sin buscarlo:
+
+- En **Entradas y salidas**, arriba y en rojo: cuántas hay por cobrar y desde cuándo debe cada una.
+- En **Mensualidades**, primero las que deben, con una raya roja: "Debe desde el 11/11 · 3 días sin pagar". Las que vencen en 3 días o menos salen en naranja.
+- Si su vehículo entra, el aviso dice que debe la mensualidad, y en la lista de los que están adentro sale **Debe la mensualidad**.
+- Al cobrar su salida, **Cobrar el mes** recibe el pago, imprime el recibo y vuelve a la salida, que ya sale en $0. Si no paga el mes, la salida se cobra por horas.
+
+Al pagar, cambia sola a verde ("Al día hasta el 10/12").
 
 Para los mensualistas que ya traían días pagados, por ejemplo con el dueño anterior, al crear la mensualidad llena **Ya trae pagado hasta**: sale sin pagar hasta ese día, el primer cobro empieza el día siguiente y en la caja no entra plata que no recibiste.
 

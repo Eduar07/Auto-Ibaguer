@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.errores import ReglaDelNegocio
 from app.parqueadero import casos_de_uso as casos
+from app.parqueadero import consultas
 from app.parqueadero.errores import (
     CajaYaAbierta,
     MensualidadInvalida,
@@ -260,6 +261,56 @@ def test_los_pagos_seguidos_alargan_lo_pagado(sesion: Session):
         date(2026, 12, 25),
         date(2027, 1, 23),
     )
+
+
+def test_si_paga_unos_dias_tarde_el_mes_sigue_desde_que_se_vencio(sesion: Session):
+    con_caja(sesion)
+    mensualidad = mensualista(sesion)
+    casos.pagar_mensualidad(
+        sesion, mensualidad.id, desde=date(2026, 9, 24), hasta=date(2026, 10, 23),
+        valor=120000, medio_pago=EFECTIVO, ahora=LUNES_8AM,
+    )  # fmt: skip
+
+    # Hoy es el 26: debe desde el 24, y el mes nuevo empieza ahí, no hoy.
+    assert casos.periodo_sugerido(sesion, mensualidad, HOY) == (
+        date(2026, 10, 24),
+        date(2026, 11, 22),
+    )
+    fila = consultas.mensualidades(sesion, LUNES_8AM)[0]
+    assert (fila.estado, fila.debe_desde, fila.dias_restantes) == (
+        "vencida",
+        date(2026, 10, 24),
+        -3,
+    )
+    assert fila.por_cobrar
+
+
+def test_los_estados_de_las_mensualidades(sesion: Session):
+    con_caja(sesion)
+
+    def con_pago_hasta(placa: str, hasta: date | None):
+        mensualidad = mensualista(sesion, placa)
+        if hasta is not None:
+            casos.pagar_mensualidad(
+                sesion, mensualidad.id, desde=hasta - timedelta(days=29), hasta=hasta,
+                valor=120000, medio_pago=EFECTIVO, ahora=LUNES_8AM,
+            )  # fmt: skip
+
+    con_pago_hasta("AAA111", date(2026, 11, 20))  # al día
+    con_pago_hasta("BBB222", date(2026, 10, 28))  # vence en 2 días
+    con_pago_hasta("CCC333", date(2026, 10, 25))  # se le venció ayer
+    con_pago_hasta("DDD444", None)  # nunca ha pagado
+
+    filas = consultas.mensualidades(sesion, LUNES_8AM)
+
+    # Primero lo que hay que cobrar.
+    assert [(f.mensualidad.placa, f.estado) for f in filas] == [
+        ("CCC333", "vencida"),
+        ("DDD444", "sin_pagos"),
+        ("BBB222", "vence_pronto"),
+        ("AAA111", "al_dia"),
+    ]
+    assert [f.por_cobrar for f in filas] == [True, True, False, False]
 
 
 def test_si_la_mensualidad_vencio_el_siguiente_periodo_empieza_hoy(sesion: Session):

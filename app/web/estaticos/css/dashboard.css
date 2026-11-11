@@ -1064,6 +1064,11 @@ legend { padding: 0; margin-bottom: 8px; }
 .parqueo__tiempo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .parqueo__tiempo strong { font-size: 17px; }
 .parqueo__acciones { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* Un contenedor que solo sirve para que HTMX cambie lo de adentro: no ocupa espacio propio. */
+.contenedor-invisible { display: contents; }
+/* Una mensualidad que hay que cobrar: la raya roja a la izquierda se ve de lejos. */
+.parqueo--debe { box-shadow: inset 4px 0 0 var(--rojo); }
+.aviso-mensualidad { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 
 .ajuste summary { cursor: pointer; font-weight: 700; color: var(--azul-texto); min-height: 44px; display: flex; align-items: center; }
 .ajuste[open] { display: flex; flex-direction: column; gap: 12px; }

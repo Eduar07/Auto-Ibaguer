@@ -252,6 +252,108 @@ def test_mensualidad_de_punta_a_punta(adentro: TestClient, sesion: Session):
     assert "imprimir" not in eventos(salida)
 
 
+def mensualidad_vencida(adentro: TestClient, sesion: Session) -> Mensualidad:
+    """MEN123 pagó hasta el 23 de octubre: el lunes 26 ya debe 3 días."""
+    adentro.post(
+        "/parqueadero/mensualidades",
+        data={
+            "placa": "men123",
+            "tipo": "carro",
+            "titular": "ana ruiz",
+            "valor_mensual": "120.000",
+            "autorizo": "si",
+        },
+        headers=HTMX,
+    )
+    mensualidad = sesion.scalars(select(Mensualidad)).one()
+    abrir_caja(adentro)
+    adentro.post(
+        f"/parqueadero/mensualidades/{mensualidad.id}/pagar",
+        data={
+            "desde": "2026-09-24",
+            "hasta": "2026-10-23",
+            "valor": "120.000",
+            "medio_pago": "efectivo",
+        },
+        headers=HTMX,
+    )
+    return mensualidad
+
+
+def test_la_mensualidad_vencida_se_ve_en_rojo_donde_se_atiende(
+    adentro: TestClient, sesion: Session
+):
+    mensualidad_vencida(adentro, sesion)
+
+    pagina = adentro.get("/parqueadero").text
+    assert "1 mensualidad por cobrar" in pagina and "(debe desde el 24/10)" in pagina
+    lista = adentro.get("/parqueadero/mensualidades").text
+    assert "Debe desde el 24/10" in lista and "3 días sin pagar" in lista
+    assert "parqueo--debe" in lista
+
+    entrada = entrar(adentro, "MEN123")
+
+    p = parqueo(sesion, "MEN123")
+    assert aviso(entrada) == (
+        f"MEN123 entró con el ticket {p.id}. Debe la mensualidad: cóbrale el mes."
+    )
+    assert "Debe la mensualidad" in entrada.text
+
+
+def test_cobrar_el_mes_desde_la_salida_y_salir_sin_pagar_horas(
+    adentro: TestClient, sesion: Session, reloj: dict
+):
+    mensualidad = mensualidad_vencida(adentro, sesion)
+    entrar(adentro, "MEN123")
+    p = parqueo(sesion, "MEN123")
+    reloj["ahora"] += minutos(120)
+
+    salida = adentro.get(f"/parqueadero/{p.id}/salida", headers=HTMX)
+    assert f"/parqueadero/mensualidades/{mensualidad.id}/pagar?salida={p.id}" in salida.text
+
+    dialogo = adentro.get(
+        f"/parqueadero/mensualidades/{mensualidad.id}/pagar",
+        params={"salida": p.id},
+        headers=HTMX,
+    )
+    # El mes sigue desde que se venció, no desde hoy.
+    assert 'value="2026-10-24"' in dialogo.text and 'value="2026-11-22"' in dialogo.text
+    assert f'name="salida" value="{p.id}"' in dialogo.text
+    assert "Volver a la salida" in dialogo.text
+
+    pagada = adentro.post(
+        f"/parqueadero/mensualidades/{mensualidad.id}/pagar",
+        data={
+            "desde": "2026-10-24",
+            "hasta": "2026-11-22",
+            "valor": "120.000",
+            "medio_pago": "efectivo",
+            "salida": str(p.id),
+        },
+        headers=HTMX,
+    )
+
+    # Vuelve a la salida, que ya lo ve al día, e imprime el recibo del mes.
+    assert "sale sin pagar" in pagada.text
+    assert "pagada hasta el 22 de noviembre" in aviso(pagada)
+    assert eventos(pagada)["imprimir"].startswith("/parqueadero/mensualidades/pagos/")
+    # El aviso rojo de arriba se actualiza solo: ya no la debe.
+    assert eventos(pagada)["mensualidad-pagada"] is True
+    assert "MEN123" not in adentro.get("/parqueadero/por-cobrar", headers=HTMX).text
+    afuera = adentro.post(f"/parqueadero/{p.id}/salida", headers=HTMX)
+    assert aviso(afuera) == "MEN123 salió sin pagar: mensualista al día."
+
+
+def test_la_caja_de_ayer_pide_que_la_cierren(adentro: TestClient, reloj: dict):
+    abrir_caja(adentro)
+    assert "La caja está abierta desde" not in adentro.get("/parqueadero").text
+
+    reloj["ahora"] += minutos(24 * 60)
+
+    assert "La caja está abierta desde ayer a las 8:00 a.m." in adentro.get("/parqueadero").text
+    assert "viene de un día anterior" in adentro.get("/parqueadero/caja").text
+
+
 def test_mensualista_que_ya_traia_dias_pagados(adentro: TestClient, sesion: Session):
     datos = {
         "placa": "men123",

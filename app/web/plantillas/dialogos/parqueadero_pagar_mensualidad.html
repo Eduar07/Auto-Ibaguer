@@ -4,8 +4,13 @@
 <form class="dialogo__caja" data-formulario="pago-mensualidad"
       hx-post="/parqueadero/mensualidades/{{ m.id }}/pagar" hx-target="#dialogo-contenido"
       hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  {% if salida %}<input type="hidden" name="salida" value="{{ salida }}">{% endif %}
   <div class="dialogo__cabeza">
+    {% if salida %}
+    <button type="button" class="boton-texto boton-volver" hx-get="/parqueadero/{{ salida }}/salida" hx-target="#dialogo-contenido">{{ iconos.icono("volver", 18, 2.2) }}Volver a la salida</button>
+    {% else %}
     <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    {% endif %}
     <h2 id="dialogo-titulo">Cobrar mensualidad de <span class="placa-texto">{{ m.placa }}</span></h2>
     <p>{{ m.titular }} · {{ nombre_del_tipo[m.tipo] }} · {{ m.valor_mensual|pesos }} al mes</p>
   </div>
@@ -24,7 +29,7 @@
         <input id="hasta" name="hasta" type="date" required value="{{ formulario.hasta.isoformat() if formulario.hasta else '' }}">
       </div>
     </div>
-    <p class="ayuda">30 días seguidos contando el primero. Si cambias "Desde", "Hasta" se ajusta solo.</p>
+    <p class="ayuda">30 días seguidos contando el primero, desde el día siguiente al último que pagó (aunque pague tarde). Si cambias "Desde", "Hasta" se ajusta solo.</p>
     <div class="campo">
       <label for="valor-pago">Valor</label>
       <input id="valor-pago" name="valor" inputmode="numeric" class="monto" required maxlength="12"

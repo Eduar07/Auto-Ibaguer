@@ -137,6 +137,34 @@ def revisar_periodo(desde: date, hasta: date) -> None:
         raise ValorInvalido("Un pago de mensualidad cubre máximo un año.")
 
 
+def cubierta_hasta(periodos: Iterable[tuple[date, date]], dia: date) -> date | None:
+    """Si algún periodo pagado cubre `dia`, hasta cuándo va lo pagado sin cortes: un periodo
+    que empieza justo después del anterior lo alarga. None: ese día no está pagado."""
+    hasta = None
+    for desde, fin in sorted(periodos):
+        if hasta is None:
+            if desde <= dia <= fin:
+                hasta = fin
+        elif desde <= hasta + timedelta(days=1):
+            hasta = max(hasta, fin)
+    return hasta
+
+
+def periodo_siguiente(ultimo_pagado: date | None, hoy: date) -> tuple[date, date]:
+    """El siguiente mes por cobrar.
+
+    Sigue al último día pagado aunque pague tarde: si se le venció el 10 y paga el 13, el mes
+    va del 11 al 10 del otro mes (esos días también tuvo el puesto; si no, cada atraso le
+    regalaría días). Si ese mes ya ni siquiera cubre hoy (lleva más de un mes sin pagar, o
+    nunca ha pagado), empieza hoy.
+    """
+    if ultimo_pagado is not None:
+        desde = ultimo_pagado + timedelta(days=1)
+        if fin_de_la_mensualidad(desde) >= hoy:
+            return desde, fin_de_la_mensualidad(desde)
+    return hoy, fin_de_la_mensualidad(hoy)
+
+
 def revisar_dias_traidos(hasta: date, hoy: date) -> None:
     """Hasta qué día ya traía pagado un mensualista nuevo (por ejemplo, con el dueño anterior).
     Cubre desde hoy: una fecha que ya pasó no sirve (ese mes se le cobra)."""

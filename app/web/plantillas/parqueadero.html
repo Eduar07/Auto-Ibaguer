@@ -14,7 +14,9 @@
   </div>
   {{ atajos("entradas") }}
 
-  {% if caja %}
+  {% if caja_de_otro_dia %}
+  <div class="error">La caja está abierta desde {{ cuando_paso(caja.abierta_en) }} Ciérrala contando el cajón y abre la de hoy: así cada día cuadra aparte. <a href="/parqueadero/caja">Ir a la caja</a></div>
+  {% elif caja %}
   <p class="estado-caja">{{ iconos.icono("caja", 18) }}Caja abierta {{ cuando_paso(caja.abierta_en) }} · <a href="/parqueadero/caja">Ver caja</a></p>
   {% else %}
   <div class="nota nota--suelta">
@@ -22,6 +24,11 @@
     <span>La caja está cerrada: puedes registrar entradas, pero para cobrar salidas primero <a href="/parqueadero/caja">abre la caja</a>.</span>
   </div>
   {% endif %}
+
+  <div id="por-cobrar" class="contenedor-invisible" hx-get="/parqueadero/por-cobrar"
+       hx-trigger="mensualidad-pagada from:body, every 120s">
+    {% include "_parqueadero_por_cobrar.html" %}
+  </div>
 
   <div class="parqueadero__columnas">
     <section class="panel" aria-labelledby="t-entrada">

@@ -7,7 +7,7 @@ espera a que termine el primero y ve lo que hizo. Así no se cobra dos veces.
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -233,6 +233,11 @@ class Liquidacion:
         return self.al_dia_hasta is not None
 
     @property
+    def debe_la_mensualidad(self) -> bool:
+        """Tiene mensualidad, pero no cubre hoy: paga por horas, o se le cobra el mes."""
+        return self.mensualidad is not None and self.al_dia_hasta is None
+
+    @property
     def valor(self) -> int:
         return 0 if self.es_mensualista_al_dia else self.cobro.valor
 
@@ -326,18 +331,11 @@ def mensualidad_activa(sesion: Session, placa: str) -> Mensualidad | None:
 def cubierta_hasta(sesion: Session, mensualidad_id: int, dia: date) -> date | None:
     """Si algún pago cubre `dia`, hasta cuándo va lo pagado (contando pagos seguidos)."""
     pagos = sesion.execute(
-        select(PagoMensualidad.desde, PagoMensualidad.hasta)
-        .where(PagoMensualidad.mensualidad_id == mensualidad_id)
-        .order_by(PagoMensualidad.desde)
+        select(PagoMensualidad.desde, PagoMensualidad.hasta).where(
+            PagoMensualidad.mensualidad_id == mensualidad_id
+        )
     ).all()
-    hasta = None
-    for desde, fin in pagos:
-        if hasta is None:
-            if desde <= dia <= fin:
-                hasta = fin
-        elif desde <= hasta + timedelta(days=1):
-            hasta = max(hasta, fin)  # un pago que sigue al anterior alarga lo pagado
-    return hasta
+    return reglas.cubierta_hasta([(desde, hasta) for desde, hasta in pagos], dia)
 
 
 def pagada_hasta(sesion: Session, mensualidad_id: int) -> date | None:
@@ -482,10 +480,9 @@ def dar_de_baja(sesion: Session, mensualidad_id: int, *, borrar_datos: bool = Fa
 
 
 def periodo_sugerido(sesion: Session, mensualidad: Mensualidad, hoy: date) -> tuple[date, date]:
-    """El siguiente periodo por pagar: sigue al último pagado; si ese ya venció, desde hoy."""
-    ultimo = pagada_hasta(sesion, mensualidad.id)
-    desde = hoy if ultimo is None else max(ultimo + timedelta(days=1), hoy)
-    return desde, reglas.fin_de_la_mensualidad(desde)
+    """El siguiente periodo por pagar (ver reglas.periodo_siguiente): sigue al último pagado,
+    aunque pague unos días tarde. En el cobro se puede cambiar."""
+    return reglas.periodo_siguiente(pagada_hasta(sesion, mensualidad.id), hoy)
 
 
 def pagar_mensualidad(

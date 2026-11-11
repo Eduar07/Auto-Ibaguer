@@ -13,10 +13,12 @@ from app.parqueadero.reglas import (
     Cuadre,
     Tarifa,
     calcular_cobro,
+    cubierta_hasta,
     fin_de_la_mensualidad,
     horas_a_cobrar,
     minutos_adentro,
     motivo_del_ajuste,
+    periodo_siguiente,
     placa_o_ticket,
     revisar_periodo,
     revisar_recibido,
@@ -107,6 +109,39 @@ def test_la_mensualidad_son_30_dias_contando_el_primero():
     revisar_periodo(date(2026, 11, 10), date(2026, 12, 9))
     with pytest.raises(ValorInvalido, match="antes de la inicial"):
         revisar_periodo(date(2026, 11, 10), date(2026, 11, 9))
+
+
+HOY = date(2026, 11, 13)
+
+
+@pytest.mark.parametrize(
+    ("ultimo_pagado", "periodo"),
+    [
+        # Nunca ha pagado: desde hoy.
+        (None, (HOY, date(2026, 12, 12))),
+        # Pagó por adelantado: sigue al último día pagado.
+        (date(2026, 11, 20), (date(2026, 11, 21), date(2026, 12, 20))),
+        # Se le venció el 10 y paga el 13: el mes va del 11 al 10, no regala los 3 días.
+        (date(2026, 11, 10), (date(2026, 11, 11), date(2026, 12, 10))),
+        # Justo un mes tarde: ese mes todavía cubre hoy, así que sigue sin cortes.
+        (date(2026, 10, 14), (date(2026, 10, 15), HOY)),
+        # Más de un mes sin pagar (no vino): empieza hoy, no cobra un mes que ya pasó.
+        (date(2026, 10, 13), (HOY, date(2026, 12, 12))),
+    ],
+)
+def test_el_siguiente_mes_sigue_al_ultimo_pagado(ultimo_pagado, periodo):
+    assert periodo_siguiente(ultimo_pagado, HOY) == periodo
+
+
+def test_hasta_donde_va_lo_pagado_sin_cortes():
+    pagos = [
+        (date(2026, 12, 11), date(2027, 1, 9)),  # sigue justo al de noviembre
+        (date(2026, 11, 11), date(2026, 12, 10)),
+        (date(2027, 2, 1), date(2027, 3, 2)),  # después de un corte: no cuenta
+    ]
+    assert cubierta_hasta(pagos, date(2026, 11, 13)) == date(2027, 1, 9)
+    assert cubierta_hasta(pagos, date(2026, 11, 10)) is None  # ese día no está pagado
+    assert cubierta_hasta([], HOY) is None
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,105 @@
+{#- Cobrar la salida de un vehículo: lo que da la tarifa, el medio de pago y el vuelto. -#}
+{% import "_iconos.html" as iconos %}
+{% set p = parqueo %}
+{% set l = liquidacion %}
+{% set calculado = l.valor %}
+{% set total = formulario.valor_cobrado if formulario.valor_cobrado is not none else calculado %}
+{% set falta_caja = caja is none and calculado > 0 %}
+<form class="dialogo__caja" data-formulario="salida-parqueo" data-calculado="{{ calculado }}"
+      hx-post="/parqueadero/{{ p.id }}/salida" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <div class="dialogo__fila-titulo">
+      <h2 id="dialogo-titulo">Salida de <span class="placa-texto">{{ p.placa }}</span></h2>
+      <span class="insignia insignia--gris">{{ iconos.icono(p.tipo.value, 18) }}{{ nombre_del_tipo[p.tipo] }} · ticket {{ p.id }}</span>
+    </div>
+  </div>
+
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+    <div class="dos-columnas">
+      <div class="tarjeta-dato">
+        <span>Entró</span>
+        <strong>{{ cuando(p.entrada_en) }}</strong>
+        {% if p.observaciones %}<span>{{ p.observaciones }}</span>{% endif %}
+      </div>
+      <div class="tarjeta-dato">
+        <span>Tiempo adentro</span>
+        <strong>{{ l.cobro.minutos|duracion }}</strong>
+        <span>
+          {%- if l.cobro.fraccion -%}Primeros 15 minutos: {{ p.valor_fraccion|pesos }}
+          {%- else -%}{{ l.cobro.horas }} hora{{ "s" if l.cobro.horas != 1 }} × {{ p.valor_hora|pesos }}{%- endif -%}
+        </span>
+      </div>
+    </div>
+    <p class="ayuda">Tarifa con la que entró: {{ p.valor_hora|pesos }} la hora; después de cada hora tiene {{ p.gracia_minutos }} minutos de gracia antes de cobrar la siguiente.</p>
+
+    {% if l.es_mensualista_al_dia %}
+    <div class="nota nota--suelta nota--verde">{{ iconos.icono("listo", 20) }}<span>Mensualista al día hasta el {{ l.al_dia_hasta|fecha }} ({{ l.mensualidad.titular }}): sale sin pagar.</span></div>
+    {% elif l.mensualidad %}
+    <div class="aviso-mensualidad">
+      <div class="error">La mensualidad de {{ l.mensualidad.titular }} no está paga para hoy. Si paga el mes, sale sin pagar horas; si no, esta salida se cobra por horas.</div>
+      <button type="button" class="boton boton--borde" hx-get="/parqueadero/mensualidades/{{ l.mensualidad.id }}/pagar?salida={{ p.id }}" hx-target="#dialogo-contenido">{{ iconos.icono("calendario", 20) }}Cobrar el mes</button>
+    </div>
+    {% endif %}
+
+    {% if falta_caja %}
+    <div class="error" role="alert">La caja está cerrada. <a href="/parqueadero/caja">Abre la caja</a> para poder cobrar.</div>
+    {% endif %}
+
+    {% if calculado > 0 or formulario.valor_cobrado %}
+    <fieldset>
+      <legend>Medio de pago</legend>
+      <div class="opciones opciones--4">
+        {% for medio in medios %}
+        <label class="opcion opcion--centrada opcion--corta">
+          <input type="radio" name="medio_pago" value="{{ medio.value }}" {% if formulario.medio_pago == medio.value %}checked{% endif %}>
+          <span>{{ medio.value|capitalize }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="dos-columnas" data-solo-efectivo>
+      <div class="campo">
+        <label for="recibido">Recibido en efectivo</label>
+        <input id="recibido" name="recibido" inputmode="numeric" class="monto" maxlength="12"
+               value="{{ formulario.recibido|miles }}" placeholder="Opcional, para el vuelto">
+      </div>
+      <div class="campo">
+        <span class="etiqueta">Vuelto</span>
+        <span class="precio-menu" data-vuelto>—</span>
+      </div>
+    </div>
+    {% endif %}
+
+    <details class="ajuste"{% if formulario.valor_cobrado is not none %} open{% endif %}>
+      <summary>Cobrar otro valor</summary>
+      <div class="dos-columnas">
+        <div class="campo">
+          <label for="valor-cobrado">Valor a cobrar</label>
+          <input id="valor-cobrado" name="valor_cobrado" inputmode="numeric" class="monto" maxlength="12"
+                 value="{{ formulario.valor_cobrado|miles }}" placeholder="{{ calculado|miles }}">
+        </div>
+        <div class="campo">
+          <label for="motivo">Motivo</label>
+          <input id="motivo" name="motivo" value="{{ formulario.motivo }}" maxlength="200" placeholder="Noche completa, descuento...">
+        </div>
+      </div>
+      <p class="ayuda">Si cobras distinto a la tarifa ({{ calculado|pesos }}), el motivo es obligatorio y queda en el cierre de caja.</p>
+    </details>
+  </div>
+
+  <div class="dialogo__pie">
+    <div class="total">
+      <span>Total a cobrar</span>
+      <strong data-total>{{ total|pesos }}</strong>
+    </div>
+    <button type="submit" class="boton boton--grande" data-confirmar {% if falta_caja %}disabled{% endif %}>
+      {%- if total == 0 -%}Registrar salida{%- else -%}{{ iconos.icono("imprimir", 20) }}Cobrar e imprimir recibo{%- endif -%}
+    </button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

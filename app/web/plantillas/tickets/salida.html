@@ -1,0 +1,39 @@
+{% extends "tickets/_base.html" %}
+{% set p = parqueo %}
+{% block titulo %}Recibo de salida {{ p.id }}{% endblock %}
+{% block contenido %}
+<section class="ticket__bloque ticket__bloque--centro">
+  <span class="ticket__tipo-documento">Recibo de salida</span>
+  <span>Ticket N.º {{ p.id }}</span>
+  <span class="ticket__placa">{{ p.placa }}</span>
+  <span>{{ nombre_del_tipo[p.tipo] }}</span>
+</section>
+<dl class="ticket__datos">
+  <dt>Entrada</dt><dd>{{ p.entrada_en|fecha_y_hora }}</dd>
+  <dt>Salida</dt><dd>{{ p.salida_en|fecha_y_hora }}</dd>
+  <dt>Tiempo</dt><dd>{{ (p.minutos or 0)|duracion }}</dd>
+  {% if p.mensualidad_id %}
+  <dt>Cobro</dt><dd>Mensualista al día</dd>
+  {% elif p.horas_cobradas %}
+  <dt>Cobro</dt><dd>{{ p.horas_cobradas }} h × {{ p.valor_hora|pesos }}</dd>
+  {% else %}
+  <dt>Cobro</dt><dd>Primeros 15 minutos</dd>
+  {% endif %}
+  {% if p.motivo_ajuste %}
+  <dt>Tarifa</dt><dd>{{ p.valor_calculado|pesos }}</dd>
+  <dt>Ajuste</dt><dd>{{ p.motivo_ajuste }}</dd>
+  {% endif %}
+</dl>
+<div class="ticket__total"><span>Total</span><strong>{{ (p.valor_cobrado or 0)|pesos }}</strong></div>
+{% if p.medio_pago %}
+<dl class="ticket__datos">
+  <dt>Pago</dt><dd>{{ p.medio_pago.value|capitalize }}</dd>
+  {% if p.recibido %}
+  <dt>Recibido</dt><dd>{{ p.recibido|pesos }}</dd>
+  <dt>Vuelto</dt><dd>{{ (p.recibido - p.valor_cobrado)|pesos }}</dd>
+  {% endif %}
+</dl>
+{% endif %}
+{% endblock %}
+{#- El texto del pie de los ajustes es para el ticket de entrada ("conserve este ticket..."). -#}
+{% block pie %}<footer class="ticket__pie">Gracias por su visita.</footer>{% endblock %}

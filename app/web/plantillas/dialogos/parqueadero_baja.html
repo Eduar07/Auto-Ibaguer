@@ -1,0 +1,21 @@
+{#- Dar de baja una mensualidad: desde ahora ese vehículo paga por horas. Si el titular lo pide,
+    también se borran sus datos (Ley 1581); la placa y los pagos quedan en las cuentas. -#}
+{% import "_iconos.html" as iconos %}
+<form class="dialogo__caja" hx-post="/parqueadero/mensualidades/{{ mensualidad.id }}/baja"
+      hx-target="#dialogo-contenido" hx-disabled-elt="#dialogo-contenido button">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Dar de baja la mensualidad de <span class="placa-texto">{{ mensualidad.placa }}</span></h2>
+    <p>{{ mensualidad.titular }} deja de ser mensualista: desde ahora paga por horas. Sus pagos quedan en el historial de caja.</p>
+  </div>
+  <div class="dialogo__cuerpo">
+    <label class="autorizacion">
+      <input type="checkbox" name="borrar_datos" value="si">
+      <span>El titular pidió que se borren sus datos: borrar también su nombre, su celular y las notas (Ley 1581). La placa y los pagos se quedan en las cuentas.</span>
+    </label>
+  </div>
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande boton--peligro">Dar de baja</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

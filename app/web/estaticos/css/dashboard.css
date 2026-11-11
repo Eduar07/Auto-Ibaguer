@@ -575,7 +575,7 @@ legend { padding: 0; margin-bottom: 8px; }
 
 /* Barra de secciones del celular */
 .navegacion-celular {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
   background: var(--superficie); border-top: 1px solid var(--borde); padding: 4px 4px max(8px, env(safe-area-inset-bottom));
 }
 .navegacion-celular a {
@@ -1011,4 +1011,98 @@ legend { padding: 0; margin-bottom: 8px; }
 @media (min-width: 720px) {
   .navegacion-celular { display: none; }
   .titular--siempre h1 { font-size: 30px; }
+}
+
+/* =====================================================================================
+   Parqueadero: entradas y salidas, caja, mensualidades y tarifas
+   =================================================================================== */
+
+.atajos { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.atajos a {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px;
+  border-radius: 999px; background: var(--superficie); border: 1px solid var(--borde);
+  color: var(--tinta); font-size: 14px; font-weight: 600; text-decoration: none;
+}
+.atajos a:hover { border-color: var(--azul); color: var(--azul-texto); }
+.atajos a[aria-current="page"] { background: var(--tinta); border-color: var(--tinta); color: #fff; }
+
+.estado-caja { display: flex; align-items: center; gap: 8px; color: var(--verde); font-weight: 600; font-size: 15px; }
+.estado-caja a { color: var(--azul-texto); }
+.parqueadero .nota a, .parqueadero .error a { color: inherit; font-weight: 700; }
+
+.parqueadero__columnas { display: grid; grid-template-columns: 1fr; gap: 16px; }
+/* La regla general de los campos (.campo input con tres :not) pesa más que una clase sola:
+   repitiendo esa cadena, estos dos tamaños sí le ganan. */
+.campo input.placa--grande:not([type="radio"]):not([type="checkbox"]):not([type="hidden"]) {
+  min-height: 60px; font-family: var(--condensada); font-size: 34px; font-weight: 700;
+  letter-spacing: 0.08em; text-align: center;
+}
+.campo input.placa--grande::placeholder { text-transform: none; font-weight: 600; }
+.campo input.monto--grande:not([type="radio"]):not([type="checkbox"]):not([type="hidden"]) {
+  min-height: 56px; font-size: 24px; font-weight: 700;
+}
+.placa-texto { font-family: var(--condensada); font-weight: 700; letter-spacing: 0.06em; }
+.campo input.monto { font-variant-numeric: tabular-nums; }
+.botones { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.boton-texto--peligro { color: var(--rojo); }
+.boton-texto--peligro:hover { color: var(--rojo-oscuro); }
+.formulario-corto { max-width: 640px; }
+
+.cifras--pequenas { gap: 6px; }
+.cifras--pequenas .cifra { padding: 4px 12px; }
+.cifras--pequenas .cifra__valor { font-size: 22px; }
+
+.parqueos { margin: 0; padding: 0; list-style: none; }
+.parqueo {
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: center;
+  padding: 14px 18px; border-top: 1px solid var(--linea);
+}
+.parqueo__icono { color: var(--tinta-suave); grid-row: span 2; align-self: start; padding-top: 4px; }
+.parqueo__placa { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.parqueo__placa .placa-texto { font-size: 26px; line-height: 1.1; }
+.parqueo__placa .suave { font-size: 14px; }
+.parqueo__tiempo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.parqueo__tiempo strong { font-size: 17px; }
+.parqueo__acciones { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* Un contenedor que solo sirve para que HTMX cambie lo de adentro: no ocupa espacio propio. */
+.contenedor-invisible { display: contents; }
+/* Una mensualidad que hay que cobrar: la raya roja a la izquierda se ve de lejos. */
+.parqueo--debe { box-shadow: inset 4px 0 0 var(--rojo); }
+.aviso-mensualidad { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+
+.ajuste summary { cursor: pointer; font-weight: 700; color: var(--azul-texto); min-height: 44px; display: flex; align-items: center; }
+.ajuste[open] { display: flex; flex-direction: column; gap: 12px; }
+
+.tabla-caja { width: 100%; border-collapse: collapse; font-size: 15px; }
+.tabla-caja th, .tabla-caja td { padding: 10px 12px; border-bottom: 1px solid var(--linea); text-align: left; white-space: nowrap; }
+.tabla-caja thead th { font-size: 13px; color: var(--tinta-suave); font-weight: 700; }
+.tabla-caja td:not(:first-child), .tabla-caja thead th:not(:first-child) { text-align: right; }
+.tabla-caja--cierres td:last-child { text-align: right; }
+.diferencia--cuadra { color: var(--verde); font-weight: 700; }
+.diferencia--sobra { color: var(--azul-texto); font-weight: 700; }
+.diferencia--falta { color: var(--rojo); font-weight: 700; }
+
+.movimientos { margin: 0; padding: 0; list-style: none; }
+.movimientos li {
+  display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: start;
+  padding: 12px 18px; border-top: 1px solid var(--linea); font-size: 15px;
+}
+.movimientos time { color: var(--tinta-suave); }
+.movimientos__que, .movimientos__valor { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.movimientos__que .suave, .movimientos__valor .suave { font-size: 13px; }
+.movimientos__valor { text-align: right; }
+
+.exportar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.exportar .campo { min-width: 160px; }
+
+/* El marco donde se carga el ticket para imprimirlo: existe, pero no se ve. */
+.marco-impresion { position: fixed; right: 0; bottom: 0; width: 0; height: 0; border: 0; opacity: 0; pointer-events: none; }
+
+@media (min-width: 720px) {
+  .parqueadero__columnas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .parqueo { grid-template-columns: auto minmax(180px, 1.3fr) minmax(160px, 1fr) auto; }
+  .parqueo__icono { grid-row: auto; align-self: center; padding-top: 0; }
+  .parqueo__tiempo { flex-direction: column; align-items: flex-start; }
+  .parqueo__acciones { grid-column: auto; justify-content: flex-end; }
+  .titular--siempre:has(> .boton) { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
 }

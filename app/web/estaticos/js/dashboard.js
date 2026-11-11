@@ -257,7 +257,109 @@
   function prepararFormularios(raiz) {
     const cobro = raiz.querySelector("form[data-formulario='cobro']");
     if (cobro) actualizarCobro(cobro, false);
+    const salida = raiz.querySelector("form[data-formulario='salida-parqueo']");
+    if (salida) actualizarSalida(salida);
+    const cierre = raiz.querySelector("form[data-formulario='cierre-caja']");
+    if (cierre) actualizarCierre(cierre);
   }
+
+  // --- Parqueadero -------------------------------------------------------------------------
+
+  function pesos(numero) {
+    return "$" + conPuntos(numero);
+  }
+
+  // Salida: el total sigue al "valor a cobrar" (si se escribió otro) y el vuelto, a lo
+  // recibido. El vuelto solo se calcula aquí: a la caja entra el total, nunca el billete.
+  function actualizarSalida(formulario) {
+    const calculado = Number(formulario.dataset.calculado || 0);
+    const escrito = soloDigitos(formulario.querySelector("input[name='valor_cobrado']")?.value);
+    const total = escrito ? Number(escrito) : calculado;
+    formulario.querySelector("[data-total]").textContent = pesos(total);
+
+    const motivo = formulario.querySelector("input[name='motivo']");
+    if (motivo) motivo.required = total !== calculado;
+
+    const medio = formulario.querySelector("input[name='medio_pago']:checked");
+    const efectivo = !medio || medio.value === "efectivo";
+    const bloque = formulario.querySelector("[data-solo-efectivo]");
+    if (bloque) bloque.hidden = !efectivo;
+
+    const vuelto = formulario.querySelector("[data-vuelto]");
+    if (vuelto) {
+      const recibido = soloDigitos(formulario.querySelector("input[name='recibido']")?.value);
+      if (!recibido) vuelto.textContent = "—";
+      else if (Number(recibido) >= total) vuelto.textContent = pesos(Number(recibido) - total);
+      else vuelto.textContent = "Faltan " + pesos(total - Number(recibido));
+    }
+  }
+
+  // Cierre de caja: lo contado contra lo que debe haber en el cajón.
+  function actualizarCierre(formulario) {
+    const esperado = Number(formulario.dataset.esperado || 0);
+    const contado = soloDigitos(formulario.querySelector("input[name='efectivo_contado']").value);
+    const texto = formulario.querySelector("[data-diferencia]");
+    if (!contado) {
+      texto.textContent = "Escribe lo que contaste y aquí ves si cuadra.";
+      return;
+    }
+    const diferencia = Number(contado) - esperado;
+    texto.textContent = diferencia === 0
+      ? "Cuadra exacto."
+      : (diferencia > 0 ? "Sobran " : "Faltan ") + pesos(Math.abs(diferencia)) + ".";
+  }
+
+  // Pago de mensualidad: 30 días seguidos contando el primero.
+  function ajustarHasta(formulario) {
+    const desde = formulario.querySelector("input[name='desde']").value;
+    if (!desde) return;
+    const [anio, mes, dia] = desde.split("-").map(Number);
+    const fin = new Date(Date.UTC(anio, mes - 1, dia + 29));
+    formulario.querySelector("input[name='hasta']").value = fin.toISOString().slice(0, 10);
+  }
+
+  // Imprimir: el ticket se carga en un marco escondido y se abre la ventana de impresión.
+  // Con Chrome abierto con --kiosk-printing, sale directo a la impresora sin preguntar.
+  function imprimir(direccion) {
+    if (!direccion) return;
+    let marco = document.getElementById("marco-impresion");
+    if (!marco) {
+      marco = document.createElement("iframe");
+      marco.id = "marco-impresion";
+      marco.className = "marco-impresion";
+      marco.title = "Ticket para imprimir";
+      marco.setAttribute("aria-hidden", "true");
+      marco.tabIndex = -1;
+      document.body.append(marco);
+    }
+    marco.onload = () => {
+      try {
+        marco.contentWindow.focus();
+        marco.contentWindow.print();
+      } catch (_) {
+        window.open(direccion, "_blank", "noopener");
+      }
+    };
+    marco.src = direccion;
+  }
+
+  document.body.addEventListener("imprimir", (evento) => imprimir(evento.detail.value));
+
+  document.addEventListener("click", (evento) => {
+    const boton = evento.target.closest("[data-imprimir]");
+    if (boton) imprimir(boton.dataset.imprimir);
+  });
+
+  // Después de registrar una entrada: el formulario queda listo para la siguiente placa.
+  document.body.addEventListener("limpiar-entrada", () => {
+    const formulario = document.querySelector("form[data-formulario='entrada-parqueo']");
+    if (!formulario) return;
+    for (const nombre of ["placa", "observaciones"]) {
+      const campo = formulario.querySelector(`input[name='${nombre}']`);
+      if (campo) campo.value = "";
+    }
+    formulario.querySelector("input[name='placa']").focus();
+  });
 
   document.addEventListener("change", (evento) => {
     const formulario = evento.target.closest("form[data-formulario]");
@@ -268,11 +370,18 @@
     if (formulario.dataset.formulario === "cobro") {
       actualizarCobro(formulario, evento.target.name === "servicio_id");
     }
+    if (formulario.dataset.formulario === "salida-parqueo") actualizarSalida(formulario);
+    if (formulario.dataset.formulario === "pago-mensualidad" && evento.target.name === "desde") {
+      ajustarHasta(formulario);
+    }
   });
 
   document.addEventListener("input", (evento) => {
-    const formulario = evento.target.closest("form[data-formulario='cobro']");
-    if (formulario) actualizarCobro(formulario, false);
+    const formulario = evento.target.closest("form[data-formulario]");
+    if (!formulario) return;
+    if (formulario.dataset.formulario === "cobro") actualizarCobro(formulario, false);
+    if (formulario.dataset.formulario === "salida-parqueo") actualizarSalida(formulario);
+    if (formulario.dataset.formulario === "cierre-caja") actualizarCierre(formulario);
   });
 
   // --- Clientes ---------------------------------------------------------------------------
@@ -344,4 +453,11 @@
 
   aplicarPestana();
   prepararCuentas();
+
+  // Una pantalla que llega pidiendo imprimir (el resumen al cerrar la caja).
+  const alAbrir = document.querySelector("[data-imprimir-al-abrir]");
+  if (alAbrir) {
+    imprimir(alAbrir.dataset.imprimirAlAbrir);
+    history.replaceState(null, "", location.pathname); // al recargar, no imprime otra vez
+  }
 })();

@@ -1,0 +1,41 @@
+{#- Los vehículos que están adentro, con lo que pagarían si salieran ahora. Se actualiza
+    cada minuto y después de cada entrada o salida. -#}
+{% import "_iconos.html" as iconos %}
+<div class="lista__cabeza">
+  <h3>Adentro</h3>
+  <span class="cifras cifras--pequenas">
+    <span class="cifra"><span class="cifra__valor">{{ conteo[TipoParqueo.CARRO] }}</span><span class="cifra__nombre">carro{{ "s" if conteo[TipoParqueo.CARRO] != 1 }}</span></span>
+    <span class="cifra"><span class="cifra__valor">{{ conteo[TipoParqueo.MOTO] }}</span><span class="cifra__nombre">moto{{ "s" if conteo[TipoParqueo.MOTO] != 1 }}</span></span>
+  </span>
+</div>
+{% if vehiculos %}
+<ul class="parqueos">
+  {% for v in vehiculos %}
+  <li class="parqueo" id="parqueo-{{ v.id }}">
+    <span class="parqueo__icono">{{ iconos.icono(v.tipo.value, 26) }}</span>
+    <span class="parqueo__placa">
+      <strong class="placa-texto">{{ v.placa }}</strong>
+      <span class="suave">Ticket {{ v.id }} · entró {{ cuando_paso(v.entrada_en) }}</span>
+      {% if v.observaciones %}<span class="suave">{{ v.observaciones }}</span>{% endif %}
+    </span>
+    <span class="parqueo__tiempo">
+      <strong>{{ v.minutos|duracion }}</strong>
+      {% if v.mensualista_hasta %}
+      <span class="insignia insignia--verde">Mensualista</span>
+      {% else %}
+      <span class="suave">Va en {{ v.valor_a_la_fecha|pesos }}</span>
+      {% if v.mensualidad_vencida %}<span class="insignia insignia--rojo">Debe la mensualidad</span>{% endif %}
+      {% endif %}
+    </span>
+    <span class="parqueo__acciones">
+      <button type="button" class="boton" hx-get="/parqueadero/{{ v.id }}/salida" hx-target="#dialogo-contenido">Cobrar</button>
+      <button type="button" class="boton boton--icono" data-imprimir="/parqueadero/tickets/{{ v.id }}"
+              aria-label="Imprimir otra vez el ticket {{ v.id }}" title="Imprimir otra vez el ticket">{{ iconos.icono("imprimir", 20) }}</button>
+      <button type="button" class="boton-texto boton-texto--peligro" hx-get="/parqueadero/{{ v.id }}/anular" hx-target="#dialogo-contenido">Anular</button>
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="lista__vacia">No hay vehículos adentro. Cuando registres una entrada, aparece aquí.</p>
+{% endif %}

@@ -1,0 +1,81 @@
+{% extends "pagina.html" %}
+{% import "_iconos.html" as iconos %}
+{% from "_parqueadero_atajos.html" import atajos %}
+
+{% block titulo %}Parqueadero · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla parqueadero">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Parqueadero</h1>
+      <p>Carro {{ ajustes.hora_carro|pesos }} y moto {{ ajustes.hora_moto|pesos }} la hora, con {{ ajustes.gracia_minutos }} minutos de gracia después de cada hora.</p>
+    </div>
+  </div>
+  {{ atajos("entradas") }}
+
+  {% if caja_de_otro_dia %}
+  <div class="error">La caja está abierta desde {{ cuando_paso(caja.abierta_en) }} Ciérrala contando el cajón y abre la de hoy: así cada día cuadra aparte. <a href="/parqueadero/caja">Ir a la caja</a></div>
+  {% elif caja %}
+  <p class="estado-caja">{{ iconos.icono("caja", 18) }}Caja abierta {{ cuando_paso(caja.abierta_en) }} · <a href="/parqueadero/caja">Ver caja</a></p>
+  {% else %}
+  <div class="nota nota--suelta">
+    {{ iconos.icono("info", 20) }}
+    <span>La caja está cerrada: puedes registrar entradas, pero para cobrar salidas primero <a href="/parqueadero/caja">abre la caja</a>.</span>
+  </div>
+  {% endif %}
+
+  <div id="por-cobrar" class="contenedor-invisible" hx-get="/parqueadero/por-cobrar"
+       hx-trigger="mensualidad-pagada from:body, every 120s">
+    {% include "_parqueadero_por_cobrar.html" %}
+  </div>
+
+  <div class="parqueadero__columnas">
+    <section class="panel" aria-labelledby="t-entrada">
+      <h2 id="t-entrada">Entrada</h2>
+      <form class="campos-juntos" data-formulario="entrada-parqueo" hx-post="/parqueadero/entradas"
+            hx-target="#adentro" hx-disabled-elt="find button[type='submit']" autocomplete="off">
+        <fieldset>
+          <legend class="solo-lector">Tipo de vehículo</legend>
+          <div class="opciones opciones--2">
+            {% for tipo in TipoParqueo %}
+            <label class="opcion opcion--centrada">
+              <input type="radio" name="tipo" value="{{ tipo.value }}" required {% if loop.first %}checked{% endif %}>
+              {{ iconos.icono(tipo.value, 30) }}<span>{{ nombre_del_tipo[tipo] }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        <div class="campo">
+          <label for="placa-entrada">Placa</label>
+          <input id="placa-entrada" name="placa" class="placa placa--grande" required maxlength="10"
+                 placeholder="ABC123" autocapitalize="characters" spellcheck="false" autofocus>
+        </div>
+        <div class="campo">
+          <label for="observaciones">Estado o pertenencias <span class="suave">(opcional, sale en el ticket)</span></label>
+          <input id="observaciones" name="observaciones" maxlength="120" placeholder="Deja casco, rayón en la puerta...">
+        </div>
+        <button type="submit" class="boton boton--grande">{{ iconos.icono("imprimir", 20) }}Registrar entrada</button>
+      </form>
+    </section>
+
+    <section class="panel" aria-labelledby="t-salida">
+      <h2 id="t-salida">Salida</h2>
+      <form class="campos-juntos" hx-get="/parqueadero/salida" hx-target="#dialogo-contenido" autocomplete="off">
+        <div class="campo">
+          <label for="buscar-salida">Placa o número del ticket</label>
+          <input id="buscar-salida" name="q" class="placa placa--grande" required maxlength="10"
+                 placeholder="ABC123 o 125" autocapitalize="characters" spellcheck="false">
+        </div>
+        <button type="submit" class="boton boton--grande boton--oscuro">Cobrar salida</button>
+      </form>
+      <p class="ayuda">También puedes tocar <strong>Cobrar</strong> en la lista de abajo.</p>
+    </section>
+  </div>
+
+  <section class="lista" id="adentro" aria-live="polite"
+           hx-get="/parqueadero/adentro" hx-trigger="every 60s">
+    {% include "_parqueadero_adentro.html" %}
+  </section>
+</main>
+{% endblock %}

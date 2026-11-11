@@ -1,0 +1,69 @@
+{#- Cobrar un periodo de mensualidad: 30 días seguidos desde el día siguiente al último pagado. -#}
+{% import "_iconos.html" as iconos %}
+{% set m = mensualidad %}
+<form class="dialogo__caja" data-formulario="pago-mensualidad"
+      hx-post="/parqueadero/mensualidades/{{ m.id }}/pagar" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  {% if salida %}<input type="hidden" name="salida" value="{{ salida }}">{% endif %}
+  <div class="dialogo__cabeza">
+    {% if salida %}
+    <button type="button" class="boton-texto boton-volver" hx-get="/parqueadero/{{ salida }}/salida" hx-target="#dialogo-contenido">{{ iconos.icono("volver", 18, 2.2) }}Volver a la salida</button>
+    {% else %}
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    {% endif %}
+    <h2 id="dialogo-titulo">Cobrar mensualidad de <span class="placa-texto">{{ m.placa }}</span></h2>
+    <p>{{ m.titular }} · {{ nombre_del_tipo[m.tipo] }} · {{ m.valor_mensual|pesos }} al mes</p>
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    {% if caja is none %}
+    <div class="error" role="alert">La caja está cerrada. <a href="/parqueadero/caja">Abre la caja</a> para recibir el pago.</div>
+    {% endif %}
+    <div class="dos-columnas">
+      <div class="campo">
+        <label for="desde">Desde</label>
+        <input id="desde" name="desde" type="date" required value="{{ formulario.desde.isoformat() if formulario.desde else '' }}">
+      </div>
+      <div class="campo">
+        <label for="hasta">Hasta</label>
+        <input id="hasta" name="hasta" type="date" required value="{{ formulario.hasta.isoformat() if formulario.hasta else '' }}">
+      </div>
+    </div>
+    <p class="ayuda">30 días seguidos contando el primero, desde el día siguiente al último que pagó (aunque pague tarde). Si cambias "Desde", "Hasta" se ajusta solo.</p>
+    <div class="campo">
+      <label for="valor-pago">Valor</label>
+      <input id="valor-pago" name="valor" inputmode="numeric" class="monto" required maxlength="12"
+             value="{{ formulario.valor|miles }}">
+    </div>
+    <fieldset>
+      <legend>Medio de pago</legend>
+      <div class="opciones opciones--4">
+        {% for medio in medios %}
+        <label class="opcion opcion--centrada opcion--corta">
+          <input type="radio" name="medio_pago" value="{{ medio.value }}" required {% if formulario.medio_pago == medio.value %}checked{% endif %}>
+          <span>{{ medio.value|capitalize }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% if pagos %}
+    <div class="campo">
+      <span class="etiqueta">Últimos pagos</span>
+      <ul class="lista-simple">
+        {% for pago in pagos %}
+        {% if pago.caja_id %}
+        <li>{{ pago.desde|fecha }} al {{ pago.hasta|fecha }} · {{ pago.valor|pesos }} · {{ pago.medio_pago.value|capitalize }}
+          <button type="button" class="boton-texto" data-imprimir="/parqueadero/mensualidades/pagos/{{ pago.id }}/ticket">Recibo</button></li>
+        {% else %}
+        <li>{{ pago.desde|fecha }} al {{ pago.hasta|fecha }} · ya lo traía pagado (no entró a la caja)</li>
+        {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande" {% if caja is none %}disabled{% endif %}>{{ iconos.icono("imprimir", 20) }}Cobrar e imprimir recibo</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

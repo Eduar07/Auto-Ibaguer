@@ -4,6 +4,7 @@ Sistema de turnos para el lavadero de carros y motos **Auto Ibaguer**:
 
 - **Bot de WhatsApp**: el cliente pide turno, pregunta precios y ve cómo va la fila. Gemini le ayuda a entender lo que la persona escribe con sus propias palabras, y el bot responde también quejas, felicitaciones, preguntas sobre el negocio y la charla.
 - **Dashboard**: el administrador mueve la fila, pasa vehículos a los puestos, cobra y lleva las cuentas del día, desde el celular, la tablet o el computador.
+- **Parqueadero**: entradas y salidas de carros y motos con ticket impreso, cobro por hora, mensualidades y su propia caja, aparte de la del lavadero.
 - **Base de datos PostgreSQL**: ahí queda todo guardado.
 
 ## Cómo va
@@ -21,6 +22,7 @@ Sistema de turnos para el lavadero de carros y motos **Auto Ibaguer**:
 | 7b · Un bot que responde como una persona | Construido: quejas, felicitaciones, "quiero hablar con una persona" y "cuántas lavadas llevo", que llegan a la pantalla **Comentarios**; las preguntas sobre el negocio se contestan con la ficha del negocio y la charla ("estoy cansado", "te amo") la escribe Gemini, revisada por el bot; los mensajes graves reciben un texto fijo con las líneas de ayuda. Desde **Comentarios** se le responde al cliente por WhatsApp, con el bot en pausa mientras tanto. El bot tiene memoria (entiende un "sí porfa" por lo que venían hablando), conversa con naturalidad sin vender a la fuerza, no vuelve a preguntar lo que el cliente ya dijo y no saluda ni se despide siempre igual. Probado de punta a punta en **Probar el bot** y con un WhatsApp de mentira. Falta probarlo con WhatsApp conectado. |
 | 8 · Producción | Listo para subir: la imagen de la nube, Render con su base de datos (`render.yaml`), la revisión de salud con el reloj, los avisos de caída por correo y la copia de seguridad diaria, cifrada y fuera de Render. Probado como lo hará Render, en GitHub. Falta crear la cuenta y subirlo: [Poner el sistema en la nube](#poner-el-sistema-en-la-nube). |
 | 9 · Piloto en el local | — |
+| 10 · Parqueadero | Construido: entradas con ticket, salidas con el cobro por hora y el vuelto, mensualidades (también las que ya venían pagadas), caja con su cierre, tarifas y el archivo para Excel. Probado con pruebas automáticas y en el navegador. Falta probarlo en el local con la impresora de tickets: [El parqueadero](#el-parqueadero). |
 
 ## Qué necesitas en tu computador
 
@@ -70,6 +72,78 @@ Para revisar solo el servidor, <http://localhost:8000/salud> debe decir `{"estad
 | Lavado **Demorado** | Cuando un lavado pasa su duración estimada, su puesto se pone naranja y arriba se cuenta. En el celular, la pestaña de esa fila muestra un punto naranja aunque estés viendo la otra. Casi siempre quiere decir que ya está listo y falta marcarlo: mientras tanto el cliente no recibe el aviso y la espera de la fila se calcula mal. |
 
 En el celular se ve una fila a la vez (pestañas **Carros** y **Motos**) y las secciones quedan en la barra de abajo. Para ver cómo queda en el celular sin salir del computador: en Chrome, `F12` y luego `Ctrl+Shift+M`. Desde el celular de verdad, cuando esté en la nube: [Poner el sistema en la nube](#poner-el-sistema-en-la-nube).
+
+## El parqueadero
+
+Es la sección **Parqueadero** del dashboard (en el celular, **Parqueo** en la barra de abajo). Tiene su propia caja: la plata del parqueadero no se mezcla con la del lavadero. No cuenta puestos libres: eso se ve en el patio.
+
+| Pantalla | Qué se hace ahí |
+|---|---|
+| **Entradas y salidas** | Registrar la entrada (carro o moto, la placa y, si quieres, el estado o lo que deja: sale en el ticket) e imprimir el ticket. Cobrar la salida escribiendo la placa o el número del ticket, o con **Cobrar** en la lista de los que están adentro, que dice cuánto va cada uno. **Anular** una entrada mal hecha: pide el motivo y no cuenta en la caja. |
+| **Caja** | Abrirla con la base para vueltos, ver lo que ha entrado por cada medio de pago y cerrarla contando el efectivo: dice si cuadró, sobró o faltó, e imprime el resumen para firmar. Abajo, los cierres anteriores y el archivo para Excel. |
+| **Mensualidades** | Crear la del cliente (placa, nombre, celular opcional y el valor que acuerdes), cobrar cada mes e imprimir el recibo. Dice quién está al día, a quién se le vence en 3 días o menos y quién debe. |
+| **Tarifas y ticket** | El valor de la hora de carro y de moto, los minutos de gracia, la fracción de los primeros 15 minutos (opcional) y lo que sale impreso: nombre, NIT, dirección, teléfono, el texto del final del ticket y el ancho del papel. |
+
+### Cómo cobra
+
+Por horas, con minutos de gracia después de cada hora. Con carro a $3.000, moto a $1.500 y 15 minutos de gracia:
+
+| Tiempo adentro | Horas que paga | Carro | Moto |
+|---|---|---|---|
+| Hasta 1 h 15 min | 1 | $3.000 | $1.500 |
+| De 1 h 16 min a 2 h 15 min | 2 | $6.000 | $3.000 |
+| De 2 h 16 min a 3 h 15 min | 3 | $9.000 | $4.500 |
+
+- Cada vehículo paga con la tarifa que había cuando entró: si cambias un precio, los que ya están adentro siguen con el de antes.
+- Si llenas la fracción de los primeros 15 minutos, quien sale antes de 15 minutos paga ese valor y no la hora completa.
+- Para cobrar otro valor (una noche completa, un descuento), abre **Cobrar otro valor** en la salida: pide el motivo, y el motivo sale en la caja y en el archivo para Excel.
+- Si escribes cuánto te dieron en efectivo, dice cuánto devolver y lo pone en el recibo. A la caja entra solo lo cobrado, nunca el billete completo.
+- El mensualista al día sale sin pagar y sin necesidad de caja abierta. Si se le venció, paga por horas y el sistema avisa que tiene mensualidad.
+
+**Tarifas máximas**: en Bucaramanga la Alcaldía fija topes por categoría de parqueadero. Revisa que tus valores no pasen el de tu categoría y si te toca cobrar aparte la fracción de los primeros 15 minutos; ambos se cambian en **Tarifas y ticket** sin tocar el código.
+
+### La caja
+
+Solo hay una caja abierta a la vez. Sin caja abierta se pueden registrar entradas, pero no cobrar. Al cerrarla cuentas el efectivo del cajón, incluida la base: debe haber la base más todo lo cobrado en efectivo (salidas y mensualidades), y el sistema dice si cuadró, sobró o faltó. Lo de Nequi, Daviplata y tarjeta se muestra aparte porque no está en el cajón: eso lo comparas con lo que dicen esas apps.
+
+Lo normal es cerrarla al final de cada día y abrir una nueva al otro día, para que cada día cuadre aparte. Si una caja sigue abierta de un día anterior, la pantalla lo avisa en rojo.
+
+### Mensualidades
+
+El valor lo pones tú en cada mensualidad, y al cobrar cada mes se puede cambiar. Cada pago cubre 30 días seguidos contando el primero (del 10 de noviembre al 9 de diciembre) y el sistema propone el siguiente periodo justo después del último pagado, aunque pague unos días tarde: si se le venció el 10 y paga el 13, el mes va del 11 al 10 (si no, cada atraso le regalaría días). Si lleva más de un mes sin pagar, el mes empieza el día que paga. En el cobro puedes cambiar las fechas. No deja cobrar dos veces los mismos días.
+
+Cuando a alguien se le vence la mensualidad, lo ves sin buscarlo:
+
+- En **Entradas y salidas**, arriba y en rojo: cuántas hay por cobrar y desde cuándo debe cada una.
+- En **Mensualidades**, primero las que deben, con una raya roja: "Debe desde el 11/11 · 3 días sin pagar". Las que vencen en 3 días o menos salen en naranja.
+- Si su vehículo entra, el aviso dice que debe la mensualidad, y en la lista de los que están adentro sale **Debe la mensualidad**.
+- Al cobrar su salida, **Cobrar el mes** recibe el pago, imprime el recibo y vuelve a la salida, que ya sale en $0. Si no paga el mes, la salida se cobra por horas.
+
+Al pagar, cambia sola a verde ("Al día hasta el 10/12").
+
+Para los mensualistas que ya traían días pagados, por ejemplo con el dueño anterior, al crear la mensualidad llena **Ya trae pagado hasta**: sale sin pagar hasta ese día, el primer cobro empieza el día siguiente y en la caja no entra plata que no recibiste.
+
+Para guardar el nombre y el celular del titular hay que marcar que él lo autorizó (Ley 1581). Si después pide que se borren, al darle de baja marca **El titular pidió que se borren sus datos**: se borran su nombre, su celular y las notas, y la placa y los pagos se quedan en las cuentas.
+
+### Imprimir los tickets
+
+Sirve cualquier impresora térmica de tickets de 58 u 80 mm que Windows reconozca (por USB, con el driver del fabricante). El ancho del papel se elige en **Tarifas y ticket**.
+
+1. Instala el driver de la impresora y ponla como **predeterminada** en Windows (**Configuración > Bluetooth y dispositivos > Impresoras y escáneres**). Apaga **Permitir que Windows administre mi impresora predeterminada** para que no la cambie solo.
+2. Imprime un ticket a mano una vez: en la ventana de Chrome elige la impresora de tickets y, en **Más opciones**, márgenes **Ninguno** y sin **Encabezados y pies de página**.
+3. Para que imprima sin preguntar, abre el parqueadero con un acceso directo de Chrome con `--kiosk-printing`. En el escritorio, clic derecho > **Nuevo > Acceso directo**, y en la ubicación:
+   ```text
+   "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing https://tu-direccion/parqueadero
+   ```
+   Antes de usarlo, cierra todas las ventanas de Chrome: la opción solo se activa si Chrome arranca con ella.
+
+Si la impresora deja mucho papel en blanco después del ticket, en las **Preferencias de impresión** de la impresora busca la opción de cortar al final del documento o de reducir el margen de abajo (cada marca la llama distinto).
+
+Cualquier ticket se puede reimprimir: el botón de la impresora en la lista de los que están adentro, **Recibo** en los pagos de una mensualidad e **Imprimir resumen** en la caja.
+
+### Las cuentas en Excel
+
+En **Caja > Llevar las cuentas en Excel** eliges desde y hasta qué día y descargas un archivo con cada cobro (salidas y mensualidades): fecha, hora, placa, tipo, tiempo, medio de pago, valor, ajuste y caja. Excel lo abre directo con doble clic, con tildes y columnas en su sitio.
 
 ## El bot
 
@@ -427,6 +501,7 @@ app/
 ├── turnos/         la fila: turnos, llamados, avisos, puestos, historial y cobro
 ├── bot/            conversación de WhatsApp: pasos, botones, textos, avisos y la pausa
 ├── comentarios/    quejas, felicitaciones y preguntas para el administrador, y responderle al cliente
+├── parqueadero/    entradas y salidas, cobro por hora, mensualidades, su caja y sus tarifas
 ├── integraciones/  mensajes que entran y salen de WhatsApp (bandejas y reintentos)
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores
 ├── reloj/          lo que pasa solo cada 30 segundos (gracias, sesiones del bot, avisos)
@@ -463,7 +538,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Archivo | Qué tiene |
 |---|---|
 | `comun.py` | Lo que comparten las pantallas: plantillas, la sesión del administrador y las respuestas. |
-| `entrar.py`, `fila.py`, `clientes.py`, `comentarios.py`, `configuracion.py`, `textos_del_bot.py`, `mensajes.py`, `probar_bot.py` | Las rutas de cada pantalla. Llaman a los casos de uso; no tienen reglas propias. |
+| `entrar.py`, `fila.py`, `clientes.py`, `comentarios.py`, `configuracion.py`, `textos_del_bot.py`, `mensajes.py`, `probar_bot.py`, `parqueadero.py` | Las rutas de cada pantalla. Llaman a los casos de uso; no tienen reglas propias. |
 | `webhook.py` | La dirección a la que Meta avisa cada mensaje de WhatsApp. No pide la sesión del administrador: la protege la firma de Meta. |
 | `tablero.py` | Arma lo que muestra la fila en vivo. Solo lee. |
 | `en_vivo.py` | Le avisa al navegador cuando una fila cambia (PostgreSQL `LISTEN/NOTIFY` y Server-Sent Events). |
@@ -480,6 +555,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Horario, tiempo de gracia, cuándo avisar, nombre y teléfono del negocio, aviso de datos | Pantalla **Configuración** del dashboard (se guarda en la tabla `configuracion`). No se toca el código. |
 | Servicios, precios y puestos | Pantalla **Configuración**. Un precio nuevo apaga el viejo y crea otro en `servicio_precio`; así los cobros pasados no cambian. De la duración estimada de cada servicio dependen la espera de la fila y la alerta de lavado demorado. |
 | Lo que dice el bot | **Configuración > Textos del bot** para los 58 que más leen los clientes, y **Configuración > Datos personales** para el aviso de datos. Cada texto cambiado es una fila `texto_bot.<nombre>` en la tabla `configuracion`. Los botones y los demás textos, en `app/bot/textos.py`. |
+| Tarifas del parqueadero y lo que sale en el ticket | Pantalla **Parqueadero > Tarifas y ticket** (filas `parqueadero.<nombre>` en la tabla `configuracion`). Cómo se ve el ticket impreso, en `app/web/estaticos/css/ticket.css`. |
 | Colores, letras y tamaños del dashboard | `app/web/estaticos/css/dashboard.css`. Los colores del diseño están al comienzo, con nombre. |
 | Conexión a la base, claves de Meta y Gemini, reloj encendido o apagado | Archivo `.env`, que nunca se sube a GitHub. `.env.example` solo trae los nombres. En la nube, en Render: el servidor > **Environment**. |
 | El servidor y la base de la nube (plan, región, versión de PostgreSQL) | `render.yaml`. Render aplica los cambios al unirlos a `main`. |
@@ -487,8 +563,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 ## Cambiar una tabla
 
 1. Cambia el modelo en el `tablas.py` del módulo.
-2. Crea la migración con el siguiente número (la última es la 0007):
-   `uv run alembic revision --autogenerate --rev-id 0008 -m "que cambio"`
+2. Crea la migración con el siguiente número (la última es la 0008):
+   `uv run alembic revision --autogenerate --rev-id 0009 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
 4. Aplícala: `uv run auto-ibaguer preparar-base`
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.

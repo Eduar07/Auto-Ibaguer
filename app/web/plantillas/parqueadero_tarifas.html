@@ -1,0 +1,17 @@
+{% extends "pagina.html" %}
+{% from "_parqueadero_atajos.html" import atajos %}
+
+{% block titulo %}Tarifas del parqueadero · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla parqueadero">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Tarifas y ticket</h1>
+      <p>Lo que se cobra por hora y lo que sale impreso. Un cambio de precio solo aplica a los vehículos que entren después.</p>
+    </div>
+  </div>
+  {{ atajos("tarifas") }}
+  {% include "_parqueadero_tarifas.html" %}
+</main>
+{% endblock %}

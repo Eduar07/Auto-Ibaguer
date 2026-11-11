@@ -21,6 +21,7 @@ from app.bot.conversacion import (
 )
 from app.bot.interprete import NO, SI, Intencion, Interpretacion
 from app.integraciones import gemini
+from pruebas.fabricas import LUNES_8AM
 from pruebas.test_bot import paso
 from pruebas.test_gemini import GeminiDeMentira
 from pruebas.test_probar_bot import CELULAR, escribir
@@ -183,7 +184,8 @@ def test_pedir_mi_turno_no_es_ver_el_turno_que_tiene(sesion: Session):
     de_mentira = GeminiDeMentira(Interpretacion(Q.PEDIR_TURNO))
     entrada = conversacion.Entrada(CELULAR, texto="quiero pedir mi turno")
 
-    mensajes = conversacion.atender(sesion, entrada, interprete=de_mentira)
+    # A las 8 a.m. del lunes: con la hora real, de noche, el bot diría que ya cerró.
+    mensajes = conversacion.atender(sesion, entrada, interprete=de_mentira, ahora=LUNES_8AM)
 
     assert de_mentira.mensajes == ["quiero pedir mi turno"]  # lo leyó Gemini
     assert mensajes[0].texto.startswith("Para darte turno guardamos tu nombre")

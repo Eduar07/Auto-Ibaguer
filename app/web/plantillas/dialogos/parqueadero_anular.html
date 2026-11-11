@@ -1,0 +1,22 @@
+{#- Anular una entrada que no debió existir: placa mal escrita, entrada repetida. -#}
+{% import "_iconos.html" as iconos %}
+<form class="dialogo__caja" hx-post="/parqueadero/{{ parqueo.id }}/anular" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Anular la entrada de <span class="placa-texto">{{ parqueo.placa }}</span></h2>
+    <p>Ticket {{ parqueo.id }} · entró {{ cuando_paso(parqueo.entrada_en) }} Una entrada anulada no se cobra ni cuenta en la caja.</p>
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <div class="campo">
+      <label for="motivo-anular">¿Por qué se anula?</label>
+      <input id="motivo-anular" name="motivo" value="{{ motivo }}" required maxlength="200"
+             placeholder="Placa mal escrita, entrada repetida...">
+    </div>
+  </div>
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande boton--peligro">Anular entrada</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

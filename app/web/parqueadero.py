@@ -1,0 +1,915 @@
+"""Las pantallas del parqueadero: entrada y salida, caja, mensualidades, tarifas y tickets.
+
+Las reglas no viven aquí (están en app.parqueadero): aquí se leen los formularios, se llama
+el caso de uso, se confirma (commit) y se le dice al navegador qué actualizar o imprimir.
+
+Imprimir: el servidor manda el evento "imprimir" con la dirección del ticket y el navegador
+lo carga en un marco escondido y abre la ventana de impresión (dashboard.js). Los tickets
+son páginas aparte, con el tamaño del papel de la impresora térmica (58 u 80 mm).
+"""
+
+import csv
+import io
+from collections.abc import Callable
+from dataclasses import replace
+from datetime import date, datetime
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, Response
+from sqlalchemy.orm import Session
+
+from app import formato, tiempo
+from app.errores import ReglaDelNegocio
+from app.parqueadero import casos_de_uso as casos
+from app.parqueadero import consultas, reglas
+from app.parqueadero.estados import NOMBRE_DEL_TIPO, EstadoParqueo, TipoParqueo
+from app.parqueadero.tablas import CajaParqueadero, Mensualidad, PagoMensualidad, Parqueo
+from app.parqueadero.tarifas import ANCHOS_DE_TICKET, guardar_ajustes, leer_ajustes
+from app.turnos.estados import MedioPago
+from app.web.comun import (
+    Admin,
+    SesionBD,
+    con_eventos,
+    entero,
+    html,
+    leer_pesos,
+    pagina,
+    plantillas,
+    sin_cambios,
+    verificar_origen,
+)
+
+router = APIRouter(prefix="/parqueadero", dependencies=[Depends(verificar_origen)])
+
+
+def _fecha_y_hora(momento: datetime) -> str:
+    """ "12/11/2026 8:05 a.m.", en Bogotá: corto, para el ticket."""
+    local = tiempo.hora_local(momento)
+    return f"{local:%d/%m/%Y} {formato.hora(local)}"
+
+
+plantillas.env.filters["fecha_y_hora"] = _fecha_y_hora
+plantillas.env.globals.update(TipoParqueo=TipoParqueo, nombre_del_tipo=NOMBRE_DEL_TIPO)
+
+MEDIOS = list(MedioPago)
+
+
+def _medio(texto: str) -> MedioPago | None:
+    return MedioPago(texto) if texto in {medio.value for medio in MedioPago} else None
+
+
+def _con_retarget(respuesta: Response, destino: str) -> Response:
+    respuesta.headers["HX-Retarget"] = destino
+    respuesta.headers["HX-Reswap"] = "innerHTML"
+    return respuesta
+
+
+def _hoy() -> date:
+    return tiempo.hora_local(tiempo.ahora()).date()
+
+
+def _caja_de_otro_dia(caja: CajaParqueadero | None) -> bool:
+    """La caja abierta viene de un día anterior: alguien olvidó cerrarla al final del día."""
+    return caja is not None and tiempo.hora_local(caja.abierta_en).date() < _hoy()
+
+
+# --- La pantalla principal: entrada, salida y quién está adentro -------------------------
+
+
+def _contexto_adentro(sesion: Session) -> dict[str, Any]:
+    vehiculos = consultas.adentro(sesion)
+    return {"vehiculos": vehiculos, "conteo": consultas.contar_por_tipo(vehiculos)}
+
+
+def _lista_adentro(request: Request, sesion: Session, **eventos: Any) -> Response:
+    respuesta = html(request, "_parqueadero_adentro.html", _contexto_adentro(sesion))
+    return con_eventos(respuesta, **eventos) if eventos else respuesta
+
+
+def _por_cobrar(sesion: Session) -> list[consultas.FilaMensualidad]:
+    """Las mensualidades vencidas o sin pagar, para tenerlas a la vista donde se atiende."""
+    return [fila for fila in consultas.mensualidades(sesion) if fila.por_cobrar]
+
+
+@router.get("", response_class=HTMLResponse)
+def pagina_parqueadero(request: Request, sesion: SesionBD, _: Admin) -> Response:
+    caja = casos.caja_abierta(sesion)
+    contexto = {
+        **_contexto_adentro(sesion),
+        "caja": caja,
+        "caja_de_otro_dia": _caja_de_otro_dia(caja),
+        "por_cobrar": _por_cobrar(sesion),
+        "ajustes": leer_ajustes(sesion),
+    }
+    return pagina(request, sesion, "parqueadero.html", contexto, seccion="parqueadero")
+
+
+@router.get("/adentro", response_class=HTMLResponse)
+def fragmento_adentro(request: Request, sesion: SesionBD, _: Admin) -> Response:
+    return _lista_adentro(request, sesion)
+
+
+@router.get("/por-cobrar", response_class=HTMLResponse)
+def fragmento_por_cobrar(request: Request, sesion: SesionBD, _: Admin) -> Response:
+    return html(request, "_parqueadero_por_cobrar.html", {"por_cobrar": _por_cobrar(sesion)})
+
+
+@router.post("/entradas", response_class=HTMLResponse)
+def registrar_entrada(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    placa: Annotated[str, Form()] = "",
+    tipo: Annotated[str, Form()] = "",
+    observaciones: Annotated[str, Form()] = "",
+) -> Response:
+    try:
+        if tipo not in {t.value for t in TipoParqueo}:
+            raise ReglaDelNegocio("Elige si es carro o moto.")
+        parqueo = casos.registrar_entrada(
+            sesion,
+            placa=placa,
+            tipo=TipoParqueo(tipo),
+            observaciones=observaciones,
+            administrador_id=administrador.id,
+        )
+        liquidacion = casos.liquidar(sesion, parqueo)
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        return sin_cambios(error=str(error))
+    if liquidacion.es_mensualista_al_dia:
+        hasta = formato.fecha(liquidacion.al_dia_hasta)
+        return _lista_adentro(
+            request,
+            sesion,
+            aviso=f"{parqueo.placa} entró. Es mensualista al día hasta el {hasta}.",
+            limpiar_entrada=True,
+        )
+    aviso = f"{parqueo.placa} entró con el ticket {parqueo.id}."
+    if liquidacion.debe_la_mensualidad:
+        aviso += " Debe la mensualidad: cóbrale el mes."
+    return _lista_adentro(
+        request,
+        sesion,
+        aviso=aviso,
+        imprimir=f"/parqueadero/tickets/{parqueo.id}",
+        limpiar_entrada=True,
+    )
+
+
+def _parqueo_adentro(sesion: Session, parqueo_id: int) -> Parqueo:
+    parqueo = sesion.get(Parqueo, parqueo_id)
+    if parqueo is None or parqueo.estado is not EstadoParqueo.ADENTRO:
+        raise HTTPException(status_code=404, detail="Ese vehículo ya no está adentro.")
+    return parqueo
+
+
+def _contexto_salida(
+    sesion: Session, parqueo: Parqueo, formulario: dict[str, Any], error: str | None = None
+) -> dict[str, Any]:
+    return {
+        "parqueo": parqueo,
+        "liquidacion": casos.liquidar(sesion, parqueo),
+        "caja": casos.caja_abierta(sesion),
+        "formulario": formulario,
+        "medios": MEDIOS,
+        "error": error,
+    }
+
+
+def _formulario_salida_inicial() -> dict[str, Any]:
+    return {
+        "medio_pago": MedioPago.EFECTIVO.value,
+        "valor_cobrado": None,
+        "motivo": "",
+        "recibido": None,
+    }
+
+
+@router.get("/salida", response_class=HTMLResponse)
+def buscar_salida(request: Request, sesion: SesionBD, _: Admin, q: str = "") -> Response:
+    """Lo que se escribe en "Salida": una placa o un número de ticket."""
+    if not q.strip():
+        return sin_cambios(error="Escribe la placa o el número del ticket.")
+    parqueo = casos.buscar_adentro(sesion, q)
+    if parqueo is None:
+        return sin_cambios(error=f"No hay ningún vehículo adentro con {q.strip().upper()}.")
+    contexto = _contexto_salida(sesion, parqueo, _formulario_salida_inicial())
+    return html(request, "dialogos/parqueadero_salida.html", contexto)
+
+
+@router.get("/{parqueo_id}/salida", response_class=HTMLResponse)
+def dialogo_salida(request: Request, sesion: SesionBD, _: Admin, parqueo_id: int) -> Response:
+    parqueo = _parqueo_adentro(sesion, parqueo_id)
+    contexto = _contexto_salida(sesion, parqueo, _formulario_salida_inicial())
+    return html(request, "dialogos/parqueadero_salida.html", contexto)
+
+
+@router.post("/{parqueo_id}/salida", response_class=HTMLResponse)
+def cobrar_salida(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    parqueo_id: int,
+    medio_pago: Annotated[str, Form()] = "",
+    valor_cobrado: Annotated[str, Form()] = "",
+    motivo: Annotated[str, Form()] = "",
+    recibido: Annotated[str, Form()] = "",
+) -> Response:
+    formulario = {
+        "medio_pago": medio_pago,
+        "valor_cobrado": leer_pesos(valor_cobrado),
+        "motivo": motivo,
+        "recibido": leer_pesos(recibido),
+    }
+    try:
+        parqueo = casos.cobrar_salida(
+            sesion,
+            parqueo_id,
+            medio_pago=_medio(medio_pago),
+            valor_cobrado=formulario["valor_cobrado"],
+            motivo=motivo,
+            recibido=formulario["recibido"],
+            administrador_id=administrador.id,
+        )
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        actual = sesion.get(Parqueo, parqueo_id)
+        if actual is None or actual.estado is not EstadoParqueo.ADENTRO:
+            # Ya salió (por ejemplo, otro celular lo cobró): se cierra y se avisa.
+            return _con_retarget(
+                _lista_adentro(request, sesion, cerrar_dialogo=True, error=str(error)), "#adentro"
+            )
+        contexto = _contexto_salida(sesion, actual, formulario, error=str(error))
+        return html(request, "dialogos/parqueadero_salida.html", contexto)
+    valor = parqueo.valor_cobrado or 0
+    if valor == 0:
+        mensaje = f"{parqueo.placa} salió sin pagar" + (
+            ": mensualista al día." if parqueo.mensualidad_id else "."
+        )
+        eventos: dict[str, Any] = {"aviso": mensaje}
+    else:
+        mensaje = f"{parqueo.placa} salió: {formato.pesos(valor)} en {parqueo.medio_pago.value}."
+        if parqueo.recibido and parqueo.recibido > valor:
+            mensaje += f" Vuelto: {formato.pesos(parqueo.recibido - valor)}."
+        eventos = {"aviso": mensaje, "imprimir": f"/parqueadero/tickets/{parqueo.id}/salida"}
+    return _con_retarget(
+        _lista_adentro(request, sesion, cerrar_dialogo=True, **eventos), "#adentro"
+    )
+
+
+@router.get("/{parqueo_id}/anular", response_class=HTMLResponse)
+def dialogo_anular(request: Request, sesion: SesionBD, _: Admin, parqueo_id: int) -> Response:
+    parqueo = _parqueo_adentro(sesion, parqueo_id)
+    return html(request, "dialogos/parqueadero_anular.html", {"parqueo": parqueo, "motivo": ""})
+
+
+@router.post("/{parqueo_id}/anular", response_class=HTMLResponse)
+def anular_entrada(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    parqueo_id: int,
+    motivo: Annotated[str, Form()] = "",
+) -> Response:
+    try:
+        parqueo = casos.anular_entrada(
+            sesion, parqueo_id, motivo=motivo, administrador_id=administrador.id
+        )
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        parqueo = sesion.get(Parqueo, parqueo_id)
+        contexto = {"parqueo": parqueo, "motivo": motivo, "error": str(error)}
+        return html(request, "dialogos/parqueadero_anular.html", contexto)
+    aviso = f"Se anuló la entrada de {parqueo.placa} (ticket {parqueo.id})."
+    return _con_retarget(
+        _lista_adentro(request, sesion, cerrar_dialogo=True, aviso=aviso), "#adentro"
+    )
+
+
+# --- Tickets para imprimir ---------------------------------------------------------------
+
+
+def _ticket(
+    request: Request, sesion: Session, plantilla: str, contexto: dict[str, Any]
+) -> Response:
+    ajustes = leer_ajustes(sesion)
+    respuesta = html(request, plantilla, {**contexto, "ajustes": ajustes})
+    # El dashboard carga el ticket en un marco escondido para imprimirlo: solo él puede.
+    respuesta.headers["X-Frame-Options"] = "SAMEORIGIN"
+    respuesta.headers["Content-Security-Policy"] = "frame-ancestors 'self'"
+    return respuesta
+
+
+@router.get("/tickets/{parqueo_id}", response_class=HTMLResponse)
+def ticket_de_entrada(request: Request, sesion: SesionBD, _: Admin, parqueo_id: int) -> Response:
+    parqueo = sesion.get(Parqueo, parqueo_id)
+    if parqueo is None:
+        raise HTTPException(status_code=404, detail="Ese ticket no existe.")
+    return _ticket(request, sesion, "tickets/entrada.html", {"parqueo": parqueo})
+
+
+@router.get("/tickets/{parqueo_id}/salida", response_class=HTMLResponse)
+def ticket_de_salida(request: Request, sesion: SesionBD, _: Admin, parqueo_id: int) -> Response:
+    parqueo = sesion.get(Parqueo, parqueo_id)
+    if parqueo is None or parqueo.estado is not EstadoParqueo.SALIO:
+        raise HTTPException(status_code=404, detail="Ese vehículo no ha salido.")
+    return _ticket(request, sesion, "tickets/salida.html", {"parqueo": parqueo})
+
+
+# --- Caja --------------------------------------------------------------------------------
+
+
+def _contexto_caja(sesion: Session, caja: CajaParqueadero | None) -> dict[str, Any]:
+    hoy = _hoy()
+    return {
+        "caja": caja,
+        "caja_de_otro_dia": _caja_de_otro_dia(caja),
+        "resumen": consultas.resumen_de_caja(sesion, caja) if caja else None,
+        "movimientos": consultas.movimientos_de_caja(sesion, caja.id) if caja else [],
+        "cerradas": consultas.cajas_cerradas(sesion),
+        "medios": MEDIOS,
+        "exportar_desde": hoy.replace(day=1),
+        "exportar_hasta": hoy,
+    }
+
+
+@router.get("/caja", response_class=HTMLResponse)
+def pagina_caja(request: Request, sesion: SesionBD, _: Admin) -> Response:
+    contexto = _contexto_caja(sesion, casos.caja_abierta(sesion))
+    return pagina(request, sesion, "parqueadero_caja.html", contexto, seccion="parqueadero")
+
+
+@router.post("/caja/abrir", response_class=HTMLResponse)
+def abrir_caja(
+    sesion: SesionBD,
+    administrador: Admin,
+    base: Annotated[str, Form()] = "",
+    nota: Annotated[str, Form()] = "",
+) -> Response:
+    try:
+        casos.abrir_caja(
+            sesion, base=leer_pesos(base) or 0, nota=nota, administrador_id=administrador.id
+        )
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        return sin_cambios(error=str(error))
+    return Response(status_code=200, headers={"HX-Refresh": "true"})
+
+
+def _caja_o_404(sesion: Session, caja_id: int) -> CajaParqueadero:
+    caja = sesion.get(CajaParqueadero, caja_id)
+    if caja is None:
+        raise HTTPException(status_code=404, detail="Esa caja no existe.")
+    return caja
+
+
+@router.get("/caja/cerrar", response_class=HTMLResponse)
+def dialogo_cerrar_caja(request: Request, sesion: SesionBD, _: Admin) -> Response:
+    caja = casos.caja_abierta(sesion)
+    if caja is None:
+        return sin_cambios(error="No hay una caja abierta.")
+    contexto = {"resumen": consultas.resumen_de_caja(sesion, caja), "contado": None, "nota": ""}
+    return html(request, "dialogos/parqueadero_cerrar_caja.html", contexto)
+
+
+@router.post("/caja/cerrar", response_class=HTMLResponse)
+def cerrar_caja(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    caja_id: Annotated[int, Form()],
+    efectivo_contado: Annotated[str, Form()] = "",
+    nota: Annotated[str, Form()] = "",
+) -> Response:
+    contado = leer_pesos(efectivo_contado)
+    try:
+        if contado is None:
+            raise ReglaDelNegocio("Escribe cuánto efectivo contaste en el cajón.")
+        casos.cerrar_caja(
+            sesion, caja_id, efectivo_contado=contado, nota=nota, administrador_id=administrador.id
+        )
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        caja = sesion.get(CajaParqueadero, caja_id)
+        if caja is None or not caja.abierta:
+            return sin_cambios(cerrar_dialogo=True, error=str(error))
+        contexto = {
+            "resumen": consultas.resumen_de_caja(sesion, caja),
+            "contado": contado,
+            "nota": nota,
+            "error": str(error),
+        }
+        return html(request, "dialogos/parqueadero_cerrar_caja.html", contexto)
+    # La página del cierre se abre e imprime el resumen sola.
+    return Response(
+        status_code=200, headers={"HX-Redirect": f"/parqueadero/caja/{caja_id}?imprimir=1"}
+    )
+
+
+@router.get("/caja/{caja_id}", response_class=HTMLResponse)
+def pagina_de_una_caja(
+    request: Request, sesion: SesionBD, _: Admin, caja_id: int, imprimir: int = 0
+) -> Response:
+    caja = _caja_o_404(sesion, caja_id)
+    contexto = {
+        "resumen": consultas.resumen_de_caja(sesion, caja),
+        "movimientos": consultas.movimientos_de_caja(sesion, caja.id),
+        "medios": MEDIOS,
+        "imprimir_al_abrir": f"/parqueadero/caja/{caja.id}/ticket" if imprimir else None,
+    }
+    return pagina(request, sesion, "parqueadero_una_caja.html", contexto, seccion="parqueadero")
+
+
+@router.get("/caja/{caja_id}/ticket", response_class=HTMLResponse)
+def ticket_de_caja(request: Request, sesion: SesionBD, _: Admin, caja_id: int) -> Response:
+    caja = _caja_o_404(sesion, caja_id)
+    contexto = {"resumen": consultas.resumen_de_caja(sesion, caja), "medios": MEDIOS}
+    return _ticket(request, sesion, "tickets/caja.html", contexto)
+
+
+@router.get("/exportar")
+def exportar(
+    sesion: SesionBD, _: Admin, desde: date | None = None, hasta: date | None = None
+) -> Response:
+    """Un archivo para Excel con cada cobro (salidas y mensualidades) entre dos días.
+
+    Va separado por punto y coma y con la marca UTF-8 al comienzo: así Excel en español lo
+    abre con las columnas y las tildes bien, sin pasos extra.
+    """
+    hasta = hasta or _hoy()
+    desde = desde or hasta.replace(day=1)
+    if hasta < desde:
+        desde, hasta = hasta, desde
+    salida = io.StringIO()
+    escritor = csv.writer(salida, delimiter=";")
+    for linea in consultas.lineas_para_excel(sesion, desde, hasta):
+        escritor.writerow(linea)
+    nombre = f"parqueadero-{desde.isoformat()}-a-{hasta.isoformat()}.csv"
+    return Response(
+        content="﻿" + salida.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
+# --- Mensualidades ------------------------------------------------------------------------
+
+
+def _contexto_mensualidades(sesion: Session) -> dict[str, Any]:
+    filas = consultas.mensualidades(sesion)
+    return {
+        "filas": filas,
+        "vencidas": sum(1 for fila in filas if fila.estado in ("vencida", "sin_pagos")),
+    }
+
+
+def _lista_mensualidades(request: Request, sesion: Session, **eventos: Any) -> Response:
+    respuesta = html(request, "_parqueadero_mensualidades.html", _contexto_mensualidades(sesion))
+    return con_eventos(_con_retarget(respuesta, "#lista-mensualidades"), **eventos)
+
+
+@router.get("/mensualidades", response_class=HTMLResponse)
+def pagina_mensualidades(request: Request, sesion: SesionBD, _: Admin) -> Response:
+    return pagina(
+        request,
+        sesion,
+        "parqueadero_mensualidades.html",
+        _contexto_mensualidades(sesion),
+        seccion="parqueadero",
+    )
+
+
+def _mensualidad_o_404(sesion: Session, mensualidad_id: int) -> Mensualidad:
+    mensualidad = sesion.get(Mensualidad, mensualidad_id)
+    if mensualidad is None:
+        raise HTTPException(status_code=404, detail="Esa mensualidad no existe.")
+    return mensualidad
+
+
+def _formulario_mensualidad(mensualidad: Mensualidad | None = None) -> dict[str, Any]:
+    if mensualidad is None:
+        return {
+            "placa": "",
+            "tipo": TipoParqueo.CARRO.value,
+            "titular": "",
+            "telefono": "",
+            "valor_mensual": None,
+            "notas": "",
+            "autorizo": False,
+            "pagada_hasta": None,
+        }
+    return {
+        "placa": mensualidad.placa,
+        "tipo": mensualidad.tipo.value,
+        "titular": mensualidad.titular,
+        "telefono": formato.telefono(mensualidad.telefono) if mensualidad.telefono else "",
+        "valor_mensual": mensualidad.valor_mensual,
+        "notas": mensualidad.notas or "",
+        "autorizo": True,
+    }
+
+
+def _dialogo_mensualidad(
+    request: Request,
+    mensualidad: Mensualidad | None,
+    formulario: dict[str, Any],
+    error: str | None = None,
+) -> Response:
+    contexto = {"mensualidad": mensualidad, "formulario": formulario, "error": error}
+    return html(request, "dialogos/parqueadero_mensualidad.html", contexto)
+
+
+@router.get("/mensualidades/nueva", response_class=HTMLResponse)
+def dialogo_nueva_mensualidad(request: Request, _: Admin) -> Response:
+    return _dialogo_mensualidad(request, None, _formulario_mensualidad())
+
+
+def _guardar(
+    request: Request,
+    sesion: Session,
+    hacer: Callable[[], str],
+    al_fallar: Callable[[str], Response],
+    extra: dict[str, Any] | None = None,
+) -> Response:
+    """Corre `hacer`, confirma y devuelve la lista de mensualidades actualizada. `extra` son
+    eventos que `hacer` llena por el camino (por ejemplo, el recibo que hay que imprimir)."""
+    try:
+        mensaje = hacer()
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        return al_fallar(str(error))
+    return _lista_mensualidades(
+        request, sesion, cerrar_dialogo=True, aviso=mensaje, **(extra or {})
+    )
+
+
+@router.post("/mensualidades", response_class=HTMLResponse)
+def crear_mensualidad(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    placa: Annotated[str, Form()] = "",
+    tipo: Annotated[str, Form()] = TipoParqueo.CARRO.value,
+    titular: Annotated[str, Form()] = "",
+    telefono: Annotated[str, Form()] = "",
+    valor_mensual: Annotated[str, Form()] = "",
+    notas: Annotated[str, Form()] = "",
+    autorizo: Annotated[str, Form()] = "",
+    pagada_hasta: Annotated[str, Form()] = "",
+) -> Response:
+    formulario = {
+        "placa": placa,
+        "tipo": tipo,
+        "titular": titular,
+        "telefono": telefono,
+        "valor_mensual": leer_pesos(valor_mensual),
+        "notas": notas,
+        "autorizo": bool(autorizo),
+        "pagada_hasta": _fecha(pagada_hasta),
+    }
+
+    def hacer() -> str:
+        if tipo not in {t.value for t in TipoParqueo}:
+            raise ReglaDelNegocio("Elige si es carro o moto.")
+        if pagada_hasta.strip() and formulario["pagada_hasta"] is None:
+            raise ReglaDelNegocio("Revisa hasta qué día ya trae pagado.")
+        mensualidad = casos.crear_mensualidad(
+            sesion,
+            placa=placa,
+            tipo=TipoParqueo(tipo),
+            titular=titular,
+            telefono=telefono,
+            valor_mensual=formulario["valor_mensual"],
+            notas=notas,
+            autorizo_datos=bool(autorizo),
+            pagada_hasta=formulario["pagada_hasta"],
+            administrador_id=administrador.id,
+        )
+        if formulario["pagada_hasta"] is not None:
+            return (
+                f"Mensualidad de {mensualidad.placa} creada: al día hasta el "
+                f"{formato.fecha(formulario['pagada_hasta'])}, sin entrar plata a la caja."
+            )
+        return f"Mensualidad de {mensualidad.placa} creada. Ya puedes cobrar el primer mes."
+
+    return _guardar(
+        request,
+        sesion,
+        hacer,
+        lambda error: _dialogo_mensualidad(request, None, formulario, error),
+    )
+
+
+@router.get("/mensualidades/{mensualidad_id}/editar", response_class=HTMLResponse)
+def dialogo_editar_mensualidad(
+    request: Request, sesion: SesionBD, _: Admin, mensualidad_id: int
+) -> Response:
+    mensualidad = _mensualidad_o_404(sesion, mensualidad_id)
+    return _dialogo_mensualidad(request, mensualidad, _formulario_mensualidad(mensualidad))
+
+
+@router.post("/mensualidades/{mensualidad_id}", response_class=HTMLResponse)
+def editar_mensualidad(
+    request: Request,
+    sesion: SesionBD,
+    _: Admin,
+    mensualidad_id: int,
+    tipo: Annotated[str, Form()] = TipoParqueo.CARRO.value,
+    titular: Annotated[str, Form()] = "",
+    telefono: Annotated[str, Form()] = "",
+    valor_mensual: Annotated[str, Form()] = "",
+    notas: Annotated[str, Form()] = "",
+) -> Response:
+    mensualidad = _mensualidad_o_404(sesion, mensualidad_id)
+    formulario = {
+        **_formulario_mensualidad(mensualidad),
+        "tipo": tipo,
+        "titular": titular,
+        "telefono": telefono,
+        "valor_mensual": leer_pesos(valor_mensual),
+        "notas": notas,
+    }
+
+    def hacer() -> str:
+        if tipo not in {t.value for t in TipoParqueo}:
+            raise ReglaDelNegocio("Elige si es carro o moto.")
+        editada = casos.editar_mensualidad(
+            sesion,
+            mensualidad_id,
+            tipo=TipoParqueo(tipo),
+            titular=titular,
+            telefono=telefono,
+            valor_mensual=formulario["valor_mensual"],
+            notas=notas,
+        )
+        return f"Mensualidad de {editada.placa} actualizada."
+
+    return _guardar(
+        request,
+        sesion,
+        hacer,
+        lambda error: _dialogo_mensualidad(request, mensualidad, formulario, error),
+    )
+
+
+@router.get("/mensualidades/{mensualidad_id}/baja", response_class=HTMLResponse)
+def dialogo_baja(request: Request, sesion: SesionBD, _: Admin, mensualidad_id: int) -> Response:
+    mensualidad = _mensualidad_o_404(sesion, mensualidad_id)
+    return html(request, "dialogos/parqueadero_baja.html", {"mensualidad": mensualidad})
+
+
+@router.post("/mensualidades/{mensualidad_id}/baja", response_class=HTMLResponse)
+def dar_de_baja(
+    request: Request,
+    sesion: SesionBD,
+    _: Admin,
+    mensualidad_id: int,
+    borrar_datos: Annotated[str, Form()] = "",
+) -> Response:
+    mensualidad = _mensualidad_o_404(sesion, mensualidad_id)
+
+    def hacer() -> str:
+        casos.dar_de_baja(sesion, mensualidad_id, borrar_datos=bool(borrar_datos))
+        mensaje = f"{mensualidad.placa} ya no es mensualista: desde ahora paga por horas."
+        if borrar_datos:
+            mensaje += " Se borraron el nombre, el celular y las notas del titular."
+        return mensaje
+
+    return _guardar(request, sesion, hacer, lambda error: sin_cambios(error=error))
+
+
+def _contexto_pago(
+    sesion: Session,
+    mensualidad: Mensualidad,
+    formulario: dict[str, Any],
+    error: str | None = None,
+    salida: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "mensualidad": mensualidad,
+        "formulario": formulario,
+        "pagos": consultas.pagos_de_mensualidad(sesion, mensualidad.id)[:6],
+        "caja": casos.caja_abierta(sesion),
+        "medios": MEDIOS,
+        "error": error,
+        # Se abrió desde el cobro de una salida: al pagar, vuelve a esa salida.
+        "salida": salida,
+    }
+
+
+def _salida_adentro(sesion: Session, parqueo_id: int | None) -> Parqueo | None:
+    parqueo = sesion.get(Parqueo, parqueo_id) if parqueo_id is not None else None
+    return parqueo if parqueo is not None and parqueo.estado is EstadoParqueo.ADENTRO else None
+
+
+@router.get("/mensualidades/{mensualidad_id}/pagar", response_class=HTMLResponse)
+def dialogo_pagar(
+    request: Request,
+    sesion: SesionBD,
+    _: Admin,
+    mensualidad_id: int,
+    salida: int | None = None,
+) -> Response:
+    mensualidad = _mensualidad_o_404(sesion, mensualidad_id)
+    desde, hasta = casos.periodo_sugerido(sesion, mensualidad, _hoy())
+    formulario = {
+        "desde": desde,
+        "hasta": hasta,
+        "valor": mensualidad.valor_mensual,
+        "medio_pago": MedioPago.EFECTIVO.value,
+    }
+    parqueo = _salida_adentro(sesion, salida)
+    contexto = _contexto_pago(
+        sesion, mensualidad, formulario, salida=parqueo.id if parqueo else None
+    )
+    return html(request, "dialogos/parqueadero_pagar_mensualidad.html", contexto)
+
+
+def _fecha(texto: str) -> date | None:
+    try:
+        return date.fromisoformat(texto)
+    except ValueError:
+        return None
+
+
+@router.post("/mensualidades/{mensualidad_id}/pagar", response_class=HTMLResponse)
+def pagar_mensualidad(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    mensualidad_id: int,
+    desde: Annotated[str, Form()] = "",
+    hasta: Annotated[str, Form()] = "",
+    valor: Annotated[str, Form()] = "",
+    medio_pago: Annotated[str, Form()] = "",
+    salida: Annotated[str, Form()] = "",
+) -> Response:
+    mensualidad = _mensualidad_o_404(sesion, mensualidad_id)
+    formulario = {
+        "desde": _fecha(desde),
+        "hasta": _fecha(hasta),
+        "valor": leer_pesos(valor),
+        "medio_pago": medio_pago,
+    }
+    salida_id = entero(salida)
+    recibo: dict[str, Any] = {}
+
+    def hacer() -> str:
+        if formulario["desde"] is None or formulario["hasta"] is None:
+            raise ReglaDelNegocio("Escribe desde y hasta qué día cubre el pago.")
+        medio = _medio(medio_pago)
+        if medio is None:
+            raise ReglaDelNegocio("Elige el medio de pago.")
+        pago = casos.pagar_mensualidad(
+            sesion,
+            mensualidad_id,
+            desde=formulario["desde"],
+            hasta=formulario["hasta"],
+            valor=formulario["valor"],
+            medio_pago=medio,
+            administrador_id=administrador.id,
+        )
+        recibo["imprimir"] = f"/parqueadero/mensualidades/pagos/{pago.id}/ticket"
+        recibo["mensualidad_pagada"] = True  # la lista de "por cobrar" se actualiza sola
+        return (
+            f"Mensualidad de {mensualidad.placa} pagada hasta el {formato.fecha(pago.hasta)}: "
+            f"{formato.pesos(pago.valor)} en {pago.medio_pago.value}."
+        )
+
+    def al_fallar(error: str) -> Response:
+        contexto = _contexto_pago(sesion, mensualidad, formulario, error, salida=salida_id)
+        return html(request, "dialogos/parqueadero_pagar_mensualidad.html", contexto)
+
+    if salida_id is None:
+        return _guardar(request, sesion, hacer, al_fallar, extra=recibo)
+
+    # Se cobró desde la salida de su vehículo: vuelve a esa salida, que ya lo ve al día.
+    try:
+        mensaje = hacer()
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        return al_fallar(str(error))
+    parqueo = _salida_adentro(sesion, salida_id)
+    if parqueo is None:  # mientras tanto lo sacaron desde otro celular
+        return sin_cambios(cerrar_dialogo=True, aviso=mensaje, **recibo)
+    contexto = _contexto_salida(sesion, parqueo, _formulario_salida_inicial())
+    respuesta = html(request, "dialogos/parqueadero_salida.html", contexto)
+    return con_eventos(respuesta, aviso=mensaje, **recibo)
+
+
+@router.get("/mensualidades/pagos/{pago_id}/ticket", response_class=HTMLResponse)
+def ticket_de_mensualidad(request: Request, sesion: SesionBD, _: Admin, pago_id: int) -> Response:
+    pago = sesion.get(PagoMensualidad, pago_id)
+    # Los días que ya traía pagados no tienen recibo: esa plata no se recibió aquí.
+    if pago is None or pago.caja_id is None:
+        raise HTTPException(status_code=404, detail="Ese pago no existe.")
+    mensualidad = sesion.get(Mensualidad, pago.mensualidad_id)
+    return _ticket(
+        request, sesion, "tickets/mensualidad.html", {"pago": pago, "mensualidad": mensualidad}
+    )
+
+
+# --- Tarifas y ticket ---------------------------------------------------------------------
+
+
+def _valores_de_ajustes(ajustes: Any) -> dict[str, Any]:
+    return {
+        "hora_carro": ajustes.hora_carro,
+        "hora_moto": ajustes.hora_moto,
+        "fraccion_carro": ajustes.fraccion_carro,
+        "fraccion_moto": ajustes.fraccion_moto,
+        "gracia_minutos": ajustes.gracia_minutos,
+        "nombre": ajustes.nombre,
+        "nit": ajustes.nit,
+        "direccion": ajustes.direccion,
+        "telefono": ajustes.telefono,
+        "pie_ticket": ajustes.pie_ticket,
+        "ancho_ticket": ajustes.ancho_ticket,
+    }
+
+
+def _formulario_tarifas(
+    request: Request, valores: dict[str, Any], error: str | None = None
+) -> Response:
+    contexto = {"valores": valores, "anchos": ANCHOS_DE_TICKET, "error": error}
+    return html(request, "_parqueadero_tarifas.html", contexto)
+
+
+@router.get("/tarifas", response_class=HTMLResponse)
+def pagina_tarifas(request: Request, sesion: SesionBD, _: Admin) -> Response:
+    contexto = {
+        "valores": _valores_de_ajustes(leer_ajustes(sesion)),
+        "anchos": ANCHOS_DE_TICKET,
+        "error": None,
+    }
+    return pagina(request, sesion, "parqueadero_tarifas.html", contexto, seccion="parqueadero")
+
+
+@router.post("/tarifas", response_class=HTMLResponse)
+def guardar_tarifas(
+    request: Request,
+    sesion: SesionBD,
+    _: Admin,
+    hora_carro: Annotated[str, Form()] = "",
+    hora_moto: Annotated[str, Form()] = "",
+    fraccion_carro: Annotated[str, Form()] = "",
+    fraccion_moto: Annotated[str, Form()] = "",
+    gracia_minutos: Annotated[str, Form()] = "",
+    nombre: Annotated[str, Form()] = "",
+    nit: Annotated[str, Form()] = "",
+    direccion: Annotated[str, Form()] = "",
+    telefono: Annotated[str, Form()] = "",
+    pie_ticket: Annotated[str, Form()] = "",
+    ancho_ticket: Annotated[str, Form()] = "",
+) -> Response:
+    valores = {
+        "hora_carro": leer_pesos(hora_carro),
+        "hora_moto": leer_pesos(hora_moto),
+        "fraccion_carro": leer_pesos(fraccion_carro),
+        "fraccion_moto": leer_pesos(fraccion_moto),
+        "gracia_minutos": entero(gracia_minutos.strip()),
+        "nombre": nombre,
+        "nit": nit,
+        "direccion": direccion,
+        "telefono": telefono,
+        "pie_ticket": pie_ticket,
+        "ancho_ticket": entero(ancho_ticket.strip()),
+    }
+    try:
+        for clave, texto in (
+            ("hora_carro", "el valor de la hora de carro"),
+            ("hora_moto", "el valor de la hora de moto"),
+            ("gracia_minutos", "los minutos de gracia"),
+            ("ancho_ticket", "el ancho del ticket"),
+        ):
+            if valores[clave] is None:
+                raise ReglaDelNegocio(f"Escribe {texto}.")
+        guardar_ajustes(sesion, replace(leer_ajustes(sesion), **valores))
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        return _formulario_tarifas(request, valores, str(error))
+    guardados = _valores_de_ajustes(leer_ajustes(sesion))
+    aviso = "Tarifas guardadas. Los vehículos que ya están adentro pagan la de cuando entraron."
+    return con_eventos(_formulario_tarifas(request, guardados), aviso=aviso)
+
+
+def lineas_del_cuadre(cuadre: reglas.Cuadre) -> list[tuple[MedioPago, int, int]]:
+    """Por cada medio de pago que se usó: lo de salidas y lo de mensualidades."""
+    return [
+        (medio, cuadre.parqueos.get(medio, 0), cuadre.mensualidades.get(medio, 0))
+        for medio in MedioPago
+        if cuadre.por_medio(medio)
+    ]
+
+
+plantillas.env.globals["lineas_del_cuadre"] = lineas_del_cuadre

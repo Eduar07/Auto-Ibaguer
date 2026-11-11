@@ -1,0 +1,45 @@
+{#- Las mensualidades activas: primero las que hay que cobrar. -#}
+{% import "_iconos.html" as iconos %}
+<div class="lista__cabeza">
+  <h3>{{ filas|length }} activa{{ "s" if filas|length != 1 }}</h3>
+  {% if vencidas %}<span class="insignia insignia--rojo">{{ vencidas }} por cobrar</span>{% endif %}
+</div>
+{% if filas %}
+<ul class="parqueos">
+  {% for f in filas %}
+  {% set m = f.mensualidad %}
+  <li class="parqueo{% if f.por_cobrar %} parqueo--debe{% endif %}">
+    <span class="parqueo__icono">{{ iconos.icono(m.tipo.value, 26) }}</span>
+    <span class="parqueo__placa">
+      <strong class="placa-texto">{{ m.placa }}</strong>
+      <span class="suave">{{ m.titular }}{% if m.telefono %} · {{ m.telefono|telefono_oculto }}{% endif %}</span>
+      {% if m.notas %}<span class="suave">{{ m.notas }}</span>{% endif %}
+    </span>
+    <span class="parqueo__tiempo">
+      <strong>{{ m.valor_mensual|pesos }}<span class="suave"> al mes</span></strong>
+      {% if f.estado == "al_dia" %}
+      <span class="insignia insignia--verde">Al día hasta el {{ f.pagada_hasta.day }}/{{ f.pagada_hasta.month }}</span>
+      {% elif f.estado == "vence_pronto" %}
+      <span class="insignia insignia--demorado">{{ "Vence hoy" if f.dias_restantes == 0 else "Vence en " ~ f.dias_restantes ~ " día" ~ ("s" if f.dias_restantes != 1 else "") }}</span>
+      {% elif f.estado == "vencida" %}
+      {% if f.debe_desde %}
+      <span class="insignia insignia--rojo">Debe desde el {{ f.debe_desde.day }}/{{ f.debe_desde.month }}</span>
+      <span class="suave">{{ -f.dias_restantes }} día{{ "s" if f.dias_restantes != -1 }} sin pagar</span>
+      {% else %}
+      <span class="insignia insignia--rojo">Vencida</span>
+      {% endif %}
+      {% else %}
+      <span class="insignia insignia--rojo">Sin pagos</span>
+      {% endif %}
+    </span>
+    <span class="parqueo__acciones">
+      <button type="button" class="boton" hx-get="/parqueadero/mensualidades/{{ m.id }}/pagar" hx-target="#dialogo-contenido">Cobrar mes</button>
+      <button type="button" class="boton boton--borde" hx-get="/parqueadero/mensualidades/{{ m.id }}/editar" hx-target="#dialogo-contenido">Editar</button>
+      <button type="button" class="boton-texto boton-texto--peligro" hx-get="/parqueadero/mensualidades/{{ m.id }}/baja" hx-target="#dialogo-contenido">Dar de baja</button>
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="lista__vacia">No hay mensualidades. Crea la primera con <strong>Nueva mensualidad</strong>.</p>
+{% endif %}

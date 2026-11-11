@@ -1,0 +1,19 @@
+{% extends "tickets/_base.html" %}
+{% block titulo %}Recibo de mensualidad {{ pago.id }}{% endblock %}
+{% block contenido %}
+<section class="ticket__bloque ticket__bloque--centro">
+  <span class="ticket__tipo-documento">Recibo de mensualidad</span>
+  <span>N.º {{ pago.id }}</span>
+  <span class="ticket__placa">{{ mensualidad.placa }}</span>
+  <span>{{ nombre_del_tipo[mensualidad.tipo] }} · {{ mensualidad.titular }}</span>
+</section>
+<dl class="ticket__datos">
+  <dt>Desde</dt><dd>{{ pago.desde.strftime("%d/%m/%Y") }}</dd>
+  <dt>Hasta</dt><dd>{{ pago.hasta.strftime("%d/%m/%Y") }}</dd>
+  <dt>Pago</dt><dd>{{ pago.medio_pago.value|capitalize }}</dd>
+  <dt>Fecha</dt><dd>{{ pago.fecha_hora|fecha_y_hora }}</dd>
+</dl>
+<div class="ticket__total"><span>Total</span><strong>{{ pago.valor|pesos }}</strong></div>
+{% endblock %}
+{#- El texto del pie de los ajustes es para el ticket de entrada ("conserve este ticket..."). -#}
+{% block pie %}<footer class="ticket__pie">Gracias por su pago.</footer>{% endblock %}

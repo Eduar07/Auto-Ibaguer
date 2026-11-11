@@ -1,0 +1,36 @@
+{% extends "tickets/_base.html" %}
+{% set c = resumen.caja %}
+{% set cuadre = resumen.cuadre %}
+{% block titulo %}Caja {{ c.id }}{% endblock %}
+{% block contenido %}
+<section class="ticket__bloque ticket__bloque--centro">
+  <span class="ticket__tipo-documento">{{ "Cierre de caja" if c.cerrada_en else "Caja abierta" }}</span>
+  <span>N.º {{ c.id }}</span>
+</section>
+<dl class="ticket__datos">
+  <dt>Abrió</dt><dd>{{ resumen.abrio }} · {{ c.abierta_en|fecha_y_hora }}</dd>
+  {% if c.cerrada_en %}<dt>Cerró</dt><dd>{{ resumen.cerro }} · {{ c.cerrada_en|fecha_y_hora }}</dd>{% endif %}
+  <dt>Salidas</dt><dd>{{ resumen.salidas }}</dd>
+  {% if resumen.mensualidades %}<dt>Mensualidades</dt><dd>{{ resumen.mensualidades }}</dd>{% endif %}
+  <dt>Base</dt><dd>{{ c.base|pesos }}</dd>
+</dl>
+<dl class="ticket__datos ticket__datos--separado">
+  {% for medio, salidas, mensualidades in lineas_del_cuadre(cuadre) %}
+  <dt>{{ medio.value|capitalize }}</dt><dd>{{ (salidas + mensualidades)|pesos }}</dd>
+  {% if mensualidades %}<dt class="ticket__sub">mensualidades</dt><dd class="ticket__sub">{{ mensualidades|pesos }}</dd>{% endif %}
+  {% else %}
+  <dt>Sin cobros</dt><dd>{{ 0|pesos }}</dd>
+  {% endfor %}
+</dl>
+<div class="ticket__total"><span>Entró</span><strong>{{ cuadre.total|pesos }}</strong></div>
+<dl class="ticket__datos">
+  <dt>Efectivo esperado</dt><dd>{{ cuadre.efectivo_esperado|pesos }}</dd>
+  {% if c.cerrada_en %}
+  <dt>Contado</dt><dd>{{ c.efectivo_contado|pesos }}</dd>
+  {% set d = c.diferencia %}
+  <dt>Diferencia</dt><dd>{{ "Cuadró" if d == 0 else (("Sobró " if d > 0 else "Faltó ") ~ (d|abs)|pesos) }}</dd>
+  {% if c.nota_cierre %}<dt>Nota</dt><dd>{{ c.nota_cierre }}</dd>{% endif %}
+  {% endif %}
+</dl>
+{% endblock %}
+{% block pie %}<footer class="ticket__pie">Firma: ______________________</footer>{% endblock %}

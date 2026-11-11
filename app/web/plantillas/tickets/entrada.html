@@ -1,0 +1,18 @@
+{% extends "tickets/_base.html" %}
+{% set p = parqueo %}
+{% block titulo %}Ticket {{ p.id }}{% endblock %}
+{% block contenido %}
+<section class="ticket__bloque ticket__bloque--centro">
+  <span class="ticket__tipo-documento">Ticket de entrada</span>
+  <span class="ticket__numero">N.º {{ p.id }}</span>
+  <span class="ticket__placa">{{ p.placa }}</span>
+  <span>{{ nombre_del_tipo[p.tipo] }}</span>
+</section>
+<dl class="ticket__datos">
+  <dt>Entrada</dt><dd>{{ p.entrada_en|fecha_y_hora }}</dd>
+  <dt>Tarifa</dt><dd>{{ p.valor_hora|pesos }} la hora</dd>
+  {% if p.valor_fraccion is not none %}<dt>Primeros 15 min</dt><dd>{{ p.valor_fraccion|pesos }}</dd>{% endif %}
+  {% if p.observaciones %}<dt>Estado</dt><dd>{{ p.observaciones }}</dd>{% endif %}
+</dl>
+<p class="ticket__nota">Después de cada hora hay {{ p.gracia_minutos }} minutos de gracia antes de cobrar la siguiente.</p>
+{% endblock %}

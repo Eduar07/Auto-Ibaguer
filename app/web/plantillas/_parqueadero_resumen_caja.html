@@ -1,0 +1,72 @@
+{#- Lo que entró a una caja del parqueadero, por medio de pago, y lo que debe haber en el
+    cajón. Lo usan la caja abierta y la de un cierre anterior. -#}
+{% import "_iconos.html" as iconos %}
+{% macro resumen_de_caja(r) -%}
+{% set c = r.caja %}
+{% set cuadre = r.cuadre %}
+<div class="cifras">
+  <div class="cifra"><span class="cifra__valor">{{ cuadre.total|pesos }}</span><span class="cifra__nombre">entró en total</span></div>
+  <div class="cifra"><span class="cifra__valor">{{ r.salidas }}</span><span class="cifra__nombre">salida{{ "s" if r.salidas != 1 }}</span></div>
+  {% if r.mensualidades %}
+  <div class="cifra"><span class="cifra__valor">{{ r.mensualidades }}</span><span class="cifra__nombre">mensualidad{{ "es" if r.mensualidades != 1 }}</span></div>
+  {% endif %}
+</div>
+<div class="tabla-desplazable">
+  <table class="tabla-caja">
+    <thead>
+      <tr><th scope="col">Medio de pago</th><th scope="col">Salidas</th><th scope="col">Mensualidades</th><th scope="col">Total</th></tr>
+    </thead>
+    <tbody>
+      {% for medio, salidas, mensualidades in lineas_del_cuadre(cuadre) %}
+      <tr>
+        <th scope="row">{{ medio.value|capitalize }}</th>
+        <td>{{ salidas|pesos }}</td>
+        <td>{{ mensualidades|pesos }}</td>
+        <td><strong>{{ (salidas + mensualidades)|pesos }}</strong></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="suave">Todavía no ha entrado plata a esta caja.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="dos-columnas">
+  <div class="tarjeta-dato">
+    <span>Efectivo que debe haber en el cajón</span>
+    <strong>{{ cuadre.efectivo_esperado|pesos }}</strong>
+    <span>Base {{ c.base|pesos }} + efectivo {{ cuadre.por_medio(MedioPago.EFECTIVO)|pesos }}</span>
+  </div>
+  {% if c.cerrada_en %}
+  <div class="tarjeta-dato">
+    <span>Contado al cerrar</span>
+    <strong>{{ c.efectivo_contado|pesos }}</strong>
+    {% set d = c.diferencia %}
+    <span class="{{ 'diferencia--cuadra' if d == 0 else ('diferencia--sobra' if d > 0 else 'diferencia--falta') }}">
+      {%- if d == 0 -%}Cuadró exacto{%- elif d > 0 -%}Sobraron {{ d|pesos }}{%- else -%}Faltaron {{ (-d)|pesos }}{%- endif -%}
+    </span>
+  </div>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro movimientos_de_caja(movimientos) -%}
+{% if movimientos %}
+<ul class="movimientos">
+  {% for m in movimientos %}
+  <li>
+    <time>{{ m.momento|hora }}</time>
+    <span class="movimientos__que">
+      <strong>{{ m.concepto }}</strong>
+      <span class="suave">{{ m.detalle }}{% if m.ajuste %} · {{ m.ajuste }}{% endif %}</span>
+    </span>
+    <span class="movimientos__valor">
+      <strong>{{ m.valor|pesos }}</strong>
+      <span class="suave">{{ m.medio.value|capitalize if m.medio else "Sin pago" }}</span>
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="lista__vacia">Todavía no hay cobros en esta caja.</p>
+{% endif %}
+{%- endmacro %}

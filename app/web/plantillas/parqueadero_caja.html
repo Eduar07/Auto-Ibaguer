@@ -1,0 +1,97 @@
+{% extends "pagina.html" %}
+{% import "_iconos.html" as iconos %}
+{% from "_parqueadero_atajos.html" import atajos %}
+{% from "_parqueadero_resumen_caja.html" import resumen_de_caja, movimientos_de_caja %}
+
+{% block titulo %}Caja del parqueadero · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla parqueadero">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Caja del parqueadero</h1>
+      <p>Aparte de la plata del lavadero. Se abre con la base para vueltos y se cierra contando el efectivo.</p>
+    </div>
+  </div>
+  {{ atajos("caja") }}
+
+  {% if caja %}
+  <section class="panel" aria-labelledby="t-caja">
+    <div class="panel__cabeza">
+      <div>
+        <h2 id="t-caja">Caja abierta</h2>
+        <p class="suave">Abrió {{ resumen.abrio }} {{ cuando_paso(caja.abierta_en) }}{% if caja.nota_apertura %} · {{ caja.nota_apertura }}{% endif %}</p>
+      </div>
+      <span class="insignia insignia--verde">Abierta</span>
+    </div>
+    {{ resumen_de_caja(resumen) }}
+    <div class="botones">
+      <button type="button" class="boton boton--oscuro" hx-get="/parqueadero/caja/cerrar" hx-target="#dialogo-contenido">Cerrar caja</button>
+      <button type="button" class="boton boton--borde" data-imprimir="/parqueadero/caja/{{ caja.id }}/ticket">{{ iconos.icono("imprimir", 18) }}Imprimir cómo va</button>
+    </div>
+  </section>
+
+  <section class="lista" aria-labelledby="t-movimientos">
+    <div class="lista__cabeza"><h3 id="t-movimientos">Cobros de esta caja</h3></div>
+    {{ movimientos_de_caja(movimientos) }}
+  </section>
+  {% else %}
+  <section class="panel" aria-labelledby="t-abrir">
+    <h2 id="t-abrir">Abrir caja</h2>
+    <p class="suave">Escribe la plata que dejas en el cajón para dar vueltos. Si no dejas nada, pon 0.</p>
+    <form class="campos-juntos formulario-corto" hx-post="/parqueadero/caja/abrir" hx-swap="none"
+          hx-disabled-elt="find button" autocomplete="off">
+      <div class="dos-columnas">
+        <div class="campo">
+          <label for="base">Base en efectivo</label>
+          <input id="base" name="base" inputmode="numeric" class="monto" required maxlength="12" placeholder="50.000">
+        </div>
+        <div class="campo">
+          <label for="nota-apertura">Nota <span class="suave">(opcional)</span></label>
+          <input id="nota-apertura" name="nota" maxlength="120" placeholder="Turno de la mañana">
+        </div>
+      </div>
+      <button type="submit" class="boton boton--grande">Abrir caja</button>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="panel" aria-labelledby="t-excel">
+    <h2 id="t-excel">Llevar las cuentas en Excel</h2>
+    <p class="suave">Descarga cada cobro (salidas y mensualidades) entre dos días, en un archivo que Excel abre directo.</p>
+    <form class="exportar" method="get" action="/parqueadero/exportar">
+      <div class="campo"><label for="exportar-desde">Desde</label><input id="exportar-desde" name="desde" type="date" value="{{ exportar_desde.isoformat() }}" required></div>
+      <div class="campo"><label for="exportar-hasta">Hasta</label><input id="exportar-hasta" name="hasta" type="date" value="{{ exportar_hasta.isoformat() }}" required></div>
+      <button type="submit" class="boton boton--borde">Descargar para Excel</button>
+    </form>
+  </section>
+
+  <section class="lista" aria-labelledby="t-cerradas">
+    <div class="lista__cabeza"><h3 id="t-cerradas">Cierres anteriores</h3></div>
+    {% if cerradas %}
+    <div class="tabla-desplazable">
+      <table class="tabla-caja tabla-caja--cierres">
+        <thead>
+          <tr><th scope="col">Cerró</th><th scope="col">Entró</th><th scope="col">Efectivo esperado</th><th scope="col">Contado</th><th scope="col">Diferencia</th><th scope="col"><span class="solo-lector">Ver</span></th></tr>
+        </thead>
+        <tbody>
+          {% for r in cerradas %}
+          {% set d = r.caja.diferencia %}
+          <tr>
+            <td>{{ cuando(r.caja.cerrada_en) }}<span class="suave"> · {{ r.cerro }}</span></td>
+            <td>{{ r.cuadre.total|pesos }}</td>
+            <td>{{ r.caja.efectivo_esperado|pesos }}</td>
+            <td>{{ r.caja.efectivo_contado|pesos }}</td>
+            <td class="{{ 'diferencia--cuadra' if d == 0 else ('diferencia--sobra' if d > 0 else 'diferencia--falta') }}">{{ "Cuadró" if d == 0 else (("+" if d > 0 else "−") ~ (d|abs)|pesos) }}</td>
+            <td><a href="/parqueadero/caja/{{ r.caja.id }}">Ver</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="lista__vacia">Todavía no hay cierres de caja.</p>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

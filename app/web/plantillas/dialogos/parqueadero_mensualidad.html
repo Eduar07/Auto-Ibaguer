@@ -1,0 +1,70 @@
+{#- Crear o editar una mensualidad. La placa solo se escribe al crearla. -#}
+{% import "_iconos.html" as iconos %}
+{% set nueva = mensualidad is none %}
+<form class="dialogo__caja" hx-post="/parqueadero/mensualidades{% if not nueva %}/{{ mensualidad.id }}{% endif %}"
+      hx-target="#dialogo-contenido" hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">{% if nueva %}Nueva mensualidad{% else %}Mensualidad de <span class="placa-texto">{{ mensualidad.placa }}</span>{% endif %}</h2>
+    {% if not nueva %}<p>Para cambiar la placa, da de baja esta mensualidad y crea una nueva.</p>{% endif %}
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <fieldset>
+      <legend>Vehículo</legend>
+      <div class="opciones opciones--2">
+        {% for tipo in TipoParqueo %}
+        <label class="opcion opcion--centrada opcion--corta">
+          <input type="radio" name="tipo" value="{{ tipo.value }}" {% if formulario.tipo == tipo.value %}checked{% endif %}>
+          {{ iconos.icono(tipo.value, 24) }}<span>{{ nombre_del_tipo[tipo] }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% if nueva %}
+    <div class="campo">
+      <label for="placa-mensualidad">Placa</label>
+      <input id="placa-mensualidad" name="placa" class="placa" value="{{ formulario.placa }}" required maxlength="10"
+             placeholder="ABC123" autocapitalize="characters" spellcheck="false">
+    </div>
+    {% endif %}
+    <div class="dos-columnas">
+      <div class="campo">
+        <label for="titular">Nombre del titular</label>
+        <input id="titular" name="titular" value="{{ formulario.titular }}" required maxlength="80" autocapitalize="words">
+      </div>
+      <div class="campo">
+        <label for="telefono-mensualidad">Celular <span class="suave">(opcional)</span></label>
+        <input id="telefono-mensualidad" name="telefono" type="tel" inputmode="tel" value="{{ formulario.telefono }}" maxlength="20">
+      </div>
+    </div>
+    <div class="campo">
+      <label for="valor-mensual">Valor de la mensualidad</label>
+      <input id="valor-mensual" name="valor_mensual" inputmode="numeric" class="monto" required maxlength="12"
+             value="{{ formulario.valor_mensual|miles }}" placeholder="120.000">
+      <span class="ayuda">Es lo que se propone al cobrar cada mes; ese día lo puedes cambiar.</span>
+    </div>
+    {% if nueva %}
+    <div class="campo">
+      <label for="pagada-hasta">Ya trae pagado hasta <span class="suave">(opcional)</span></label>
+      <input id="pagada-hasta" name="pagada_hasta" type="date"
+             value="{{ formulario.pagada_hasta.isoformat() if formulario.pagada_hasta else '' }}">
+      <span class="ayuda">Para quien ya pagó días antes de usar este sistema, por ejemplo con el dueño anterior: sale sin pagar hasta ese día, no entra plata a la caja y el primer cobro empieza el día siguiente.</span>
+    </div>
+    {% endif %}
+    <div class="campo">
+      <label for="notas-mensualidad">Notas <span class="suave">(opcional)</span></label>
+      <input id="notas-mensualidad" name="notas" value="{{ formulario.notas }}" maxlength="200" placeholder="Puesto fijo, horario...">
+    </div>
+    {% if nueva %}
+    <label class="autorizacion">
+      <input type="checkbox" name="autorizo" value="si" required {% if formulario.autorizo %}checked{% endif %}>
+      <span>El titular autorizó guardar su nombre, su celular y su placa para llevar la mensualidad (Ley 1581). Puede pedir que se borren cuando quiera.</span>
+    </label>
+    {% endif %}
+  </div>
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande">{{ "Crear mensualidad" if nueva else "Guardar cambios" }}</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

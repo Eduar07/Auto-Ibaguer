@@ -143,3 +143,13 @@ def cuando_fue(dia: date, hoy: date) -> str:
     if dias < 7:
         return f"el {DIAS[dia.weekday()]}"
     return f"el {dia_relativo(dia, hoy)}"
+
+
+def cuando_paso(momento: datetime, hoy: date) -> str:
+    """Un momento pasado, en medio de una frase: "hoy a las 7:44 p.m.", "ayer a la 1:05 p.m."
+    o "el 17 de octubre a las 8:30 a.m.". Termina en "a.m." o "p.m.": si cierra la frase, ese
+    punto ya es el final (no se escribe otro).
+
+    Como en `hora`, el momento ya debe venir en la hora de Bogotá.
+    """
+    return f"{cuando_fue(momento.date(), hoy)} a {hora_con_articulo(momento)}"

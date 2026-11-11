@@ -1,0 +1,38 @@
+{% extends "pagina.html" %}
+{% import "_iconos.html" as iconos %}
+{% from "_parqueadero_atajos.html" import atajos %}
+{% from "_parqueadero_resumen_caja.html" import resumen_de_caja, movimientos_de_caja %}
+{% set c = resumen.caja %}
+
+{% block titulo %}Caja {{ c.id }} · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla parqueadero">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Caja {{ c.id }} del parqueadero</h1>
+      <p>Abrió {{ resumen.abrio }} {{ cuando_paso(c.abierta_en) }}{% if c.cerrada_en %} · cerró {{ resumen.cerro }} {{ cuando_paso(c.cerrada_en) }}{% endif %}</p>
+    </div>
+  </div>
+  {{ atajos("caja") }}
+  {% if imprimir_al_abrir %}<span hidden data-imprimir-al-abrir="{{ imprimir_al_abrir }}"></span>{% endif %}
+
+  <section class="panel" aria-labelledby="t-caja">
+    <div class="panel__cabeza">
+      <h2 id="t-caja">{{ "Cierre de caja" if c.cerrada_en else "Caja abierta" }}</h2>
+      <span class="insignia {{ 'insignia--gris' if c.cerrada_en else 'insignia--verde' }}">{{ "Cerrada" if c.cerrada_en else "Abierta" }}</span>
+    </div>
+    {{ resumen_de_caja(resumen) }}
+    {% if c.nota_cierre %}<p class="suave">Nota del cierre: {{ c.nota_cierre }}</p>{% endif %}
+    <div class="botones">
+      <button type="button" class="boton boton--borde" data-imprimir="/parqueadero/caja/{{ c.id }}/ticket">{{ iconos.icono("imprimir", 18) }}Imprimir resumen</button>
+      <a class="boton-texto" href="/parqueadero/caja">{{ iconos.icono("volver", 18, 2.2) }}Volver a la caja</a>
+    </div>
+  </section>
+
+  <section class="lista" aria-labelledby="t-movimientos">
+    <div class="lista__cabeza"><h3 id="t-movimientos">Cobros de esta caja</h3></div>
+    {{ movimientos_de_caja(movimientos) }}
+  </section>
+</main>
+{% endblock %}

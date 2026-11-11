@@ -1,0 +1,82 @@
+{#- Las tarifas y los datos del ticket, en un solo formulario: se guarda todo o nada. -#}
+<form class="configuracion" hx-post="/parqueadero/tarifas" hx-target="this" hx-swap="outerHTML"
+      hx-disabled-elt="find .barra-guardar button" autocomplete="off">
+  {% if error %}<p class="error" role="alert">No se guardó nada: {{ error }}</p>{% endif %}
+
+  <section class="panel seccion-configuracion" aria-labelledby="t-tarifas">
+    <h2 id="t-tarifas">Cobro por hora</h2>
+    <div class="dos-columnas">
+      <div class="campo">
+        <label for="hora_carro">Hora de carro</label>
+        <input id="hora_carro" name="hora_carro" inputmode="numeric" class="monto" required maxlength="9" value="{{ valores.hora_carro|miles }}">
+      </div>
+      <div class="campo">
+        <label for="hora_moto">Hora de moto</label>
+        <input id="hora_moto" name="hora_moto" inputmode="numeric" class="monto" required maxlength="9" value="{{ valores.hora_moto|miles }}">
+      </div>
+      <div class="campo">
+        <label for="gracia_minutos">Minutos de gracia</label>
+        <input id="gracia_minutos" name="gracia_minutos" inputmode="numeric" class="monto" required maxlength="2" value="{{ valores.gracia_minutos if valores.gracia_minutos is not none else '' }}">
+        <span class="ayuda">Después de cada hora, el tiempo que espera antes de cobrar la siguiente. Con 15: hasta 1 h 15 min es una hora; desde 1 h 16 min, dos.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel seccion-configuracion" aria-labelledby="t-fraccion">
+    <h2 id="t-fraccion">Primeros 15 minutos <span class="suave">(opcional)</span></h2>
+    <p class="suave">Si lo dejas vacío, quien se queda menos de 15 minutos paga la hora completa. En Bucaramanga el decreto de tarifas cobra aparte la fracción de los primeros 15 minutos: revisa el valor que te corresponde.</p>
+    <div class="dos-columnas">
+      <div class="campo">
+        <label for="fraccion_carro">Carro</label>
+        <input id="fraccion_carro" name="fraccion_carro" inputmode="numeric" class="monto" maxlength="9" value="{{ valores.fraccion_carro|miles }}" placeholder="Hora completa">
+      </div>
+      <div class="campo">
+        <label for="fraccion_moto">Moto</label>
+        <input id="fraccion_moto" name="fraccion_moto" inputmode="numeric" class="monto" maxlength="9" value="{{ valores.fraccion_moto|miles }}" placeholder="Hora completa">
+      </div>
+    </div>
+  </section>
+
+  <section class="panel seccion-configuracion" aria-labelledby="t-ticket">
+    <h2 id="t-ticket">Ticket</h2>
+    <p class="suave">La Ley 1480 pide que el recibo diga quién presta el servicio, la fecha y hora de entrada, el vehículo, cómo entró y la tarifa: el ticket ya lo trae.</p>
+    <div class="dos-columnas">
+      <div class="campo">
+        <label for="nombre">Nombre del parqueadero</label>
+        <input id="nombre" name="nombre" required maxlength="60" value="{{ valores.nombre }}">
+      </div>
+      <div class="campo">
+        <label for="nit">NIT o razón social <span class="suave">(opcional)</span></label>
+        <input id="nit" name="nit" maxlength="80" value="{{ valores.nit }}">
+      </div>
+      <div class="campo">
+        <label for="direccion">Dirección</label>
+        <input id="direccion" name="direccion" maxlength="80" value="{{ valores.direccion }}">
+      </div>
+      <div class="campo">
+        <label for="telefono-ticket">Teléfono</label>
+        <input id="telefono-ticket" name="telefono" type="tel" maxlength="30" value="{{ valores.telefono }}">
+      </div>
+    </div>
+    <div class="campo">
+      <label for="pie_ticket">Texto al final del ticket</label>
+      <input id="pie_ticket" name="pie_ticket" maxlength="240" value="{{ valores.pie_ticket }}">
+      <span class="ayuda">Por ejemplo, las condiciones del servicio o el horario.</span>
+    </div>
+    <fieldset>
+      <legend>Ancho del papel de la impresora</legend>
+      <div class="opciones opciones--2">
+        {% for ancho in anchos %}
+        <label class="opcion opcion--centrada opcion--corta">
+          <input type="radio" name="ancho_ticket" value="{{ ancho }}" {% if valores.ancho_ticket == ancho %}checked{% endif %}>
+          <span>{{ ancho }} mm</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+  </section>
+
+  <div class="barra-guardar">
+    <button type="submit" class="boton boton--grande">Guardar</button>
+  </div>
+</form>

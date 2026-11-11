@@ -1,0 +1,22 @@
+{% extends "pagina.html" %}
+{% import "_iconos.html" as iconos %}
+{% from "_parqueadero_atajos.html" import atajos %}
+
+{% block titulo %}Mensualidades · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla parqueadero">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Mensualidades</h1>
+      <p>Cada mensualidad cubre 30 días seguidos. El valor lo pones tú en cada caso; el mensualista al día sale sin pagar.</p>
+    </div>
+    <button type="button" class="boton" hx-get="/parqueadero/mensualidades/nueva" hx-target="#dialogo-contenido">{{ iconos.icono("mas", 18, 2.5) }}Nueva mensualidad</button>
+  </div>
+  {{ atajos("mensualidades") }}
+
+  <section class="lista" id="lista-mensualidades" aria-label="Mensualidades activas">
+    {% include "_parqueadero_mensualidades.html" %}
+  </section>
+</main>
+{% endblock %}

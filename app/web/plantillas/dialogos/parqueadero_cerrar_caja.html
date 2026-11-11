@@ -1,0 +1,43 @@
+{#- Cerrar la caja del parqueadero: se cuenta el efectivo del cajón y queda la diferencia. -#}
+{% import "_iconos.html" as iconos %}
+{% set c = resumen.caja %}
+{% set esperado = resumen.cuadre.efectivo_esperado %}
+<form class="dialogo__caja" data-formulario="cierre-caja" data-esperado="{{ esperado }}"
+      hx-post="/parqueadero/caja/cerrar" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <input type="hidden" name="caja_id" value="{{ c.id }}">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Cerrar caja</h2>
+    <p>Abierta {{ cuando_paso(c.abierta_en) }} Cuenta el efectivo del cajón, billetes y monedas, incluida la base.</p>
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <div class="dos-columnas">
+      <div class="tarjeta-dato">
+        <span>Debe haber en el cajón</span>
+        <strong>{{ esperado|pesos }}</strong>
+        <span>Base {{ c.base|pesos }} + efectivo {{ resumen.cuadre.por_medio(MedioPago.EFECTIVO)|pesos }}</span>
+      </div>
+      <div class="tarjeta-dato">
+        <span>Por otros medios (no están en el cajón)</span>
+        <strong>{{ (resumen.cuadre.total - resumen.cuadre.por_medio(MedioPago.EFECTIVO))|pesos }}</strong>
+        <span>Nequi, Daviplata y tarjeta</span>
+      </div>
+    </div>
+    <div class="campo">
+      <label for="efectivo-contado">Efectivo contado</label>
+      <input id="efectivo-contado" name="efectivo_contado" inputmode="numeric" class="monto monto--grande"
+             required maxlength="12" value="{{ contado|miles }}" placeholder="{{ esperado|miles }}">
+      <span class="ayuda" data-diferencia>Escribe lo que contaste y aquí ves si cuadra.</span>
+    </div>
+    <div class="campo">
+      <label for="nota-cierre">Nota <span class="suave">(opcional)</span></label>
+      <input id="nota-cierre" name="nota" value="{{ nota }}" maxlength="200" placeholder="Si faltó o sobró, por qué">
+    </div>
+  </div>
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande boton--oscuro">{{ iconos.icono("imprimir", 20) }}Cerrar e imprimir resumen</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

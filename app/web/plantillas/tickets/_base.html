@@ -1,0 +1,24 @@
+<!doctype html>
+{#- Un ticket para la impresora térmica: una página aparte, del ancho del papel (58 u 80 mm).
+    El dashboard la carga en un marco escondido y abre la ventana de impresión. -#}
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block titulo %}Ticket{% endblock %} · {{ ajustes.nombre }}</title>
+  <link rel="stylesheet" href="{{ estatico('css/ticket.css') }}">
+</head>
+<body class="ticket ticket--{{ ajustes.ancho_ticket }}">
+  <header class="ticket__negocio">
+    <strong>{{ ajustes.nombre }}</strong>
+    {% if ajustes.nit %}<span>{{ ajustes.nit }}</span>{% endif %}
+    {% if ajustes.direccion %}<span>{{ ajustes.direccion }}</span>{% endif %}
+    {% if ajustes.telefono %}<span>Tel. {{ ajustes.telefono }}</span>{% endif %}
+  </header>
+  {% block contenido %}{% endblock %}
+  {% block pie %}
+  {% if ajustes.pie_ticket %}<footer class="ticket__pie">{{ ajustes.pie_ticket }}</footer>{% endif %}
+  {% endblock %}
+</body>
+</html>

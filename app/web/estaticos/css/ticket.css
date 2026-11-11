@@ -1,0 +1,55 @@
+/* Tickets del parqueadero para impresoras térmicas de 58 y 80 mm.
+   Solo negro sobre blanco y letra grande: la impresora no tiene colores y el papel es angosto.
+   Al imprimir, elige la impresora de tickets y márgenes "Ninguno". */
+
+@page { margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+
+body.ticket {
+  font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.3;
+  padding: 2mm 3mm 8mm;
+}
+.ticket--80 { width: 80mm; }
+.ticket--58 { width: 58mm; font-size: 11px; padding: 2mm 2mm 8mm; }
+
+.ticket__negocio {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1px;
+  padding-bottom: 2mm; border-bottom: 1px dashed #000;
+}
+.ticket__negocio strong { font-size: 15px; text-transform: uppercase; }
+
+.ticket__bloque { display: flex; flex-direction: column; gap: 1px; padding: 2mm 0; border-bottom: 1px dashed #000; }
+.ticket__bloque--centro { align-items: center; text-align: center; }
+.ticket__tipo-documento { font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.ticket__numero { font-size: 20px; font-weight: 700; }
+.ticket__placa {
+  font-size: 30px; font-weight: 800; letter-spacing: 0.06em; margin: 1mm 0;
+  padding: 0 3mm; border: 2px solid #000; border-radius: 2mm;
+}
+.ticket--58 .ticket__placa { font-size: 24px; }
+
+.ticket__datos { display: grid; grid-template-columns: auto 1fr; gap: 1px 3mm; margin: 2mm 0; }
+.ticket__datos dt { font-weight: 700; }
+.ticket__datos dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.ticket__datos--separado { border-top: 1px dashed #000; padding-top: 2mm; }
+.ticket__datos .ticket__sub { font-weight: 400; padding-left: 3mm; font-size: 0.9em; }
+
+.ticket__total {
+  display: flex; justify-content: space-between; align-items: baseline; margin: 2mm 0; padding: 1.5mm 0;
+  border-top: 2px solid #000; border-bottom: 2px solid #000; font-weight: 700;
+}
+.ticket__total strong { font-size: 22px; }
+.ticket__nota { margin: 2mm 0; text-align: center; }
+.ticket__pie { padding-top: 2mm; border-top: 1px dashed #000; text-align: center; }
+
+/* Abierto en una pestaña (para mirarlo o reimprimirlo): se ve como el papel. */
+@media screen {
+  body.ticket { margin: 16px auto; box-shadow: 0 0 0 1px #ccc; }
+}
+
+/* Al imprimir, ocupa lo que la impresora diga que se puede imprimir: muchas de 80 mm imprimen
+   72 mm y las de 58 mm, 48 mm. Con el ancho fijo, lo de los bordes podría quedar cortado. */
+@media print {
+  body.ticket { width: auto; }
+}

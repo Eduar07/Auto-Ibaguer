@@ -4,7 +4,15 @@ from datetime import date, datetime
 
 import pytest
 
-from app.formato import cuando_fue, cuando_sera, duracion, fecha_larga, miles, telefono_oculto
+from app.formato import (
+    cuando_fue,
+    cuando_paso,
+    cuando_sera,
+    duracion,
+    fecha_larga,
+    miles,
+    telefono_oculto,
+)
 
 
 @pytest.mark.parametrize(
@@ -81,3 +89,16 @@ def test_cuando_fue_como_se_dice_en_una_frase(dia, texto):
 )
 def test_cuando_sera_como_se_dice_despues_de_hasta(momento, texto):
     assert cuando_sera(momento, date(2026, 10, 26)) == texto  # un lunes
+
+
+@pytest.mark.parametrize(
+    ("momento", "texto"),
+    [
+        (datetime(2026, 10, 26, 19, 44), "hoy a las 7:44 p.m."),
+        (datetime(2026, 10, 25, 13, 5), "ayer a la 1:05 p.m."),
+        (datetime(2026, 10, 22, 8, 0), "el jueves a las 8:00 a.m."),
+        (datetime(2026, 10, 3, 6, 30), "el 3 de octubre a las 6:30 a.m."),
+    ],
+)
+def test_cuando_paso_como_se_dice_en_una_frase(momento, texto):
+    assert cuando_paso(momento, date(2026, 10, 26)) == texto  # un lunes

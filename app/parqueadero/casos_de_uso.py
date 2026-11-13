@@ -6,8 +6,10 @@ en "Cobrar", dos personas abriendo caja), se pide un candado en PostgreSQL: el s
 espera a que termine el primero y ve lo que hizo. Así no se cobra dos veces.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -244,12 +246,24 @@ class Liquidacion:
 
 def liquidar(sesion: Session, parqueo: Parqueo, ahora: datetime | None = None) -> Liquidacion:
     ahora = ahora or tiempo.ahora()
+    mensualidad = mensualidad_activa(sesion, parqueo.placa)
+    pagos = periodos_pagados(sesion, mensualidad.id) if mensualidad is not None else []
+    return liquidar_con(parqueo, ahora, mensualidad, pagos)
+
+
+def liquidar_con(
+    parqueo: Parqueo,
+    ahora: datetime,
+    mensualidad: Mensualidad | None,
+    pagos: list[tuple[date, date]],
+) -> Liquidacion:
+    """La cuenta de `liquidar`, con la mensualidad y sus pagos ya leídos. La lista de los que
+    están adentro liquida a todos de una vez: así son dos consultas, no dos por vehículo."""
     tarifa = reglas.Tarifa(parqueo.valor_hora, parqueo.gracia_minutos, parqueo.valor_fraccion)
     cobro = reglas.calcular_cobro(reglas.minutos_adentro(parqueo.entrada_en, ahora), tarifa)
-    mensualidad = mensualidad_activa(sesion, parqueo.placa)
     al_dia_hasta = None
     if mensualidad is not None:
-        al_dia_hasta = cubierta_hasta(sesion, mensualidad.id, _hoy(ahora))
+        al_dia_hasta = reglas.cubierta_hasta(pagos, _hoy(ahora))
     return Liquidacion(parqueo, ahora, cobro, mensualidad, al_dia_hasta)
 
 
@@ -328,14 +342,36 @@ def mensualidad_activa(sesion: Session, placa: str) -> Mensualidad | None:
     ).one_or_none()
 
 
+def periodos_pagados(sesion: Session, mensualidad_id: int) -> list[tuple[date, date]]:
+    """Los periodos (desde, hasta) que cubren los pagos de una mensualidad."""
+    return [(desde, hasta) for _, desde, hasta in _pagos_de(sesion, [mensualidad_id])]
+
+
+def periodos_por_mensualidad(
+    sesion: Session, mensualidad_ids: list[int]
+) -> dict[int, list[tuple[date, date]]]:
+    """Los periodos pagados de varias mensualidades, en una sola consulta."""
+    periodos: dict[int, list[tuple[date, date]]] = {id_: [] for id_ in mensualidad_ids}
+    for mensualidad_id, desde, hasta in _pagos_de(sesion, mensualidad_ids):
+        periodos[mensualidad_id].append((desde, hasta))
+    return periodos
+
+
+def _pagos_de(sesion: Session, mensualidad_ids: Sequence[int]) -> list[Any]:
+    if not mensualidad_ids:
+        return []
+    return list(
+        sesion.execute(
+            select(
+                PagoMensualidad.mensualidad_id, PagoMensualidad.desde, PagoMensualidad.hasta
+            ).where(PagoMensualidad.mensualidad_id.in_(mensualidad_ids))
+        )
+    )
+
+
 def cubierta_hasta(sesion: Session, mensualidad_id: int, dia: date) -> date | None:
     """Si algún pago cubre `dia`, hasta cuándo va lo pagado (contando pagos seguidos)."""
-    pagos = sesion.execute(
-        select(PagoMensualidad.desde, PagoMensualidad.hasta).where(
-            PagoMensualidad.mensualidad_id == mensualidad_id
-        )
-    ).all()
-    return reglas.cubierta_hasta([(desde, hasta) for desde, hasta in pagos], dia)
+    return reglas.cubierta_hasta(periodos_pagados(sesion, mensualidad_id), dia)
 
 
 def pagada_hasta(sesion: Session, mensualidad_id: int) -> date | None:

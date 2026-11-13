@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.config import obtener_entorno
 from app.db.sesion import obtener_sesion
@@ -69,6 +70,10 @@ async def ciclo_de_vida(servidor: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Auto Ibaguer", version="0.1.0", lifespan=ciclo_de_vida)
 app.add_middleware(CabecerasDeSeguridad)
+# Las páginas viajan comprimidas: la lista de los que están adentro (120 vehículos pesan
+# unos 190 KB) se pide cada minuto, y en el parqueadero el internet son datos del celular.
+# La fila en vivo (text/event-stream) no se comprime: Starlette la deja pasar tal cual.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount(
     "/estaticos",
     StaticFiles(directory=Path(__file__).parent / "web" / "estaticos"),

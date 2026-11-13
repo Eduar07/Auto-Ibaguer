@@ -82,7 +82,8 @@ Es la sección **Parqueadero** del dashboard (en el celular, **Parqueo** en la b
 | **Entradas y salidas** | Registrar la entrada (carro o moto, la placa y, si quieres, el estado o lo que deja: sale en el ticket) e imprimir el ticket. Cobrar la salida escribiendo la placa o el número del ticket, o con **Cobrar** en la lista de los que están adentro, que dice cuánto va cada uno. **Anular** una entrada mal hecha: pide el motivo y no cuenta en la caja. |
 | **Caja** | Abrirla con la base para vueltos, ver lo que ha entrado por cada medio de pago y cerrarla contando el efectivo: dice si cuadró, sobró o faltó, e imprime el resumen para firmar. Abajo, los cierres anteriores y el archivo para Excel. |
 | **Mensualidades** | Crear la del cliente (placa, nombre, celular opcional y el valor que acuerdes), cobrar cada mes e imprimir el recibo. Dice quién está al día, a quién se le vence en 3 días o menos y quién debe. |
-| **Tarifas y ticket** | El valor de la hora de carro y de moto, los minutos de gracia, la fracción de los primeros 15 minutos (opcional) y lo que sale impreso: nombre, NIT (en el ticket sale "NIT 900.123.456-7"), dirección, teléfono, el texto del final del ticket y el ancho del papel. |
+| **Balance** | Lo que se recogió por día, semana o mes, por medio de pago, con lo que hay que revisar (descuentos, anuladas, cajas que no cuadraron). En el del día, el reporte para los jefes: por WhatsApp, impreso o por correo. |
+| **Tarifas y ticket** | El valor de la hora de carro y de moto, los minutos de gracia, la fracción de los primeros 15 minutos (opcional) y lo que sale impreso: nombre, NIT (en el ticket sale "NIT 900.123.456-7"), dirección, teléfono, el texto del final del ticket y el ancho del papel. También los correos de los jefes para el reporte diario. |
 
 ### Cómo cobra
 
@@ -153,7 +154,53 @@ Cualquier ticket se puede reimprimir: el botón de la impresora en la lista de l
 
 ### Las cuentas en Excel
 
-En **Caja > Llevar las cuentas en Excel** eliges desde y hasta qué día y descargas un archivo con cada cobro (salidas y mensualidades): fecha, hora, placa, tipo, tiempo, medio de pago, valor, ajuste y caja. Excel lo abre directo con doble clic, con tildes y columnas en su sitio.
+En **Caja > Llevar las cuentas en Excel** eliges desde y hasta qué día y descargas un archivo con cada cobro (salidas y mensualidades): fecha, hora, placa, tipo, tiempo, medio de pago, valor, ajuste y caja. Excel lo abre directo con doble clic, con tildes y columnas en su sitio. Desde **Balance** se descarga el día, la semana o el mes que estás mirando.
+
+### El balance: día, semana y mes
+
+En **Parqueadero > Balance** eliges **Día**, **Semana** (de lunes a domingo) o **Mes**, y con las flechas pasas al anterior o al siguiente. Muestra:
+
+- **Recogido**: todo lo que entró (salidas y mensualidades), comparado con el periodo anterior. Si estás mirando hoy, la comparación es con ayer completo, porque hoy va por la mitad.
+- **Por medio de pago**: el efectivo es lo que debió entrar al cajón; Nequi, Daviplata y tarjeta se comparan con lo que dicen sus apps.
+- **Lo que pasó**: salidas de carros y de motos, mensualistas al día que salieron sin pagar, descuentos, entradas anuladas y si las cajas cuadraron.
+- **Día por día** (en semana y mes), con una barra para ver de un vistazo los días buenos y los flojos. Cada día lleva a su balance.
+- **Cajas**: cada caja es del día en que se abrió, aunque se cierre pasada la medianoche.
+- **Para revisar**: cada cobro distinto a la tarifa y cada entrada anulada, con su motivo.
+
+La plata cuenta el día en que se cobró, en la hora de Bogotá: una salida a las 11:30 p.m. es de ese día. Los días que un mensualista ya traía pagados (con el dueño anterior) no son plata de este sistema y no suman.
+
+### Reporte diario a los jefes
+
+Es el balance del día escrito para leerlo en el celular: lo que se recogió y por qué medio, salidas, mensualidades y entradas, los descuentos y las anuladas con su motivo, cómo cerró la caja, cuántos vehículos quedan adentro y qué mensualidades están pendientes de pago. Lleva placas y plata, nunca nombres ni celulares de los clientes. Sale de tres formas, en **Balance > Día**:
+
+- **Enviar por WhatsApp**: abre WhatsApp con el reporte ya escrito; eliges el chat de los jefes y lo envías. Funciona desde el primer día, sin configurar nada.
+- **Imprimir**: en la impresora de tickets, con una raya para firmar.
+- **Por correo, solo**: al cerrar la caja les llega el reporte del día de esa caja (si la cierras pasada la medianoche, sigue siendo el del día en que se abrió). También está **Enviar por correo ahora**, para mandarlo a mano o probar. Si el correo falla, la caja igual se cierra y el error queda en **Logs**.
+
+Para el correo:
+
+1. Escribe los correos de los jefes en **Tarifas y ticket > Reporte diario a los jefes** (hasta 5, separados por coma). Uno mal escrito no se guarda: mejor saberlo hoy que descubrir en un mes que nunca llegó.
+2. Crea un Gmail para el parqueadero (no uses el tuyo personal) y sácale una **contraseña de aplicación**: en [myaccount.google.com](https://myaccount.google.com) > **Seguridad** activa la **Verificación en 2 pasos**; después busca **Contraseñas de aplicación**, escribe un nombre ("Auto Ibaguer") y copia las 16 letras que muestra. No es la contraseña normal del correo, y es secreta como las de WhatsApp.
+3. En Render, el servidor > **Environment** (en tu computador, en el `.env`):
+
+   | Variable | Valor |
+   |---|---|
+   | `CORREO_SERVIDOR` | `smtp.gmail.com` |
+   | `CORREO_PUERTO` | `465` |
+   | `CORREO_USUARIO` | el Gmail del parqueadero |
+   | `CORREO_CLAVE` | las 16 letras de la contraseña de aplicación |
+
+4. En **Balance**, **Enviar por correo ahora**: si dice "Reporte enviado", ya quedó.
+
+**Ojo con el plan gratis de Render**: bloquea el correo (los puertos 25, 465 y 587). Ahí el botón de correo dice que no se pudo conectar; mientras tanto, manda el reporte por WhatsApp. En el plan de pago sale normal.
+
+Para probar el correo en tu computador sin mandar nada de verdad, enciende un servidor de correo de mentira que muestra en la terminal lo que le llega, y pon en el `.env` `CORREO_SERVIDOR=localhost` y `CORREO_PUERTO=1025` (sin usuario ni clave):
+
+```bash
+uvx --from aiosmtpd python -m aiosmtpd -n -l localhost:1025
+```
+
+La contraseña del correo nunca viaja sin cifrar: con usuario y clave, el sistema solo manda por una conexión cifrada (puerto 465, o 587 con STARTTLS).
 
 ## El bot
 
@@ -511,8 +558,8 @@ app/
 ├── turnos/         la fila: turnos, llamados, avisos, puestos, historial y cobro
 ├── bot/            conversación de WhatsApp: pasos, botones, textos, avisos y la pausa
 ├── comentarios/    quejas, felicitaciones y preguntas para el administrador, y responderle al cliente
-├── parqueadero/    entradas y salidas, cobro por hora, mensualidades, su caja y sus tarifas
-├── integraciones/  mensajes que entran y salen de WhatsApp (bandejas y reintentos)
+├── parqueadero/    entradas y salidas, cobro por hora, mensualidades, su caja, sus tarifas, el balance y el reporte diario
+├── integraciones/  mensajes que entran y salen de WhatsApp (bandejas y reintentos) y el correo del reporte
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores
 ├── reloj/          lo que pasa solo cada 30 segundos (gracias, sesiones del bot, avisos)
 ├── db/             conexión a la base de datos y lo que mira revisar-base
@@ -565,9 +612,9 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Horario, tiempo de gracia, cuándo avisar, nombre y teléfono del negocio, aviso de datos | Pantalla **Configuración** del dashboard (se guarda en la tabla `configuracion`). No se toca el código. |
 | Servicios, precios y puestos | Pantalla **Configuración**. Un precio nuevo apaga el viejo y crea otro en `servicio_precio`; así los cobros pasados no cambian. De la duración estimada de cada servicio dependen la espera de la fila y la alerta de lavado demorado. |
 | Lo que dice el bot | **Configuración > Textos del bot** para los 58 que más leen los clientes, y **Configuración > Datos personales** para el aviso de datos. Cada texto cambiado es una fila `texto_bot.<nombre>` en la tabla `configuracion`. Los botones y los demás textos, en `app/bot/textos.py`. |
-| Tarifas del parqueadero y lo que sale en el ticket | Pantalla **Parqueadero > Tarifas y ticket** (filas `parqueadero.<nombre>` en la tabla `configuracion`). Cómo se ve el ticket impreso, en `app/web/estaticos/css/ticket.css`. |
+| Tarifas del parqueadero, lo que sale en el ticket y a quién le llega el reporte diario | Pantalla **Parqueadero > Tarifas y ticket** (filas `parqueadero.<nombre>` en la tabla `configuracion`). Cómo se ve el ticket impreso, en `app/web/estaticos/css/ticket.css`. Lo que dice el reporte, en `app/parqueadero/reporte.py`. |
 | Colores, letras y tamaños del dashboard | `app/web/estaticos/css/dashboard.css`. Los colores del diseño están al comienzo, con nombre. |
-| Conexión a la base, claves de Meta y Gemini, reloj encendido o apagado | Archivo `.env`, que nunca se sube a GitHub. `.env.example` solo trae los nombres. En la nube, en Render: el servidor > **Environment**. |
+| Conexión a la base, claves de Meta y Gemini, el correo del reporte, reloj encendido o apagado | Archivo `.env`, que nunca se sube a GitHub. `.env.example` solo trae los nombres. En la nube, en Render: el servidor > **Environment**. |
 | El servidor y la base de la nube (plan, región, versión de PostgreSQL) | `render.yaml`. Render aplica los cambios al unirlos a `main`. |
 
 ## Cambiar una tabla

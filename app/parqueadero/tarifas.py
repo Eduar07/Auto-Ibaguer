@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass, replace
 from typing import Any
 
+from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -45,6 +46,11 @@ VALORES_INICIALES: tuple[tuple[str, Any, str], ...] = (
         "Texto al final del ticket (condiciones del servicio)",
     ),
     ("ancho_ticket", 80, "Ancho del papel de la impresora de tickets, en milímetros"),
+    (
+        "correos_reporte",
+        "",
+        "Correos que reciben el reporte diario del parqueadero al cerrar la caja",
+    ),
 )
 _INICIALES = {clave: valor for clave, valor, _ in VALORES_INICIALES}
 _DESCRIPCIONES = {clave: descripcion for clave, _, descripcion in VALORES_INICIALES}
@@ -63,6 +69,11 @@ class AjustesParqueadero:
     telefono: str
     pie_ticket: str
     ancho_ticket: int
+    correos_reporte: str = ""  # "jefe@gmail.com, socio@gmail.com"
+
+    @property
+    def destinos_del_reporte(self) -> list[str]:
+        return [correo for correo in self.correos_reporte.split(", ") if correo]
 
     def tarifa(self, tipo: TipoParqueo) -> Tarifa:
         if tipo is TipoParqueo.MOTO:
@@ -88,6 +99,7 @@ def leer_ajustes(sesion: Session) -> AjustesParqueadero:
         telefono=str(valores["telefono"]),
         pie_ticket=str(valores["pie_ticket"]),
         ancho_ticket=int(valores["ancho_ticket"]),
+        correos_reporte=str(valores["correos_reporte"]),
     )
 
 
@@ -107,6 +119,30 @@ def limpiar_nit(texto: str) -> str:
     return nit
 
 
+MAXIMO_DE_CORREOS = 5
+
+
+def limpiar_correos(texto: str) -> str:
+    """Los correos de los jefes, revisados y separados por coma: "a@gmail.com, b@gmail.com".
+
+    Se pueden escribir separados por coma, punto y coma o espacio. Uno mal escrito no se
+    guarda: mejor saberlo hoy que descubrir en un mes que el reporte nunca llegó.
+    """
+    correos = []
+    for escrito in re.split(r"[,;\s]+", texto.strip()):
+        if not escrito:
+            continue
+        try:
+            correo = validate_email(escrito, check_deliverability=False).normalized
+        except EmailNotValidError as error:
+            raise TarifaInvalida(f"Revisa el correo «{escrito}»: no parece un correo.") from error
+        if correo.lower() not in (c.lower() for c in correos):
+            correos.append(correo)
+    if len(correos) > MAXIMO_DE_CORREOS:
+        raise TarifaInvalida(f"El reporte se manda a máximo {MAXIMO_DE_CORREOS} correos.")
+    return ", ".join(correos)
+
+
 def guardar_ajustes(sesion: Session, ajustes: AjustesParqueadero) -> None:
     """Revisa y guarda. Las entradas que ya están adentro conservan la tarifa con que entraron."""
     for tipo in TipoParqueo:
@@ -122,6 +158,7 @@ def guardar_ajustes(sesion: Session, ajustes: AjustesParqueadero) -> None:
         direccion=ajustes.direccion.strip(),
         telefono=ajustes.telefono.strip(),
         pie_ticket=ajustes.pie_ticket.strip(),
+        correos_reporte=limpiar_correos(ajustes.correos_reporte),
     )
     existentes = {
         fila.clave: fila

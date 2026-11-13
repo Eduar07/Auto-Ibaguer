@@ -106,6 +106,16 @@ def fecha(dia: date) -> str:
     return f"{dia.day} de {MESES[dia.month - 1]} de {dia.year}"
 
 
+def dia_y_mes(dia: date) -> str:
+    """date(2026, 10, 3) -> "3 de octubre" """
+    return f"{dia.day} de {MESES[dia.month - 1]}"
+
+
+def dia_corto(dia: date) -> str:
+    """date(2026, 11, 9) -> "Lun 9": para una lista de días del mismo mes."""
+    return f"{DIAS[dia.weekday()][:3].capitalize()} {dia.day}"
+
+
 def dia_relativo(dia: date, hoy: date) -> str:
     """ "Hoy", "Ayer", "17 de octubre" o, si fue otro año, "17 de octubre de 2025"."""
     if dia == hoy:

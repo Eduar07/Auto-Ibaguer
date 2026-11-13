@@ -1,4 +1,5 @@
 {#- Las tarifas y los datos del ticket, en un solo formulario: se guarda todo o nada. -#}
+{% import "_iconos.html" as iconos %}
 <form class="configuracion" hx-post="/parqueadero/tarifas" hx-target="this" hx-swap="outerHTML"
       hx-disabled-elt="find .barra-guardar button" autocomplete="off">
   {% if error %}<p class="error" role="alert">No se guardó nada: {{ error }}</p>{% endif %}
@@ -75,6 +76,20 @@
         {% endfor %}
       </div>
     </fieldset>
+  </section>
+
+  <section class="panel seccion-configuracion" aria-labelledby="t-reporte">
+    <h2 id="t-reporte">Reporte diario a los jefes</h2>
+    <p class="suave">Al cerrar la caja, el reporte del día (lo que se hizo y lo que se recogió) les llega por correo. También se puede mandar por WhatsApp desde <a href="/parqueadero/balance">Balance</a>.</p>
+    {% if not correo_configurado %}
+    <div class="nota nota--suelta">{{ iconos.icono("info", 20) }}<span>El correo del sistema todavía no está configurado: mientras tanto, el reporte se manda por WhatsApp. Cómo configurarlo, en el README (El parqueadero &gt; Reporte diario).</span></div>
+    {% endif %}
+    <div class="campo">
+      <label for="correos_reporte">Correos de los jefes <span class="suave">(opcional, máximo 5)</span></label>
+      <input id="correos_reporte" name="correos_reporte" type="text" inputmode="email" maxlength="300" autocomplete="off"
+             placeholder="jefe@gmail.com, socio@gmail.com" value="{{ valores.correos_reporte }}">
+      <span class="ayuda">Sepáralos con coma.</span>
+    </div>
   </section>
 
   <div class="barra-guardar">

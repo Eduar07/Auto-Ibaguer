@@ -32,6 +32,9 @@ DIAS_DE_LA_MENSUALIDAD = 30
 # lista sale en naranja). Antes de eso está al día: cobrarle sería adelantar un mes.
 DIAS_PARA_COBRAR_ANTES = 3
 
+# Un día del cobro por días: las 24 horas del día y la noche, como lo define el decreto.
+HORAS_DEL_DIA = 24
+
 # Una placa limpia: letras y números, con al menos una de cada una. Cabe la de carro
 # (ABC123), la de moto (ABC12D), la de moto vieja (ABC12) y las especiales (R12345).
 _PLACA = re.compile(r"(?=.*[A-Z])(?=.*\d)[A-Z0-9]{4,7}")
@@ -46,14 +49,26 @@ class Tarifa:
     gracia_minutos: int
     # Lo que valen los primeros 15 minutos. None: desde el primer minuto se cobra la hora.
     valor_fraccion: int | None = None
+    # Lo máximo que paga un día (24 horas): cuando las horas pasan ese valor, se cobra el día.
+    # None: todo se cobra por horas.
+    valor_dia: int | None = None
+    # Lo que vale cada día después del primero. None: lo mismo que el primero.
+    valor_dia_siguiente: int | None = None
+
+    @property
+    def dia_siguiente(self) -> int | None:
+        return self.valor_dia_siguiente or self.valor_dia
 
 
 @dataclass(frozen=True)
 class Cobro:
     minutos: int  # el tiempo que estuvo adentro, en minutos completos
-    horas: int  # las horas cobradas (0 si se cobró solo la fracción)
+    horas: int  # las horas que da el tiempo (0 si se cobró solo la fracción)
     valor: int
     fraccion: bool = False
+    dias: int = 0  # días cobrados como día (los de 24 horas y el que pasó el valor del día)
+    horas_sueltas: int = 0  # las horas cobradas por hora, después de los días
+    detalle: str = ""  # cómo se llegó al valor, para la salida y el recibo
 
 
 def validar_placa(texto: str) -> str:
@@ -73,6 +88,17 @@ def validar_tarifa(tarifa: Tarifa) -> Tarifa:
         raise TarifaInvalida("Los minutos de gracia van de 0 a 59.")
     if tarifa.valor_fraccion is not None and tarifa.valor_fraccion < 0:
         raise TarifaInvalida("El valor de los primeros 15 minutos no puede ser negativo.")
+    if tarifa.valor_dia is not None and tarifa.valor_dia < tarifa.valor_hora:
+        raise TarifaInvalida(
+            f"El día completo no puede valer menos que una hora ({pesos(tarifa.valor_hora)})."
+        )
+    if tarifa.valor_dia_siguiente is not None:
+        if tarifa.valor_dia is None:
+            raise TarifaInvalida(
+                "Para cobrar distinto desde el segundo día, escribe primero el día completo."
+            )
+        if tarifa.valor_dia_siguiente <= 0:
+            raise TarifaInvalida("El valor desde el segundo día debe ser mayor que cero.")
     return tarifa
 
 
@@ -94,12 +120,65 @@ def horas_a_cobrar(minutos: int, gracia_minutos: int) -> int:
 
 
 def calcular_cobro(minutos: int, tarifa: Tarifa) -> Cobro:
-    """Lo que paga un vehículo por `minutos` adentro."""
+    """Lo que paga un vehículo por `minutos` adentro.
+
+    Por horas, con gracia. Si la tarifa tiene valor del día, cada 24 horas valen ese valor
+    (el primer día, `valor_dia`; los siguientes, `valor_dia_siguiente`), y las horas que
+    sobran se cobran por hora hasta que pasan lo que vale un día: ahí se cobra el día. Es como
+    el tope de un taxímetro en un viaje largo: el que se queda 6 horas no paga más que un día.
+    """
     minutos = max(0, minutos)
     if tarifa.valor_fraccion is not None and minutos <= FRACCION_MINUTOS:
-        return Cobro(minutos=minutos, horas=0, valor=tarifa.valor_fraccion, fraccion=True)
+        valor = tarifa.valor_fraccion
+        detalle = f"Primeros 15 minutos: {pesos(valor)}"
+        return Cobro(minutos=minutos, horas=0, valor=valor, fraccion=True, detalle=detalle)
     horas = horas_a_cobrar(minutos, tarifa.gracia_minutos)
-    return Cobro(minutos=minutos, horas=horas, valor=horas * tarifa.valor_hora)
+    if tarifa.valor_dia is None:
+        return Cobro(
+            minutos=minutos,
+            horas=horas,
+            valor=horas * tarifa.valor_hora,
+            horas_sueltas=horas,
+            detalle=_horas_por_valor(horas, tarifa.valor_hora),
+        )
+    siguiente = tarifa.dia_siguiente or tarifa.valor_dia
+    dias, sueltas = divmod(horas, HORAS_DEL_DIA)
+    tope_de_las_horas = tarifa.valor_dia if dias == 0 else siguiente
+    if sueltas and sueltas * tarifa.valor_hora >= tope_de_las_horas:
+        # Las horas sueltas ya pasan lo que vale el día: se cobra el día.
+        dias, sueltas = dias + 1, 0
+    valor_dias = tarifa.valor_dia + (dias - 1) * siguiente if dias else 0
+    valor = valor_dias + sueltas * tarifa.valor_hora
+    partes = []
+    if dias:
+        partes.append(_dias_por_valor(dias, tarifa.valor_dia, siguiente))
+    if sueltas or not dias:
+        partes.append(_horas_por_valor(sueltas, tarifa.valor_hora))
+    return Cobro(
+        minutos=minutos,
+        horas=horas,
+        valor=valor,
+        dias=dias,
+        horas_sueltas=sueltas,
+        detalle=" + ".join(partes),
+    )
+
+
+def _horas_por_valor(horas: int, valor_hora: int) -> str:
+    """ "3 horas × $3.000" """
+    return f"{horas} hora{'s' if horas != 1 else ''} × {pesos(valor_hora)}"
+
+
+def _dias_por_valor(dias: int, primero: int, siguiente: int) -> str:
+    """ "1 día: $15.000", "2 días: $15.000 + $6.600", "4 días: $15.000 + 3 × $6.600" o
+    "3 días × $10.000" (si todos valen lo mismo)."""
+    if dias == 1:
+        return f"1 día: {pesos(primero)}"
+    if primero == siguiente:
+        return f"{dias} días × {pesos(primero)}"
+    if dias == 2:
+        return f"2 días: {pesos(primero)} + {pesos(siguiente)}"
+    return f"{dias} días: {pesos(primero)} + {dias - 1} × {pesos(siguiente)}"
 
 
 def motivo_del_ajuste(calculado: int, cobrado: int, motivo: str | None) -> str | None:

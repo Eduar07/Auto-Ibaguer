@@ -155,6 +155,11 @@ class Parqueo(Base):
             "valor_fraccion IS NULL OR valor_fraccion >= 0", name="fraccion_no_negativa"
         ),
         CheckConstraint("gracia_minutos BETWEEN 0 AND 59", name="gracia_valida"),
+        CheckConstraint("valor_dia IS NULL OR valor_dia >= valor_hora", name="dia_valido"),
+        CheckConstraint(
+            "valor_dia_siguiente IS NULL OR (valor_dia IS NOT NULL AND valor_dia_siguiente > 0)",
+            name="dia_siguiente_valido",
+        ),
         CheckConstraint("estado = 'adentro' OR salida_en IS NOT NULL", name="salida_con_hora"),
         CheckConstraint(
             "estado <> 'salio' OR (valor_calculado IS NOT NULL AND valor_cobrado IS NOT NULL)",
@@ -204,6 +209,9 @@ class Parqueo(Base):
     valor_hora: Mapped[int] = mapped_column(Integer)
     valor_fraccion: Mapped[int | None] = mapped_column(Integer)
     gracia_minutos: Mapped[int] = mapped_column(SmallInteger)
+    # El cobro por días con que entró (vacío: todo por horas). Ver reglas.calcular_cobro.
+    valor_dia: Mapped[int | None] = mapped_column(Integer)
+    valor_dia_siguiente: Mapped[int | None] = mapped_column(Integer)
     # Cómo entró el vehículo o lo que dejó adentro (un casco, un rayón): sale en el ticket.
     observaciones: Mapped[str | None] = mapped_column(Text)
     # Al salir: si era mensualista al día, el tiempo, lo que dio la tarifa y lo que se cobró.

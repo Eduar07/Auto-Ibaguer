@@ -53,14 +53,23 @@ def fecha_larga(dia: date) -> str:
 
 
 def duracion(minutos: int) -> str:
-    """45 -> "45 min"; 65 -> "1 h 05 min"; 120 -> "2 h" """
+    """45 -> "45 min"; 65 -> "1 h 05 min"; 120 -> "2 h". Desde 24 horas cuenta días, que
+    "98 h 01 min" no se lee de una: 5881 -> "4 días 2 h 01 min"; 1445 -> "1 día 5 min"."""
     minutos = max(0, minutos)
+    dias, minutos = divmod(minutos, 24 * 60)
     horas, resto = divmod(minutos, 60)
-    if horas == 0:
-        return f"{resto} min"
-    if resto == 0:
-        return f"{horas} h"
-    return f"{horas} h {resto:02d} min"
+    if dias == 0:
+        if horas == 0:
+            return f"{resto} min"
+        if resto == 0:
+            return f"{horas} h"
+        return f"{horas} h {resto:02d} min"
+    partes = [f"{dias} día{'s' if dias != 1 else ''}"]
+    if horas:
+        partes.append(f"{horas} h {resto:02d} min" if resto else f"{horas} h")
+    elif resto:
+        partes.append(f"{resto} min")
+    return " ".join(partes)
 
 
 def dias_de_atencion(dias: Iterable[int]) -> str:

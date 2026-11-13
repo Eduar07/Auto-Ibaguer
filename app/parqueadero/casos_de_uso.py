@@ -215,6 +215,8 @@ def registrar_entrada(
         valor_hora=tarifa.valor_hora,
         valor_fraccion=tarifa.valor_fraccion,
         gracia_minutos=tarifa.gracia_minutos,
+        valor_dia=tarifa.valor_dia,
+        valor_dia_siguiente=tarifa.valor_dia_siguiente,
         observaciones=(observaciones or "").strip() or None,
         entrada_por=administrador_id,
     )
@@ -286,12 +288,24 @@ def liquidar_con(
 ) -> Liquidacion:
     """La cuenta de `liquidar`, con la mensualidad y sus pagos ya leídos. La lista de los que
     están adentro liquida a todos de una vez: así son dos consultas, no dos por vehículo."""
-    tarifa = reglas.Tarifa(parqueo.valor_hora, parqueo.gracia_minutos, parqueo.valor_fraccion)
-    cobro = reglas.calcular_cobro(reglas.minutos_adentro(parqueo.entrada_en, ahora), tarifa)
+    cobro = reglas.calcular_cobro(
+        reglas.minutos_adentro(parqueo.entrada_en, ahora), tarifa_con_que_entro(parqueo)
+    )
     al_dia_hasta = None
     if mensualidad is not None:
         al_dia_hasta = reglas.cubierta_hasta(pagos, _hoy(ahora))
     return Liquidacion(parqueo, ahora, cobro, mensualidad, al_dia_hasta)
+
+
+def tarifa_con_que_entro(parqueo: Parqueo) -> reglas.Tarifa:
+    """La tarifa copiada en la entrada: si después cambió el precio, este paga el de antes."""
+    return reglas.Tarifa(
+        parqueo.valor_hora,
+        parqueo.gracia_minutos,
+        parqueo.valor_fraccion,
+        parqueo.valor_dia,
+        parqueo.valor_dia_siguiente,
+    )
 
 
 def cobrar_salida(

@@ -32,5 +32,14 @@
   {% if c.nota_cierre %}<dt>Nota</dt><dd>{{ c.nota_cierre }}</dd>{% endif %}
   {% endif %}
 </dl>
+{% if resumen.correcciones %}
+<dl class="ticket__datos ticket__datos--separado">
+  <dt>Cobros corregidos</dt><dd>{{ resumen.correcciones|length }}</dd>
+  {% for f in resumen.correcciones %}
+  <dt class="ticket__sub">{{ f.correccion.placa }} {{ f.correccion.fecha_hora|hora }}</dt>
+  <dd class="ticket__sub">{{ f.que_paso }}: {{ f.antes }}{% if f.despues %} → {{ f.despues }}{% endif %}</dd>
+  {% endfor %}
+</dl>
+{% endif %}
 {% endblock %}
 {% block pie %}<footer class="ticket__pie">Firma: ______________________</footer>{% endblock %}

@@ -23,6 +23,10 @@ class CajaYaAbierta(ReglaDelNegocio):
     pass
 
 
+class CobroNoCorregible(ReglaDelNegocio):
+    """Un cobro se corrige solo mientras su caja sigue abierta: la cerrada ya se contó."""
+
+
 class ValorInvalido(ReglaDelNegocio):
     """Un valor o un motivo que no cuadra: negativo, sin motivo, un pago que no alcanza."""
 

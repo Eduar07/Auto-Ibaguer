@@ -199,6 +199,25 @@ def placa_o_ticket(texto: str) -> tuple[str | None, int | None]:
     return (placa or None), None
 
 
+NOMBRE_DEL_MEDIO = {
+    MedioPago.EFECTIVO: "Efectivo",
+    MedioPago.NEQUI: "Nequi",
+    MedioPago.DAVIPLATA: "Daviplata",
+    MedioPago.TARJETA: "Tarjeta",
+}
+
+
+def como_se_pago(medio: MedioPago | None) -> str:
+    """Para una frase: "en efectivo", "por Nequi", "por Daviplata", "con tarjeta" o "sin pago"."""
+    if medio is None:
+        return "sin pago"
+    if medio is MedioPago.EFECTIVO:
+        return "en efectivo"
+    if medio is MedioPago.TARJETA:
+        return "con tarjeta"
+    return f"por {NOMBRE_DEL_MEDIO[medio]}"
+
+
 @dataclass(frozen=True)
 class Cuadre:
     """Lo que debería haber en una caja: la base más lo que entró en efectivo. Lo que entró

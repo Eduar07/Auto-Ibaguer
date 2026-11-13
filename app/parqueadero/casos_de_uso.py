@@ -1,4 +1,5 @@
-"""Lo que se hace en el parqueadero: entradas, salidas, caja y mensualidades.
+"""Lo que se hace en el parqueadero: entradas, salidas, caja, mensualidades y la corrección de
+un cobro equivocado.
 
 Cada función trabaja dentro de la transacción de quien la llama (la pantalla confirma con
 commit). Antes de cambiar algo que se puede tocar dos veces al mismo tiempo (un doble clic
@@ -20,14 +21,21 @@ from app.clientes.reglas import nombre_bonito, normalizar_telefono
 from app.parqueadero import reglas
 from app.parqueadero.errores import (
     CajaYaAbierta,
+    CobroNoCorregible,
     MensualidadInvalida,
     NoEstaAdentro,
     SinCajaAbierta,
     ValorInvalido,
     YaEstaAdentro,
 )
-from app.parqueadero.estados import EstadoParqueo, TipoParqueo
-from app.parqueadero.tablas import CajaParqueadero, Mensualidad, PagoMensualidad, Parqueo
+from app.parqueadero.estados import EstadoParqueo, TipoCorreccion, TipoParqueo
+from app.parqueadero.tablas import (
+    CajaParqueadero,
+    CorreccionCobro,
+    Mensualidad,
+    PagoMensualidad,
+    Parqueo,
+)
 from app.parqueadero.tarifas import leer_ajustes
 from app.turnos.estados import MedioPago
 
@@ -53,6 +61,10 @@ def _bloquear_parqueo(sesion: Session, parqueo_id: int) -> Parqueo:
 
 def _hora(momento: datetime) -> str:
     return formato.hora(tiempo.hora_local(momento))
+
+
+def _hora_con_articulo(momento: datetime | None) -> str:
+    return formato.hora_con_articulo(tiempo.hora_local(momento)) if momento else "hora sin anotar"
 
 
 def _hoy(ahora: datetime) -> date:
@@ -149,8 +161,23 @@ def cerrar_caja(
     return caja
 
 
+def _caja_abierta_bloqueada(sesion: Session) -> CajaParqueadero | None:
+    """La caja abierta, con un candado compartido hasta el final de la transacción.
+
+    Mientras alguien cobra o corrige en ella, nadie la puede cerrar: el cierre espera y cuenta
+    también ese cobro. Y si el cierre llegó primero, quien cobra espera y ve la caja cerrada
+    (sin el candado, el cobro podía quedar en una caja ya contada, por fuera de su cuadre).
+    """
+    return sesion.execute(
+        select(CajaParqueadero)
+        .where(CajaParqueadero.abierta)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def _caja_para_cobrar(sesion: Session) -> CajaParqueadero:
-    caja = caja_abierta(sesion)
+    caja = _caja_abierta_bloqueada(sesion)
     if caja is None:
         raise SinCajaAbierta("Abre la caja para poder cobrar.")
     return caja
@@ -584,3 +611,257 @@ def pagar_mensualidad(
     sesion.add(pago)
     sesion.flush()
     return pago
+
+
+# --- Correcciones -----------------------------------------------------------------------
+#
+# Un cobro equivocado (otro medio de pago, otro valor, la salida del carro que no era, un mes
+# cobrado dos veces) se corrige solo mientras su caja sigue abierta: es como corregir una venta
+# antes de cerrar la registradora. La caja cerrada ya se contó y se firmó, y sus números no se
+# mueven. Cada corrección deja una fila en `correccion_cobro` con cómo estaba el cobro, cómo
+# quedó, el motivo y quién la hizo: la caja, el balance y el reporte a los jefes la muestran.
+
+
+def _motivo_de_la_correccion(motivo: str | None) -> str:
+    limpio = " ".join((motivo or "").split())
+    if not limpio:
+        raise ValorInvalido(
+            "Escribe por qué se corrige: queda anotado en la caja y en el reporte a los jefes."
+        )
+    return limpio[:200]
+
+
+def _caja_del_cobro(sesion: Session, caja_id: int | None) -> CajaParqueadero:
+    """La caja del cobro, que tiene que ser la abierta. Queda bloqueada hasta terminar: nadie
+    la cierra a mitad de la corrección."""
+    caja = _caja_abierta_bloqueada(sesion)
+    if caja_id is None:
+        raise CobroNoCorregible("Ese cobro no entró a ninguna caja: no hay plata que corregir.")
+    if caja is None or caja.id != caja_id:
+        raise CobroNoCorregible(
+            "Ese cobro es de una caja que ya se cerró: sus cuentas quedaron contadas y no se "
+            "corrigen. Si hay que devolver plata, sácala de la caja de hoy y escríbelo en la nota "
+            "del cierre."
+        )
+    return caja
+
+
+def _salida_cobrada(sesion: Session, parqueo_id: int) -> Parqueo:
+    parqueo = _bloquear_parqueo(sesion, parqueo_id)
+    if parqueo.estado is not EstadoParqueo.SALIO:
+        raise CobroNoCorregible(
+            f"{parqueo.placa} (ticket {parqueo.id}) no tiene una salida que corregir: "
+            + ("está adentro." if parqueo.estado is EstadoParqueo.ADENTRO else "se anuló.")
+        )
+    return parqueo
+
+
+def _como_estaba(valor: int, medio: MedioPago | None) -> str:
+    return f"{formato.pesos(valor)} {reglas.como_se_pago(medio)}"
+
+
+def corregir_salida(
+    sesion: Session,
+    parqueo_id: int,
+    *,
+    valor_cobrado: int,
+    medio_pago: MedioPago | str | None,
+    motivo: str,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> CorreccionCobro:
+    """Cambia el valor o el medio de pago de una salida ya cobrada (era Nequi y no efectivo,
+    se escribió $30.000 y eran $3.000). Si el valor queda distinto a la tarifa, el motivo de la
+    corrección queda como el motivo del ajuste."""
+    ahora = ahora or tiempo.ahora()
+    limpio = _motivo_de_la_correccion(motivo)
+    parqueo = _salida_cobrada(sesion, parqueo_id)
+    caja = _caja_del_cobro(sesion, parqueo.caja_id)
+    if valor_cobrado < 0:
+        raise ValorInvalido("El valor no puede ser negativo.")
+    medio = MedioPago(medio_pago) if medio_pago and valor_cobrado > 0 else None
+    if valor_cobrado > 0 and medio is None:
+        raise ValorInvalido("Elige el medio de pago.")
+    antes = (parqueo.valor_cobrado or 0, parqueo.medio_pago)
+    if (valor_cobrado, medio) == antes:
+        raise ValorInvalido(f"No hay nada que cambiar: ya está en {_como_estaba(*antes)}.")
+    correccion = CorreccionCobro(
+        tipo=TipoCorreccion.CORREGIDO,
+        caja_id=caja.id,
+        parqueo_id=parqueo.id,
+        placa=parqueo.placa,
+        valor_antes=antes[0],
+        valor_despues=valor_cobrado,
+        medio_antes=antes[1],
+        medio_despues=medio,
+        detalle=f"Salida de {_hora_con_articulo(parqueo.salida_en)} · ticket {parqueo.id}",
+        motivo=limpio,
+        administrador_id=administrador_id,
+        fecha_hora=ahora,
+    )
+    parqueo.valor_cobrado = valor_cobrado
+    parqueo.medio_pago = medio
+    parqueo.motivo_ajuste = None if valor_cobrado == parqueo.valor_calculado else limpio
+    parqueo.recibido = None  # el vuelto ya se dio: con otro valor o medio, ya no aplica
+    sesion.add(correccion)
+    sesion.flush()
+    return correccion
+
+
+def deshacer_salida(
+    sesion: Session,
+    parqueo_id: int,
+    *,
+    motivo: str,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> CorreccionCobro:
+    """La salida no debió pasar (se cobró el carro que no era): el vehículo vuelve a quedar
+    adentro con su ticket, su hora de entrada y su tarifa, y lo cobrado sale de la caja."""
+    ahora = ahora or tiempo.ahora()
+    limpio = _motivo_de_la_correccion(motivo)
+    parqueo = _salida_cobrada(sesion, parqueo_id)
+    caja = _caja_del_cobro(sesion, parqueo.caja_id)
+    _candado(sesion, f"parqueadero:placa:{parqueo.placa}")
+    otra = sesion.scalars(
+        select(Parqueo).where(
+            Parqueo.placa == parqueo.placa, Parqueo.estado == EstadoParqueo.ADENTRO
+        )
+    ).one_or_none()
+    if otra is not None:
+        raise YaEstaAdentro(
+            f"{parqueo.placa} ya volvió a entrar (ticket {otra.id}): esa salida no se puede "
+            "deshacer. Si lo cobrado estuvo mal, cambia el valor o el medio de pago."
+        )
+    correccion = CorreccionCobro(
+        tipo=TipoCorreccion.SALIDA_DESHECHA,
+        caja_id=caja.id,
+        parqueo_id=parqueo.id,
+        placa=parqueo.placa,
+        valor_antes=parqueo.valor_cobrado or 0,
+        valor_despues=0,
+        medio_antes=parqueo.medio_pago,
+        medio_despues=None,
+        detalle=f"Salida de {_hora_con_articulo(parqueo.salida_en)} · ticket {parqueo.id}",
+        motivo=limpio,
+        administrador_id=administrador_id,
+        fecha_hora=ahora,
+    )
+    parqueo.estado = EstadoParqueo.ADENTRO
+    parqueo.salida_en = None
+    parqueo.minutos = None
+    parqueo.horas_cobradas = None
+    parqueo.valor_calculado = None
+    parqueo.valor_cobrado = None
+    parqueo.motivo_ajuste = None
+    parqueo.medio_pago = None
+    parqueo.recibido = None
+    parqueo.caja_id = None
+    parqueo.mensualidad_id = None
+    parqueo.salida_por = None
+    sesion.add(correccion)
+    sesion.flush()
+    return correccion
+
+
+def _pago_cobrado(sesion: Session, pago_id: int) -> tuple[PagoMensualidad, Mensualidad]:
+    """El pago y su mensualidad, bloqueados en el mismo orden que al cobrar el mes (primero la
+    mensualidad): un doble clic espera y ve lo que hizo el primero."""
+    mensualidad_id = sesion.scalar(
+        select(PagoMensualidad.mensualidad_id).where(PagoMensualidad.id == pago_id)
+    )
+    mensualidad = _bloquear_mensualidad(sesion, mensualidad_id) if mensualidad_id else None
+    pago = sesion.execute(
+        select(PagoMensualidad)
+        .where(PagoMensualidad.id == pago_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if pago is None or mensualidad is None:
+        raise CobroNoCorregible("Ese pago ya no existe: puede que ya se haya anulado.")
+    return pago, mensualidad
+
+
+def _detalle_del_pago(pago: PagoMensualidad) -> str:
+    return f"Mensualidad del {formato.fecha(pago.desde)} al {formato.fecha(pago.hasta)}"
+
+
+def corregir_pago(
+    sesion: Session,
+    pago_id: int,
+    *,
+    valor: int,
+    medio_pago: MedioPago | str | None,
+    motivo: str,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> CorreccionCobro:
+    """Cambia el valor o el medio de pago de un mes cobrado. Los días que cubre no cambian:
+    si eran otros, se anula el pago y se cobra de nuevo."""
+    ahora = ahora or tiempo.ahora()
+    limpio = _motivo_de_la_correccion(motivo)
+    pago, mensualidad = _pago_cobrado(sesion, pago_id)
+    caja = _caja_del_cobro(sesion, pago.caja_id)
+    if valor <= 0:
+        raise ValorInvalido("Escribe lo que pagó. Para quitar el pago, anúlalo.")
+    if not medio_pago:
+        raise ValorInvalido("Elige el medio de pago.")
+    medio = MedioPago(medio_pago)
+    antes = (pago.valor, pago.medio_pago)
+    if (valor, medio) == antes:
+        raise ValorInvalido(f"No hay nada que cambiar: ya está en {_como_estaba(*antes)}.")
+    correccion = CorreccionCobro(
+        tipo=TipoCorreccion.CORREGIDO,
+        caja_id=caja.id,
+        mensualidad_id=mensualidad.id,
+        pago_id=pago.id,
+        placa=mensualidad.placa,
+        valor_antes=antes[0],
+        valor_despues=valor,
+        medio_antes=antes[1],
+        medio_despues=medio,
+        detalle=_detalle_del_pago(pago),
+        motivo=limpio,
+        administrador_id=administrador_id,
+        fecha_hora=ahora,
+    )
+    pago.valor = valor
+    pago.medio_pago = medio
+    sesion.add(correccion)
+    sesion.flush()
+    return correccion
+
+
+def anular_pago(
+    sesion: Session,
+    pago_id: int,
+    *,
+    motivo: str,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> CorreccionCobro:
+    """Quita un mes cobrado por error (dos veces, a la mensualidad equivocada): esos días
+    vuelven a deberse y la plata sale de la caja. Lo cobrado queda en la corrección."""
+    ahora = ahora or tiempo.ahora()
+    limpio = _motivo_de_la_correccion(motivo)
+    pago, mensualidad = _pago_cobrado(sesion, pago_id)
+    caja = _caja_del_cobro(sesion, pago.caja_id)
+    correccion = CorreccionCobro(
+        tipo=TipoCorreccion.PAGO_ANULADO,
+        caja_id=caja.id,
+        mensualidad_id=mensualidad.id,
+        pago_id=pago.id,
+        placa=mensualidad.placa,
+        valor_antes=pago.valor,
+        valor_despues=0,
+        medio_antes=pago.medio_pago,
+        medio_despues=None,
+        detalle=_detalle_del_pago(pago),
+        motivo=limpio,
+        administrador_id=administrador_id,
+        fecha_hora=ahora,
+    )
+    sesion.add(correccion)
+    sesion.delete(pago)
+    sesion.flush()
+    return correccion

@@ -13,7 +13,7 @@ from sqlalchemy import String, func, literal, select
 from sqlalchemy.orm import Session
 
 from app import formato, tiempo
-from app.parqueadero.consultas import ResumenDeCaja, resumenes_de_cajas
+from app.parqueadero.consultas import FilaCorreccion, ResumenDeCaja, resumenes_de_cajas
 from app.parqueadero.estados import EstadoParqueo, TipoParqueo
 from app.parqueadero.tablas import CajaParqueadero, PagoMensualidad, Parqueo
 from app.turnos.estados import MedioPago
@@ -190,6 +190,11 @@ class Balance:
     @property
     def mayor_dia(self) -> int:
         return max((dia.total for dia in self.dias), default=0)
+
+    @property
+    def correcciones(self) -> list[FilaCorreccion]:
+        """Los cobros corregidos en las cajas del periodo, de la primera a la última."""
+        return [fila for resumen in self.cajas for fila in resumen.correcciones]
 
 
 def limites(p: Periodo) -> tuple[datetime, datetime]:

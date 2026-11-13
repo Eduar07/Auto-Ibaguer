@@ -1,4 +1,5 @@
-"""Tablas del parqueadero: cada entrada (parqueo), las mensualidades, sus pagos y la caja.
+"""Tablas del parqueadero: cada entrada (parqueo), las mensualidades, sus pagos, la caja y las
+correcciones de cobros equivocados.
 
 Las reglas de plata también viven en la base (CHECK e índices únicos): aunque dos personas
 toquen "Cobrar" en el mismo segundo, o un error del programa lo intente, la base no deja
@@ -25,7 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, lista_cerrada
-from app.parqueadero.estados import EstadoParqueo, TipoParqueo
+from app.parqueadero.estados import EstadoParqueo, TipoCorreccion, TipoParqueo
 from app.turnos.estados import MedioPago
 
 _PLACA_LIMPIA = "placa ~ '^[A-Z0-9]{4,7}$'"
@@ -219,3 +220,45 @@ class Parqueo(Base):
     motivo_anulacion: Mapped[str | None] = mapped_column(Text)
     entrada_por: Mapped[int | None] = mapped_column(ForeignKey("administrador.id"))
     salida_por: Mapped[int | None] = mapped_column(ForeignKey("administrador.id"))
+
+
+class CorreccionCobro(Base):
+    """Un cobro equivocado que se corrigió: cómo estaba, cómo quedó, por qué y quién lo hizo.
+
+    Solo se agregan filas: nunca se cambian ni se borran. Es lo que revisan el cierre de caja y
+    los jefes: si alguien cobra en efectivo y después "anula" para quedarse la plata, aquí se ve.
+    El cobro mismo sí cambia (o se borra, si era un pago de mensualidad), y así la caja, el
+    balance y el Excel quedan con lo que de verdad pasó.
+    """
+
+    __tablename__ = "correccion_cobro"
+    __table_args__ = (
+        CheckConstraint(_PLACA_LIMPIA, name="placa_limpia"),
+        CheckConstraint("btrim(motivo) <> ''", name="con_motivo"),
+        CheckConstraint("valor_antes >= 0 AND valor_despues >= 0", name="valores_no_negativos"),
+        # De una salida o de un pago de mensualidad, no de los dos ni de ninguno.
+        CheckConstraint("(parqueo_id IS NULL) <> (mensualidad_id IS NULL)", name="de_un_cobro"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    tipo: Mapped[TipoCorreccion] = mapped_column(lista_cerrada(TipoCorreccion, "tipo_correccion"))
+    # La caja del cobro, que estaba abierta al corregirlo.
+    caja_id: Mapped[int] = mapped_column(ForeignKey("caja_parqueadero.id"), index=True)
+    parqueo_id: Mapped[int | None] = mapped_column(ForeignKey("parqueo.id"), index=True)
+    mensualidad_id: Mapped[int | None] = mapped_column(ForeignKey("mensualidad.id"))
+    pago_id: Mapped[int | None] = mapped_column(BigInteger)  # sin llave: un pago anulado se borra
+    placa: Mapped[str] = mapped_column(String(7))
+    # Lo que decía el cobro y lo que quedó (en 0 y sin medio si se deshizo o se anuló).
+    valor_antes: Mapped[int] = mapped_column(Integer)
+    valor_despues: Mapped[int] = mapped_column(Integer)
+    medio_antes: Mapped[MedioPago | None] = mapped_column(lista_cerrada(MedioPago, "medio_antes"))
+    medio_despues: Mapped[MedioPago | None] = mapped_column(
+        lista_cerrada(MedioPago, "medio_despues")
+    )
+    # Qué cobro era, en palabras: "Salida de las 10:05 a.m. · ticket 123".
+    detalle: Mapped[str] = mapped_column(Text)
+    motivo: Mapped[str] = mapped_column(Text)
+    administrador_id: Mapped[int | None] = mapped_column(ForeignKey("administrador.id"))
+    fecha_hora: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )

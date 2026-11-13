@@ -80,7 +80,7 @@ Es la sección **Parqueadero** del dashboard (en el celular, **Parqueo** en la b
 | Pantalla | Qué se hace ahí |
 |---|---|
 | **Entradas y salidas** | Registrar la entrada (carro o moto, la placa y, si quieres, el estado o lo que deja: sale en el ticket) e imprimir el ticket. Cobrar la salida escribiendo la placa o el número del ticket, o con **Cobrar** en la lista de los que están adentro, que dice cuánto va cada uno. **Anular** una entrada mal hecha: pide el motivo y no cuenta en la caja. |
-| **Caja** | Abrirla con la base para vueltos, ver lo que ha entrado por cada medio de pago y cerrarla contando el efectivo: dice si cuadró, sobró o faltó, e imprime el resumen para firmar. Abajo, los cierres anteriores y el archivo para Excel. |
+| **Caja** | Abrirla con la base para vueltos, ver lo que ha entrado por cada medio de pago y cerrarla contando el efectivo: dice si cuadró, sobró o faltó, e imprime el resumen para firmar. Cada cobro de la caja abierta se puede **corregir**. Abajo, los cierres anteriores y el archivo para Excel. |
 | **Mensualidades** | Crear la del cliente (placa, nombre, celular opcional y el valor que acuerdes), cobrar cada mes e imprimir el recibo. Dice quién está al día, a quién se le vence en 3 días o menos y quién debe. |
 | **Balance** | Lo que se recogió por día, semana o mes, por medio de pago, con lo que hay que revisar (descuentos, anuladas, cajas que no cuadraron). En el del día, el reporte para los jefes: por WhatsApp, impreso o por correo. |
 | **Tarifas y ticket** | El valor de la hora de carro y de moto, los minutos de gracia, la fracción de los primeros 15 minutos (opcional) y lo que sale impreso: nombre, NIT (en el ticket sale "NIT 900.123.456-7"), dirección, teléfono, el texto del final del ticket y el ancho del papel. También los correos de los jefes para el reporte diario. |
@@ -108,6 +108,23 @@ Por horas, con minutos de gracia después de cada hora. Con carro a $3.000, moto
 Solo hay una caja abierta a la vez. Sin caja abierta se pueden registrar entradas, pero no cobrar. Al cerrarla cuentas el efectivo del cajón, incluida la base: debe haber la base más todo lo cobrado en efectivo (salidas y mensualidades), y el sistema dice si cuadró, sobró o faltó. Lo de Nequi, Daviplata y tarjeta se muestra aparte porque no está en el cajón: eso lo comparas con lo que dicen esas apps.
 
 Lo normal es cerrarla al final de cada día y abrir una nueva al otro día, para que cada día cuadre aparte. Si una caja sigue abierta de un día anterior, la pantalla lo avisa en rojo.
+
+Si alguien está cobrando justo cuando otro cierra la caja, el sistema hace esperar a uno de los dos: o el cierre cuenta ese cobro, o el cobro pide abrir caja. Nunca queda un cobro en una caja ya contada.
+
+### Corregir un cobro
+
+En **Caja > Cobros de esta caja**, cada cobro tiene **Corregir**:
+
+- **Cambiar el valor o el medio de pago**: era Nequi y no efectivo, se escribió $30.000 y eran $3.000.
+- **Deshacer la salida**: se le dio salida al carro que no era. Vuelve a la lista de adentro con su ticket, su hora de entrada y su tarifa, y lo cobrado sale de la caja. Si esa placa ya volvió a entrar, no se puede: ahí se cambia el valor.
+- **Anular el pago** de una mensualidad: un mes cobrado dos veces o a la mensualidad equivocada. Esos días vuelven a deberse y la plata sale de la caja.
+
+Las reglas:
+
+- **Solo mientras la caja de ese cobro sigue abierta.** Es como corregir una venta antes de cerrar la registradora: la caja cerrada ya se contó y se firmó, y sus números no se mueven. Si después del cierre hay que devolver plata, sale de la caja de hoy y se escribe en la nota del cierre.
+- **Siempre con motivo.** Queda anotado cómo estaba el cobro, cómo quedó, el motivo, quién lo hizo y a qué hora (tabla `correccion_cobro`, que solo crece: nada se borra de ahí).
+- **Se ve en todas partes**: en la caja, en su cierre y en el ticket del cierre, en el Balance (**Para revisar**) y en el reporte a los jefes. Si alguien cobra en efectivo y después "anula" para quedarse con la plata, los jefes lo ven con nombre y hora.
+- Los días que un mensualista ya traía pagados no son un cobro: no se corrigen aquí.
 
 ### Mensualidades
 
@@ -456,6 +473,19 @@ Desde ese día, **cada cambio que unes a `main` se publica solo**: Render espera
 
 Los secretos de la nube no van en un `.env`: van en el servidor de Render, pestaña **Environment**. Al guardar un cambio ahí, Render vuelve a encender el servidor con el valor nuevo. Lo que escribe el servidor (lo que en tu computador sale en la terminal) está en la pestaña **Logs**.
 
+### Mientras estés en el plan gratis de Render
+
+Sirve para probar antes de pagar, con tres diferencias: el servidor se apaga si nadie entra en 15 minutos (la pantalla del parqueadero abierta lo mantiene despierto), la base gratis vence a los 30 días y no hay **Shell** ni **Pre-deploy**. Por eso, cuando una versión nueva trae tablas nuevas (el pull request lo dice), las preparas tú desde tu computador, con la *External Database URL* de la base (en Render: la base > **Connect** > **External**), justo después de unir el cambio:
+
+```bash
+read -rsp "URL externa de Render: " DATABASE_URL && export DATABASE_URL   # pégala y Enter (no se ve)
+uv run auto-ibaguer preparar-base
+uv run auto-ibaguer revisar-base      # debe decir "Tablas: al día"
+unset DATABASE_URL
+```
+
+Esa URL lleva la contraseña de la base: no la pegues en ningún chat ni la guardes en un archivo. Al pasar a pago, en el servidor > **Settings** pon `auto-ibaguer preparar-base` como **Pre-Deploy Command**: desde ahí Render lo corre solo antes de cada publicación.
+
 ### El día de la SIM, con el sistema en la nube
 
 Son los pasos de [Conectar WhatsApp](#conectar-whatsapp-cuando-llegue-la-sim), con estos cambios:
@@ -620,8 +650,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 ## Cambiar una tabla
 
 1. Cambia el modelo en el `tablas.py` del módulo.
-2. Crea la migración con el siguiente número (la última es la 0008):
-   `uv run alembic revision --autogenerate --rev-id 0009 -m "que cambio"`
+2. Crea la migración con el siguiente número (la última es la 0009):
+   `uv run alembic revision --autogenerate --rev-id 0010 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
 4. Aplícala: `uv run auto-ibaguer preparar-base`
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.

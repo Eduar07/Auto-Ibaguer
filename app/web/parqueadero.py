@@ -11,7 +11,7 @@ son páginas aparte, con el tamaño del papel de la impresora térmica (58 u 80 
 import csv
 import io
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any
 
@@ -29,8 +29,15 @@ from app.parqueadero import consultas, reglas, reporte
 from app.parqueadero.balance import TIPOS_DE_PERIODO, total_recogido
 from app.parqueadero.balance import balance as calcular_balance
 from app.parqueadero.balance import periodo as periodo_de
+from app.parqueadero.errores import CobroNoCorregible, ValorInvalido
 from app.parqueadero.estados import NOMBRE_DEL_TIPO, EstadoParqueo, TipoParqueo
-from app.parqueadero.tablas import CajaParqueadero, Mensualidad, PagoMensualidad, Parqueo
+from app.parqueadero.tablas import (
+    CajaParqueadero,
+    CorreccionCobro,
+    Mensualidad,
+    PagoMensualidad,
+    Parqueo,
+)
 from app.parqueadero.tarifas import ANCHOS_DE_TICKET, guardar_ajustes, leer_ajustes
 from app.turnos.estados import MedioPago
 from app.web.comun import (
@@ -57,7 +64,9 @@ def _fecha_y_hora(momento: datetime) -> str:
 
 plantillas.env.filters["fecha_y_hora"] = _fecha_y_hora
 plantillas.env.filters["dia_corto"] = formato.dia_corto
-plantillas.env.globals.update(TipoParqueo=TipoParqueo, nombre_del_tipo=NOMBRE_DEL_TIPO)
+plantillas.env.globals.update(
+    TipoParqueo=TipoParqueo, nombre_del_tipo=NOMBRE_DEL_TIPO, como_se_pago=reglas.como_se_pago
+)
 
 MEDIOS = list(MedioPago)
 
@@ -909,6 +918,316 @@ def ticket_de_mensualidad(request: Request, sesion: SesionBD, _: Admin, pago_id:
     return _ticket(
         request, sesion, "tickets/mensualidad.html", {"pago": pago, "mensualidad": mensualidad}
     )
+
+
+# --- Corregir un cobro ---------------------------------------------------------------------
+#
+# Desde Caja > Cobros de esta caja, mientras la caja sigue abierta: otro valor u otro medio de
+# pago, deshacer la salida del carro que no era o anular un mes cobrado por error. Las reglas
+# (y el porqué de cada una) están en app.parqueadero.casos_de_uso, en "Correcciones".
+
+
+@dataclass(frozen=True)
+class _CobroParaCorregir:
+    """Lo que el diálogo de corrección dice del cobro y a dónde manda cada formulario."""
+
+    placa: str
+    titulo: str
+    valor: int
+    medio: MedioPago | None
+    tarifa: int | None  # lo que daba la tarifa (solo en una salida)
+    para_corregir: str
+    para_deshacer: str
+    nombre_deshacer: str
+    explicacion_deshacer: str
+    ejemplo_deshacer: str
+
+
+def _sale_de_la_caja(valor: int, medio: MedioPago | None) -> str:
+    return (
+        f" y los {formato.pesos(valor)} {reglas.como_se_pago(medio)} salen de la caja"
+        if valor
+        else ""
+    )
+
+
+def _cobro_de_la_salida(parqueo: Parqueo) -> _CobroParaCorregir:
+    valor = parqueo.valor_cobrado or 0
+    salio = tiempo.hora_local(parqueo.salida_en) if parqueo.salida_en else None
+    return _CobroParaCorregir(
+        placa=parqueo.placa,
+        titulo=(f"Salió a {formato.hora_con_articulo(salio)}" if salio else "Salida")
+        + f" · ticket {parqueo.id}",
+        valor=valor,
+        medio=parqueo.medio_pago,
+        tarifa=parqueo.valor_calculado,
+        para_corregir=f"/parqueadero/{parqueo.id}/corregir",
+        para_deshacer=f"/parqueadero/{parqueo.id}/deshacer-salida",
+        nombre_deshacer="Deshacer la salida",
+        explicacion_deshacer=(
+            f"Para cuando se le dio salida al carro que no era: {parqueo.placa} vuelve a quedar "
+            "adentro con su ticket y su hora de entrada"
+            f"{_sale_de_la_caja(valor, parqueo.medio_pago)}."
+        ),
+        ejemplo_deshacer="Era otro carro: este sigue adentro",
+    )
+
+
+def _cobro_del_pago(pago: PagoMensualidad, mensualidad: Mensualidad) -> _CobroParaCorregir:
+    return _CobroParaCorregir(
+        placa=mensualidad.placa,
+        titulo=(
+            f"Mensualidad de {mensualidad.titular}, del {formato.fecha(pago.desde)} al "
+            f"{formato.fecha(pago.hasta)}"
+        ),
+        valor=pago.valor,
+        medio=pago.medio_pago,
+        tarifa=None,
+        para_corregir=f"/parqueadero/mensualidades/pagos/{pago.id}/corregir",
+        para_deshacer=f"/parqueadero/mensualidades/pagos/{pago.id}/anular",
+        nombre_deshacer="Anular el pago",
+        explicacion_deshacer=(
+            "Para un mes cobrado dos veces o a la mensualidad equivocada: esos días vuelven a "
+            f"deberse{_sale_de_la_caja(pago.valor, pago.medio_pago)}."
+        ),
+        ejemplo_deshacer="Se cobró dos veces el mismo mes",
+    )
+
+
+def _dialogo_corregir(
+    request: Request,
+    cobro: _CobroParaCorregir,
+    *,
+    formulario: dict[str, Any] | None = None,
+    accion: str = "",
+    error: str | None = None,
+) -> Response:
+    contexto = {
+        "cobro": cobro,
+        "medios": MEDIOS,
+        "formulario": formulario
+        or {"valor": cobro.valor, "medio_pago": cobro.medio.value if cobro.medio else ""},
+        "accion": accion,
+        "error": error,
+    }
+    return html(request, "dialogos/parqueadero_corregir.html", contexto)
+
+
+def _caja_abierta(request: Request, sesion: Session, **eventos: Any) -> Response:
+    """La caja abierta otra vez pintada (su cuadre, sus cobros y sus correcciones)."""
+    caja = casos.caja_abierta(sesion)
+    contexto = {
+        "caja": caja,
+        "resumen": consultas.resumen_de_caja(sesion, caja) if caja else None,
+        "movimientos": consultas.movimientos_de_caja(sesion, caja.id) if caja else [],
+    }
+    respuesta = html(request, "_parqueadero_caja_abierta.html", contexto)
+    return _con_retarget(con_eventos(respuesta, **eventos), "#caja-abierta")
+
+
+def _no_se_corrigio(
+    request: Request,
+    sesion: Session,
+    error: ReglaDelNegocio,
+    cobro: Callable[[], _CobroParaCorregir],
+    formulario: dict[str, Any],
+    accion: str,
+) -> Response:
+    """Si la caja se cerró o el cobro ya no existe, el diálogo no sirve: se cierra, la caja se
+    pinta como está y se avisa. Si no, el diálogo vuelve con el error y lo que se escribió."""
+    if isinstance(error, CobroNoCorregible):
+        return _caja_abierta(request, sesion, cerrar_dialogo=True, error=str(error))
+    return _dialogo_corregir(
+        request, cobro(), formulario=formulario, accion=accion, error=str(error)
+    )
+
+
+def _como_quedo(correccion: CorreccionCobro) -> str:
+    valor, medio = correccion.valor_despues, correccion.medio_despues
+    return f"{formato.pesos(valor)} {reglas.como_se_pago(medio)}"
+
+
+def _salen(correccion: CorreccionCobro) -> str:
+    if not correccion.valor_antes:
+        return ""
+    return (
+        f" Salen {formato.pesos(correccion.valor_antes)} "
+        f"{reglas.como_se_pago(correccion.medio_antes)} de la caja."
+    )
+
+
+def _salida_para_corregir(sesion: Session, parqueo_id: int) -> Parqueo:
+    parqueo = sesion.get(Parqueo, parqueo_id)
+    if parqueo is None:
+        raise HTTPException(status_code=404, detail="Ese ticket no existe.")
+    return parqueo
+
+
+@router.get("/{parqueo_id}/corregir", response_class=HTMLResponse)
+def dialogo_corregir_salida(
+    request: Request, sesion: SesionBD, _: Admin, parqueo_id: int
+) -> Response:
+    parqueo = _salida_para_corregir(sesion, parqueo_id)
+    if parqueo.estado is not EstadoParqueo.SALIO:
+        # Por ejemplo, ya se deshizo desde otro celular: la caja se pinta como está.
+        return _caja_abierta(
+            request, sesion, error=f"La salida de {parqueo.placa} ya no está cobrada."
+        )
+    return _dialogo_corregir(request, _cobro_de_la_salida(parqueo))
+
+
+@router.post("/{parqueo_id}/corregir", response_class=HTMLResponse)
+def corregir_salida(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    parqueo_id: int,
+    valor: Annotated[str, Form()] = "",
+    medio_pago: Annotated[str, Form()] = "",
+    motivo: Annotated[str, Form()] = "",
+) -> Response:
+    formulario = {"valor": leer_pesos(valor), "medio_pago": medio_pago, "motivo": motivo}
+    try:
+        if formulario["valor"] is None:
+            raise ValorInvalido("Escribe el valor que se cobró (0 si no se cobró nada).")
+        correccion = casos.corregir_salida(
+            sesion,
+            parqueo_id,
+            valor_cobrado=formulario["valor"],
+            medio_pago=medio_pago or None,
+            motivo=motivo,
+            administrador_id=administrador.id,
+        )
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        parqueo = _salida_para_corregir(sesion, parqueo_id)
+        return _no_se_corrigio(
+            request, sesion, error, lambda: _cobro_de_la_salida(parqueo), formulario, "corregir"
+        )
+    aviso = f"Listo: el cobro de {correccion.placa} quedó en {_como_quedo(correccion)}."
+    return _caja_abierta(request, sesion, cerrar_dialogo=True, aviso=aviso)
+
+
+@router.post("/{parqueo_id}/deshacer-salida", response_class=HTMLResponse)
+def deshacer_salida(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    parqueo_id: int,
+    motivo: Annotated[str, Form()] = "",
+) -> Response:
+    try:
+        correccion = casos.deshacer_salida(
+            sesion, parqueo_id, motivo=motivo, administrador_id=administrador.id
+        )
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        parqueo = _salida_para_corregir(sesion, parqueo_id)
+        cobro = _cobro_de_la_salida(parqueo)
+        formulario = {
+            "valor": cobro.valor,
+            "medio_pago": cobro.medio.value if cobro.medio else "",
+            "motivo": motivo,
+        }
+        return _no_se_corrigio(request, sesion, error, lambda: cobro, formulario, "deshacer")
+    aviso = (
+        f"{correccion.placa} volvió a quedar adentro (ticket {correccion.parqueo_id})."
+        + _salen(correccion)
+    )
+    return _caja_abierta(request, sesion, cerrar_dialogo=True, aviso=aviso)
+
+
+def _pago_para_corregir(sesion: Session, pago_id: int) -> tuple[PagoMensualidad, Mensualidad]:
+    pago = sesion.get(PagoMensualidad, pago_id)
+    if pago is None or pago.caja_id is None:
+        raise HTTPException(status_code=404, detail="Ese pago no existe.")
+    return pago, sesion.get(Mensualidad, pago.mensualidad_id)
+
+
+@router.get("/mensualidades/pagos/{pago_id}/corregir", response_class=HTMLResponse)
+def dialogo_corregir_pago(request: Request, sesion: SesionBD, _: Admin, pago_id: int) -> Response:
+    if sesion.get(PagoMensualidad, pago_id) is None:
+        # Ya se anuló (por ejemplo, desde otro celular): la caja se pinta como está.
+        return _caja_abierta(request, sesion, error="Ese pago ya no existe: ya se anuló.")
+    return _dialogo_corregir(request, _cobro_del_pago(*_pago_para_corregir(sesion, pago_id)))
+
+
+def _pago_o_caja(
+    request: Request,
+    sesion: Session,
+    error: ReglaDelNegocio,
+    pago_id: int,
+    formulario: dict[str, Any],
+    accion: str,
+) -> Response:
+    """El error de corregir o anular un pago. Si el pago ya no está, no hay diálogo que
+    volver a mostrar: se pinta la caja con el aviso."""
+    if sesion.get(PagoMensualidad, pago_id) is None:
+        return _caja_abierta(request, sesion, cerrar_dialogo=True, error=str(error))
+    cobro = _cobro_del_pago(*_pago_para_corregir(sesion, pago_id))
+    if accion == "deshacer":
+        formulario = {
+            "valor": cobro.valor,
+            "medio_pago": cobro.medio.value if cobro.medio else "",
+            "motivo": formulario["motivo"],
+        }
+    return _no_se_corrigio(request, sesion, error, lambda: cobro, formulario, accion)
+
+
+@router.post("/mensualidades/pagos/{pago_id}/corregir", response_class=HTMLResponse)
+def corregir_pago(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    pago_id: int,
+    valor: Annotated[str, Form()] = "",
+    medio_pago: Annotated[str, Form()] = "",
+    motivo: Annotated[str, Form()] = "",
+) -> Response:
+    formulario = {"valor": leer_pesos(valor), "medio_pago": medio_pago, "motivo": motivo}
+    try:
+        correccion = casos.corregir_pago(
+            sesion,
+            pago_id,
+            valor=formulario["valor"] or 0,
+            medio_pago=medio_pago or None,
+            motivo=motivo,
+            administrador_id=administrador.id,
+        )
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        return _pago_o_caja(request, sesion, error, pago_id, formulario, "corregir")
+    aviso = (
+        f"Listo: el pago de la mensualidad de {correccion.placa} quedó en "
+        f"{_como_quedo(correccion)}."
+    )
+    return _caja_abierta(request, sesion, cerrar_dialogo=True, aviso=aviso)
+
+
+@router.post("/mensualidades/pagos/{pago_id}/anular", response_class=HTMLResponse)
+def anular_pago(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    pago_id: int,
+    motivo: Annotated[str, Form()] = "",
+) -> Response:
+    try:
+        correccion = casos.anular_pago(
+            sesion, pago_id, motivo=motivo, administrador_id=administrador.id
+        )
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        return _pago_o_caja(request, sesion, error, pago_id, {"motivo": motivo}, "deshacer")
+    aviso = (
+        f"Se anuló el pago de la mensualidad de {correccion.placa}: esos días vuelven a "
+        "deberse." + _salen(correccion)
+    )
+    return _caja_abierta(request, sesion, cerrar_dialogo=True, aviso=aviso)
 
 
 # --- Tarifas y ticket ---------------------------------------------------------------------

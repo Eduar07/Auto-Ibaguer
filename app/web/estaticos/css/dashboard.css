@@ -139,6 +139,7 @@ code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-si
 .insignia--azul { background: var(--azul-claro); color: var(--azul-texto); }
 .insignia--verde { background: var(--verde-claro); color: var(--verde); }
 .insignia--gris { background: var(--gris-claro); color: var(--tinta-gris); }
+.insignia--ambar { background: var(--naranja-claro); color: var(--naranja-texto); }
 .insignia--llamado { background: var(--naranja); color: #fff; }
 .insignia--vencido { background: var(--rojo); color: #fff; }
 .insignia--llego { background: var(--azul); color: #fff; }
@@ -1097,6 +1098,15 @@ legend { padding: 0; margin-bottom: 8px; }
 .movimientos__que, .movimientos__valor { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .movimientos__que .suave, .movimientos__valor .suave { font-size: 13px; }
 .movimientos__valor { text-align: right; }
+.movimientos__valor .movimientos__corregir { min-height: 32px; padding: 2px 0; align-self: flex-end; font-size: 14px; }
+/* Lo que había antes de corregir un cobro: tachado, pero legible. */
+.tachado { text-decoration: line-through; color: var(--tinta-suave); }
+.lista--correcciones { border-color: var(--naranja); }
+/* El diálogo de corregir: dos formularios, el de deshacer en rojo para que se piense dos veces. */
+.seccion-correccion { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--borde); border-radius: 12px; }
+.seccion-correccion h3 { font-size: 17px; }
+.seccion-correccion .campo--corto { max-width: 260px; }
+.seccion-correccion--peligro { border-color: var(--rojo); background: var(--rojo-claro); }
 
 .exportar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .exportar .campo { min-width: 160px; }

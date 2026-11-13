@@ -44,6 +44,12 @@
   <dt>Caja {{ c.id }}</dt><dd>Sigue abierta</dd>
   <dt>Debería haber</dt><dd>{{ resumen.cuadre.efectivo_esperado|pesos }}</dd>
   {% endif %}
+  {% if resumen.correcciones %}
+  <dt>Cobros corregidos</dt><dd>{{ resumen.correcciones|length }}</dd>
+  {% for f in resumen.correcciones %}
+  <dt class="ticket__sub">{{ f.correccion.placa }}</dt><dd class="ticket__sub">{{ f.que_paso }}: {{ f.antes }}{% if f.despues %} → {{ f.despues }}{% endif %}</dd>
+  {% endfor %}
+  {% endif %}
 </dl>
 {% else %}
 <p class="ticket__nota">No se abrió caja.</p>

@@ -1,0 +1,56 @@
+{#- Corregir un cobro de la caja abierta: otro valor u otro medio de pago, o deshacerlo del todo
+    (la salida del carro que no era, un mes cobrado dos veces). Siempre con motivo. -#}
+{% import "_iconos.html" as iconos %}
+<div class="dialogo__caja">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Corregir el cobro de <span class="placa-texto">{{ cobro.placa }}</span></h2>
+    <p>{{ cobro.titulo }} · se cobró <strong>{{ cobro.valor|pesos }} {{ como_se_pago(cobro.medio) }}</strong>.</p>
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <div class="nota nota--suelta">{{ iconos.icono("info", 20) }}<span>Queda anotado con el motivo y tu usuario: sale en el cierre de la caja, en el Balance y en el reporte a los jefes.</span></div>
+
+    <form class="seccion-correccion" hx-post="{{ cobro.para_corregir }}" hx-target="#dialogo-contenido"
+          hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+      <h3>Cambiar el valor o el medio de pago</h3>
+      <fieldset>
+        <legend>Medio de pago</legend>
+        <div class="opciones opciones--4">
+          {% for medio in medios %}
+          <label class="opcion opcion--centrada opcion--corta">
+            <input type="radio" name="medio_pago" value="{{ medio.value }}" {% if formulario.medio_pago == medio.value %}checked{% endif %}>
+            <span>{{ medio.value|capitalize }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <div class="campo campo--corto">
+        <label for="valor-correccion">Valor que se cobró</label>
+        <input id="valor-correccion" name="valor" inputmode="numeric" class="monto" required maxlength="12" value="{{ formulario.valor|miles }}">
+        {% if cobro.tarifa is not none %}<span class="ayuda">La tarifa daba {{ cobro.tarifa|pesos }}.</span>{% endif %}
+      </div>
+      <div class="campo">
+        <label for="motivo-correccion">¿Por qué se corrige?</label>
+        <input id="motivo-correccion" name="motivo" required maxlength="200" value="{{ formulario.motivo if accion == 'corregir' else '' }}"
+               placeholder="Pagó por Nequi, no en efectivo">
+      </div>
+      <button type="submit" class="boton boton--grande">Guardar el cambio</button>
+    </form>
+
+    <form class="seccion-correccion seccion-correccion--peligro" hx-post="{{ cobro.para_deshacer }}" hx-target="#dialogo-contenido"
+          hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+      <h3>{{ cobro.nombre_deshacer }}</h3>
+      <p class="suave">{{ cobro.explicacion_deshacer }}</p>
+      <div class="campo">
+        <label for="motivo-deshacer">¿Por qué?</label>
+        <input id="motivo-deshacer" name="motivo" required maxlength="200" value="{{ formulario.motivo if accion == 'deshacer' else '' }}"
+               placeholder="{{ cobro.ejemplo_deshacer }}">
+      </div>
+      <button type="submit" class="boton boton--grande boton--peligro">{{ cobro.nombre_deshacer }}</button>
+    </form>
+  </div>
+  <div class="dialogo__pie">
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</div>

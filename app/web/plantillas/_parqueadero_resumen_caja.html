@@ -49,7 +49,8 @@
 </div>
 {%- endmacro %}
 
-{% macro movimientos_de_caja(movimientos) -%}
+{#- Con `corregir`, cada cobro lleva su botón para corregirlo (solo en la caja abierta). -#}
+{% macro movimientos_de_caja(movimientos, corregir=False) -%}
 {% if movimientos %}
 <ul class="movimientos">
   {% for m in movimientos %}
@@ -62,6 +63,9 @@
     <span class="movimientos__valor">
       <strong>{{ m.valor|pesos }}</strong>
       <span class="suave">{{ m.medio.value|capitalize if m.medio else "Sin pago" }}</span>
+      {% if corregir %}
+      <button type="button" class="boton-texto movimientos__corregir" hx-get="{{ m.para_corregir }}" hx-target="#dialogo-contenido">Corregir</button>
+      {% endif %}
     </span>
   </li>
   {% endfor %}
@@ -69,4 +73,30 @@
 {% else %}
 <p class="lista__vacia">Todavía no hay cobros en esta caja.</p>
 {% endif %}
+{%- endmacro %}
+
+{#- Los cobros que se corrigieron en esta caja, con qué cambió, el motivo y quién. -#}
+{% macro correcciones_de_caja(correcciones) -%}
+<section class="lista lista--correcciones" aria-labelledby="t-correcciones">
+  <div class="lista__cabeza">
+    <h3 id="t-correcciones">Cobros corregidos</h3>
+    <span class="insignia insignia--ambar">{{ correcciones|length }}</span>
+  </div>
+  <ul class="movimientos">
+    {% for f in correcciones %}
+    {% set c = f.correccion %}
+    <li>
+      <time>{{ c.fecha_hora|hora }}</time>
+      <span class="movimientos__que">
+        <strong>{{ f.que_paso }} · <span class="placa-texto">{{ c.placa }}</span></strong>
+        <span class="suave">{{ c.detalle }} · Motivo: {{ c.motivo }} · {{ f.quien }}</span>
+      </span>
+      <span class="movimientos__valor">
+        {% if f.despues %}<span class="tachado">{{ f.antes }}</span><strong>{{ f.despues }}</strong>{% else %}<strong class="tachado">{{ f.antes }}</strong>{% endif %}
+        {% if f.cambio_en_efectivo %}<span class="{{ 'diferencia--falta' if f.cambio_en_efectivo < 0 else 'diferencia--sobra' }}">Efectivo {{ "−" if f.cambio_en_efectivo < 0 else "+" }}{{ (f.cambio_en_efectivo|abs)|pesos }}</span>{% endif %}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
 {%- endmacro %}

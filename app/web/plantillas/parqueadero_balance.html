@@ -77,6 +77,7 @@
           <tr><th scope="row">Descuentos</th><td>{% if b.descuentos %}{{ b.descuentos|pesos }} en {{ veces(b.salidas_con_descuento, "salida", "salidas") }}{% else %}—{% endif %}</td></tr>
           {% if b.recargos %}<tr><th scope="row">Cobrado por encima de la tarifa</th><td>{{ b.recargos|pesos }}</td></tr>{% endif %}
           <tr><th scope="row">Entradas anuladas</th><td>{{ b.total_anuladas or "—" }}</td></tr>
+          <tr><th scope="row">Cobros corregidos</th><td>{% if b.correcciones %}<span class="diferencia--falta">{{ b.correcciones|length }}</span>{% else %}—{% endif %}</td></tr>
           <tr><th scope="row">Cajas cerradas{% if b.cajas_cerradas %} ({{ b.cajas_cerradas|length }}){% endif %}</th>
             <td>{% if not b.cajas_cerradas %}—{% elif b.cajas_cerradas|length == 1 %}{{ dif(b.diferencia_de_cajas) }}{% else %}
               {#- Los sobrantes y los faltantes van aparte: uno de un día no tapa el otro. -#}
@@ -145,9 +146,20 @@
     {% endif %}
   </section>
 
-  {% if b.ajustes or b.anuladas %}
+  {% if b.ajustes or b.anuladas or b.correcciones %}
   <section class="panel" aria-labelledby="t-revisar">
     <h2 id="t-revisar">Para revisar</h2>
+    {% if b.correcciones %}
+    <div>
+      <span class="etiqueta">Cobros corregidos después de cobrar ({{ b.correcciones|length }})</span>
+      <ul class="lista-simple">
+        {% for f in b.correcciones %}
+        {% set c = f.correccion %}
+        <li><span class="placa-texto">{{ c.placa }}</span> · {{ cuando(c.fecha_hora) }} · {{ f.que_paso }}: <span class="tachado">{{ f.antes }}</span>{% if f.despues %} → <strong>{{ f.despues }}</strong>{% endif %} · {{ c.motivo }} · {{ f.quien }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
     {% if b.ajustes %}
     <div>
       <span class="etiqueta">Cobros distintos a la tarifa ({{ b.cuantos_ajustes }})</span>

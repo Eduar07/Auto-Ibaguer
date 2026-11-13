@@ -5,7 +5,7 @@ Solo lee; no cambia nada (eso vive en casos_de_uso).
 
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
@@ -14,8 +14,14 @@ from sqlalchemy.orm import Session
 from app import formato, tiempo
 from app.parqueadero import casos_de_uso as casos
 from app.parqueadero import reglas
-from app.parqueadero.estados import NOMBRE_DEL_TIPO, EstadoParqueo, TipoParqueo
-from app.parqueadero.tablas import CajaParqueadero, Mensualidad, PagoMensualidad, Parqueo
+from app.parqueadero.estados import NOMBRE_DEL_TIPO, EstadoParqueo, TipoCorreccion, TipoParqueo
+from app.parqueadero.tablas import (
+    CajaParqueadero,
+    CorreccionCobro,
+    Mensualidad,
+    PagoMensualidad,
+    Parqueo,
+)
 from app.turnos.estados import MedioPago
 from app.web.tablas import Administrador
 
@@ -96,6 +102,15 @@ class MovimientoDeCaja:
     medio: MedioPago | None
     valor: int
     ajuste: str | None = None
+    parqueo_id: int | None = None
+    pago_id: int | None = None
+
+    @property
+    def para_corregir(self) -> str:
+        """Dónde se abre el diálogo para corregir este cobro."""
+        if self.pago_id is not None:
+            return f"/parqueadero/mensualidades/pagos/{self.pago_id}/corregir"
+        return f"/parqueadero/{self.parqueo_id}/corregir"
 
 
 def movimientos_de_caja(sesion: Session, caja_id: int) -> list[MovimientoDeCaja]:
@@ -120,6 +135,7 @@ def movimientos_de_caja(sesion: Session, caja_id: int) -> list[MovimientoDeCaja]
             medio=parqueo.medio_pago,
             valor=parqueo.valor_cobrado or 0,
             ajuste=parqueo.motivo_ajuste,
+            parqueo_id=parqueo.id,
         )
         for parqueo in salidas
     ]
@@ -130,10 +146,59 @@ def movimientos_de_caja(sesion: Session, caja_id: int) -> list[MovimientoDeCaja]
             detalle=f"del {formato.fecha(pago.desde)} al {formato.fecha(pago.hasta)}",
             medio=pago.medio_pago,
             valor=pago.valor,
+            pago_id=pago.id,
         )
         for pago, mensualidad in pagos
     ]
     return sorted(lineas, key=lambda linea: linea.momento, reverse=True)
+
+
+@dataclass(frozen=True)
+class FilaCorreccion:
+    """Una corrección de un cobro, lista para mostrar: qué cambió y quién lo hizo."""
+
+    correccion: CorreccionCobro
+    quien: str
+
+    @property
+    def que_paso(self) -> str:
+        """ "Se deshizo la salida", "Se anuló el pago" o "Se corrigió el cobro" """
+        return {
+            TipoCorreccion.SALIDA_DESHECHA: "Se deshizo la salida",
+            TipoCorreccion.PAGO_ANULADO: "Se anuló el pago",
+            TipoCorreccion.CORREGIDO: "Se corrigió el cobro",
+        }[self.correccion.tipo]
+
+    @property
+    def antes(self) -> str:
+        c = self.correccion
+        return f"{formato.pesos(c.valor_antes)} {reglas.como_se_pago(c.medio_antes)}"
+
+    @property
+    def despues(self) -> str | None:
+        """Cómo quedó, si quedó un cobro (deshecho o anulado no queda nada)."""
+        c = self.correccion
+        if c.tipo is not TipoCorreccion.CORREGIDO:
+            return None
+        return f"{formato.pesos(c.valor_despues)} {reglas.como_se_pago(c.medio_despues)}"
+
+    @property
+    def cambio_en_efectivo(self) -> int:
+        """Cuánto cambió el efectivo que debe haber en el cajón: negativo si salió plata."""
+        c = self.correccion
+        despues = c.valor_despues if c.medio_despues is MedioPago.EFECTIVO else 0
+        antes = c.valor_antes if c.medio_antes is MedioPago.EFECTIVO else 0
+        return despues - antes
+
+    @property
+    def en_una_linea(self) -> str:
+        """Para el reporte y el ticket: "ABC123: se deshizo la salida ($6.000 en efectivo).
+        Motivo: era otro carro. Por eduar." """
+        c = self.correccion
+        cambio = f"{self.antes} → {self.despues}" if self.despues else self.antes
+        return (
+            f"{c.placa}: {self.que_paso.lower()} ({cambio}). Motivo: {c.motivo}. Por {self.quien}."
+        )
 
 
 @dataclass(frozen=True)
@@ -144,6 +209,7 @@ class ResumenDeCaja:
     mensualidades: int  # pagos de mensualidad cobrados en esta caja
     abrio: str
     cerro: str | None
+    correcciones: list[FilaCorreccion] = field(default_factory=list)  # de la primera a la última
 
 
 def resumen_de_caja(sesion: Session, caja: CajaParqueadero) -> ResumenDeCaja:
@@ -188,7 +254,13 @@ def resumenes_de_cajas(sesion: Session, cajas: Sequence[CajaParqueadero]) -> lis
             .group_by(PagoMensualidad.caja_id)
         ).all()
     )
+    correcciones = sesion.scalars(
+        select(CorreccionCobro)
+        .where(CorreccionCobro.caja_id.in_(ids))
+        .order_by(CorreccionCobro.fecha_hora, CorreccionCobro.id)
+    ).all()
     quienes = {caja.abierta_por for caja in cajas} | {caja.cerrada_por for caja in cajas}
+    quienes |= {correccion.administrador_id for correccion in correcciones}
     quienes.discard(None)
     nombres = (
         dict(
@@ -199,6 +271,11 @@ def resumenes_de_cajas(sesion: Session, cajas: Sequence[CajaParqueadero]) -> lis
         if quienes
         else {}
     )
+    por_caja: dict[int, list[FilaCorreccion]] = defaultdict(list)
+    for correccion in correcciones:
+        por_caja[correccion.caja_id].append(
+            FilaCorreccion(correccion, nombres.get(correccion.administrador_id, "—"))
+        )
     return [
         ResumenDeCaja(
             caja=caja,
@@ -211,6 +288,7 @@ def resumenes_de_cajas(sesion: Session, cajas: Sequence[CajaParqueadero]) -> lis
             mensualidades=cuantos_pagos.get(caja.id, 0),
             abrio=nombres.get(caja.abierta_por, "—"),
             cerro=nombres.get(caja.cerrada_por, "—") if caja.cerrada_en else None,
+            correcciones=por_caja[caja.id],
         )
         for caja in cajas
     ]

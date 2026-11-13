@@ -1,7 +1,7 @@
 {% extends "pagina.html" %}
 {% import "_iconos.html" as iconos %}
 {% from "_parqueadero_atajos.html" import atajos %}
-{% from "_parqueadero_resumen_caja.html" import resumen_de_caja, movimientos_de_caja %}
+{% from "_parqueadero_resumen_caja.html" import resumen_de_caja, movimientos_de_caja, correcciones_de_caja %}
 {% set c = resumen.caja %}
 
 {% block titulo %}Caja {{ c.id }} · Auto Ibaguer{% endblock %}
@@ -34,5 +34,6 @@
     <div class="lista__cabeza"><h3 id="t-movimientos">Cobros de esta caja</h3></div>
     {{ movimientos_de_caja(movimientos) }}
   </section>
+  {% if resumen.correcciones %}{{ correcciones_de_caja(resumen.correcciones) }}{% endif %}
 </main>
 {% endblock %}

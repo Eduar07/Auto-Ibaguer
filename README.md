@@ -83,7 +83,7 @@ Es la sección **Parqueadero** del dashboard (en el celular, **Parqueo** en la b
 | **Caja** | Abrirla con la base para vueltos, ver lo que ha entrado por cada medio de pago y cerrarla contando el efectivo: dice si cuadró, sobró o faltó, e imprime el resumen para firmar. Cada cobro de la caja abierta se puede **corregir**. Abajo, los cierres anteriores y el archivo para Excel. |
 | **Mensualidades** | Crear la del cliente (placa, nombre, celular opcional y el valor que acuerdes), cobrar cada mes e imprimir el recibo. Dice quién está al día, a quién se le vence en 3 días o menos y quién debe. |
 | **Balance** | Lo que se recogió por día, semana o mes, por medio de pago, con lo que hay que revisar (descuentos, anuladas, cajas que no cuadraron). En el del día, el reporte para los jefes: por WhatsApp, impreso o por correo. |
-| **Tarifas y ticket** | El valor de la hora de carro y de moto, los minutos de gracia, la fracción de los primeros 15 minutos (opcional) y lo que sale impreso: nombre, NIT (en el ticket sale "NIT 900.123.456-7"), dirección, teléfono, el texto del final del ticket y el ancho del papel. También los correos de los jefes para el reporte diario. |
+| **Tarifas y ticket** | El valor de la hora de carro y de moto, los minutos de gracia, la fracción de los primeros 15 minutos (opcional), el cobro por días (opcional, con una tabla de cuánto salen 1, 2, 3, 4, 7 y 15 días para responder en el mostrador) y lo que sale impreso: nombre, NIT (en el ticket sale "NIT 900.123.456-7"), dirección, teléfono, el texto del final del ticket y el ancho del papel. También los correos de los jefes para el reporte diario. |
 
 ### Cómo cobra
 
@@ -100,6 +100,27 @@ Por horas, con minutos de gracia después de cada hora. Con carro a $3.000, moto
 - Para cobrar otro valor (una noche completa, un descuento), abre **Cobrar otro valor** en la salida: pide el motivo, y el motivo sale en la caja y en el archivo para Excel.
 - Si escribes cuánto te dieron en efectivo, dice cuánto devolver y lo pone en el recibo. A la caja entra solo lo cobrado, nunca el billete completo.
 - El mensualista al día sale sin pagar y sin necesidad de caja abierta. Si se le venció, paga por horas y el sistema avisa que tiene mensualidad.
+
+### Cobro por días
+
+Para el que deja el vehículo varios días y no debe pagar 96 horas por 4 días. Es opcional y va por tipo, en **Tarifas y ticket > Cobro por días**:
+
+- **Día completo**: lo máximo que paga un día (24 horas). Apenas las horas llegan a ese valor, se cobra el día y no más horas.
+- **Desde el 2.º día** (opcional): lo que vale cada día después del primero. Vacío, todos los días valen lo mismo.
+
+Con carro a $3.000 la hora, día completo a $15.000 y desde el 2.º día a $6.600:
+
+| Tiempo adentro | Paga | Cómo sale en el recibo |
+|---|---|---|
+| 2 horas | $6.000 | 2 horas × $3.000 |
+| 6 horas | $15.000 | 1 día: $15.000 |
+| 1 día y 2 horas | $21.000 | 1 día: $15.000 + 2 horas × $3.000 |
+| 4 días | $34.800 | 4 días: $15.000 + 3 × $6.600 |
+
+- Las horas que pasan de un día se cobran por horas, pero nunca más que un día: si ya lo valen, es un día más.
+- Igual que la hora, cada vehículo paga con el cobro por días que había cuando entró. Los que entraron antes de llenarlo siguen por horas.
+- Debajo de los valores, una tabla dice cuánto salen 1, 2, 3, 4, 7 y 15 días con lo guardado: para el que pregunta "¿cuánto me cobra por 4 días?".
+- **Ojo con el tope**: el decreto de tarifas de Bucaramanga dice que si el vehículo se queda más de 12 horas seguidas, las primeras 24 horas se cobran por horas y el resto por día, proporcional a la mensualidad. Si tu parqueadero es de categoría B, C o D, cada día después del primero no puede pasar de la mensualidad máxima de tu categoría entre 30 (con $200.000, $6.667). Para eso está **Desde el 2.º día**.
 
 **Tarifas máximas**: en Bucaramanga la Alcaldía fija topes por categoría de parqueadero. Revisa que tus valores no pasen el de tu categoría y si te toca cobrar aparte la fracción de los primeros 15 minutos; ambos se cambian en **Tarifas y ticket** sin tocar el código.
 
@@ -650,8 +671,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 ## Cambiar una tabla
 
 1. Cambia el modelo en el `tablas.py` del módulo.
-2. Crea la migración con el siguiente número (la última es la 0009):
-   `uv run alembic revision --autogenerate --rev-id 0010 -m "que cambio"`
+2. Crea la migración con el siguiente número (la última es la 0010):
+   `uv run alembic revision --autogenerate --rev-id 0011 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
 4. Aplícala: `uv run auto-ibaguer preparar-base`
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.

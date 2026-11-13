@@ -1247,29 +1247,69 @@ def _valores_de_ajustes(ajustes: Any) -> dict[str, Any]:
         "pie_ticket": ajustes.pie_ticket,
         "ancho_ticket": ajustes.ancho_ticket,
         "correos_reporte": ajustes.correos_reporte,
+        "dia_carro": ajustes.dia_carro,
+        "dia_moto": ajustes.dia_moto,
+        "dia_siguiente_carro": ajustes.dia_siguiente_carro,
+        "dia_siguiente_moto": ajustes.dia_siguiente_moto,
     }
 
 
-def _formulario_tarifas(
-    request: Request, valores: dict[str, Any], error: str | None = None
-) -> Response:
-    contexto = {
+# Para cotizar en el mostrador: "¿cuánto me cobra por 4 días?"
+DIAS_PARA_COTIZAR = (1, 2, 3, 4, 7, 15)
+
+
+@dataclass(frozen=True)
+class Cotizacion:
+    """Cuánto pagan por varios días seguidos: una fila por cantidad de días y una columna por
+    tipo. Así, en el celular, "4 días" se lee de una sin correr la tabla de lado."""
+
+    tipos: list[str]
+    filas: list[tuple[int, list[int]]]
+
+
+def _cotizacion(sesion: Session) -> Cotizacion | None:
+    """Con las tarifas guardadas y solo los tipos que tienen cobro por días; si ninguno lo
+    tiene, no hay nada que cotizar."""
+    ajustes = leer_ajustes(sesion)
+    tarifas = [(NOMBRE_DEL_TIPO[tipo], ajustes.tarifa(tipo)) for tipo in TipoParqueo]
+    tarifas = [(nombre, tarifa) for nombre, tarifa in tarifas if tarifa.valor_dia is not None]
+    if not tarifas:
+        return None
+    filas = [
+        (
+            dias,
+            [
+                reglas.calcular_cobro(dias * reglas.HORAS_DEL_DIA * 60, tarifa).valor
+                for _, tarifa in tarifas
+            ],
+        )
+        for dias in DIAS_PARA_COTIZAR
+    ]
+    return Cotizacion([nombre for nombre, _ in tarifas], filas)
+
+
+def _contexto_tarifas(
+    sesion: Session, valores: dict[str, Any], error: str | None = None
+) -> dict[str, Any]:
+    return {
         "valores": valores,
         "anchos": ANCHOS_DE_TICKET,
         "error": error,
         "correo_configurado": obtener_entorno().correo_configurado,
+        "cotizacion": _cotizacion(sesion),
     }
+
+
+def _formulario_tarifas(
+    request: Request, sesion: Session, valores: dict[str, Any], error: str | None = None
+) -> Response:
+    contexto = _contexto_tarifas(sesion, valores, error)
     return html(request, "_parqueadero_tarifas.html", contexto)
 
 
 @router.get("/tarifas", response_class=HTMLResponse)
 def pagina_tarifas(request: Request, sesion: SesionBD, _: Admin) -> Response:
-    contexto = {
-        "valores": _valores_de_ajustes(leer_ajustes(sesion)),
-        "anchos": ANCHOS_DE_TICKET,
-        "error": None,
-        "correo_configurado": obtener_entorno().correo_configurado,
-    }
+    contexto = _contexto_tarifas(sesion, _valores_de_ajustes(leer_ajustes(sesion)))
     return pagina(request, sesion, "parqueadero_tarifas.html", contexto, seccion="parqueadero")
 
 
@@ -1290,6 +1330,10 @@ def guardar_tarifas(
     pie_ticket: Annotated[str, Form()] = "",
     ancho_ticket: Annotated[str, Form()] = "",
     correos_reporte: Annotated[str, Form()] = "",
+    dia_carro: Annotated[str, Form()] = "",
+    dia_moto: Annotated[str, Form()] = "",
+    dia_siguiente_carro: Annotated[str, Form()] = "",
+    dia_siguiente_moto: Annotated[str, Form()] = "",
 ) -> Response:
     valores = {
         "hora_carro": leer_pesos(hora_carro),
@@ -1304,6 +1348,10 @@ def guardar_tarifas(
         "pie_ticket": pie_ticket,
         "ancho_ticket": entero(ancho_ticket.strip()),
         "correos_reporte": correos_reporte,
+        "dia_carro": leer_pesos(dia_carro),
+        "dia_moto": leer_pesos(dia_moto),
+        "dia_siguiente_carro": leer_pesos(dia_siguiente_carro),
+        "dia_siguiente_moto": leer_pesos(dia_siguiente_moto),
     }
     try:
         for clave, texto in (
@@ -1318,10 +1366,10 @@ def guardar_tarifas(
         sesion.commit()
     except ReglaDelNegocio as error:
         sesion.rollback()
-        return _formulario_tarifas(request, valores, str(error))
+        return _formulario_tarifas(request, sesion, valores, str(error))
     guardados = _valores_de_ajustes(leer_ajustes(sesion))
     aviso = "Tarifas guardadas. Los vehículos que ya están adentro pagan la de cuando entraron."
-    return con_eventos(_formulario_tarifas(request, guardados), aviso=aviso)
+    return con_eventos(_formulario_tarifas(request, sesion, guardados), aviso=aviso)
 
 
 def lineas_del_cuadre(cuadre: reglas.Cuadre) -> list[tuple[MedioPago, int, int]]:
@@ -1334,3 +1382,11 @@ def lineas_del_cuadre(cuadre: reglas.Cuadre) -> list[tuple[MedioPago, int, int]]
 
 
 plantillas.env.globals["lineas_del_cuadre"] = lineas_del_cuadre
+
+
+def cobro_de(parqueo: Parqueo) -> reglas.Cobro:
+    """Cómo se llegó al valor de una salida (para el recibo): con la tarifa con que entró."""
+    return reglas.calcular_cobro(parqueo.minutos or 0, casos.tarifa_con_que_entro(parqueo))
+
+
+plantillas.env.globals["cobro_de"] = cobro_de

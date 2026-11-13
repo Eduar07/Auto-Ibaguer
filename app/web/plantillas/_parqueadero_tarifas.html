@@ -38,6 +38,43 @@
     </div>
   </section>
 
+  <section class="panel seccion-configuracion" aria-labelledby="t-dias">
+    <h2 id="t-dias">Cobro por días <span class="suave">(opcional)</span></h2>
+    <p class="suave">Para el que deja el vehículo varios días. <strong>Día completo</strong> es lo máximo que paga cada 24 horas: cuando las horas llegan a ese valor, se cobra el día y no más. <strong>Desde el segundo día</strong> es lo que vale cada día después del primero; si lo dejas vacío, vale lo mismo que el primero. Vacíos los dos, todo se cobra por horas.</p>
+    <div class="tabla-desplazable">
+      <table class="tabla-tarifas-dias">
+        <thead>
+          <tr><th scope="col"><span class="solo-lector">Vehículo</span></th><th scope="col">Día completo (24 h)</th><th scope="col">Desde el segundo día</th></tr>
+        </thead>
+        <tbody>
+          {% for clave, nombre in [("carro", "Carro"), ("moto", "Moto")] %}
+          <tr>
+            <th scope="row">{{ nombre }}</th>
+            <td><input aria-label="Día completo de {{ nombre|lower }}" name="dia_{{ clave }}" inputmode="numeric" class="monto" maxlength="9" value="{{ valores['dia_' ~ clave]|miles }}" placeholder="Solo por horas"></td>
+            <td><input aria-label="Desde el segundo día, {{ nombre|lower }}" name="dia_siguiente_{{ clave }}" inputmode="numeric" class="monto" maxlength="9" value="{{ valores['dia_siguiente_' ~ clave]|miles }}" placeholder="Igual al primero"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="nota nota--suelta">{{ iconos.icono("info", 20) }}<span>En Bucaramanga, el decreto de tarifas dice que si el vehículo se queda más de 12 horas, las primeras 24 se cobran por hora y el resto por día, en proporción a la mensualidad. Si tu parqueadero es de categoría B, C o D, cada día después del primero no puede pasar de la mensualidad máxima de tu categoría dividida entre 30 (por ejemplo, $200.000 / 30 = $6.667).</span></div>
+    {% if cotizacion %}
+    <div class="cotizacion">
+      <span class="etiqueta" id="t-cotizacion">Así se cobra con lo guardado</span>
+      <table class="tabla-caja tabla-cotizacion" aria-labelledby="t-cotizacion">
+        <thead>
+          <tr><th scope="col">Días seguidos</th>{% for nombre in cotizacion.tipos %}<th scope="col">{{ nombre }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for dias, valores_por_tipo in cotizacion.filas %}
+          <tr><th scope="row">{{ dias }} día{{ "s" if dias != 1 }}</th>{% for valor in valores_por_tipo %}<td>{{ valor|pesos }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+
   <section class="panel seccion-configuracion" aria-labelledby="t-ticket">
     <h2 id="t-ticket">Ticket</h2>
     <p class="suave">La Ley 1480 pide que el recibo diga quién presta el servicio, la fecha y hora de entrada, el vehículo, cómo entró y la tarifa: el ticket ya lo trae.</p>

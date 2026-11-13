@@ -28,13 +28,10 @@
       <div class="tarjeta-dato">
         <span>Tiempo adentro</span>
         <strong>{{ l.cobro.minutos|duracion }}</strong>
-        <span>
-          {%- if l.cobro.fraccion -%}Primeros 15 minutos: {{ p.valor_fraccion|pesos }}
-          {%- else -%}{{ l.cobro.horas }} hora{{ "s" if l.cobro.horas != 1 }} × {{ p.valor_hora|pesos }}{%- endif -%}
-        </span>
+        <span>{{ l.cobro.detalle }}</span>
       </div>
     </div>
-    <p class="ayuda">Tarifa con la que entró: {{ p.valor_hora|pesos }} la hora; después de cada hora tiene {{ p.gracia_minutos }} minutos de gracia antes de cobrar la siguiente.</p>
+    <p class="ayuda">Tarifa con la que entró: {{ p.valor_hora|pesos }} la hora; después de cada hora tiene {{ p.gracia_minutos }} minutos de gracia antes de cobrar la siguiente.{% if p.valor_dia %} El día completo, máximo {{ p.valor_dia|pesos }}{% if p.valor_dia_siguiente %}, y desde el segundo día {{ p.valor_dia_siguiente|pesos }} cada uno{% endif %}.{% endif %}</p>
 
     {% if l.es_mensualista_al_dia %}
     <div class="nota nota--suelta nota--verde">{{ iconos.icono("listo", 20) }}<span>Mensualista al día hasta el {{ l.al_dia_hasta|fecha }} ({{ l.mensualidad.titular }}): sale sin pagar.</span></div>

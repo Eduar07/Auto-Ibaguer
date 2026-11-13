@@ -14,10 +14,8 @@
   <dt>Tiempo</dt><dd>{{ (p.minutos or 0)|duracion }}</dd>
   {% if p.mensualidad_id %}
   <dt>Cobro</dt><dd>Mensualista al día</dd>
-  {% elif p.horas_cobradas %}
-  <dt>Cobro</dt><dd>{{ p.horas_cobradas }} h × {{ p.valor_hora|pesos }}</dd>
   {% else %}
-  <dt>Cobro</dt><dd>Primeros 15 minutos</dd>
+  <dt>Cobro</dt><dd>{{ cobro_de(p).detalle }}</dd>
   {% endif %}
   {% if p.motivo_ajuste %}
   <dt>Tarifa</dt><dd>{{ p.valor_calculado|pesos }}</dd>

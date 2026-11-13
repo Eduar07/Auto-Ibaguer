@@ -1105,6 +1105,14 @@ legend { padding: 0; margin-bottom: 8px; }
 /* El diálogo de corregir: dos formularios, el de deshacer en rojo para que se piense dos veces. */
 .seccion-correccion { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--borde); border-radius: 12px; }
 .seccion-correccion h3 { font-size: 17px; }
+/* Tarifas > Cobro por días: una fila por vehículo, los dos valores en columnas. */
+.tabla-tarifas-dias { width: 100%; border-collapse: collapse; }
+.tabla-tarifas-dias th, .tabla-tarifas-dias td { padding: 6px 8px 6px 0; text-align: left; vertical-align: middle; }
+.tabla-tarifas-dias thead th { font-size: 14px; font-weight: 600; color: var(--tinta-gris); }
+.tabla-tarifas-dias input { width: 100%; min-width: 120px; }
+/* La cotización: angosta, una fila por cantidad de días, para leerla de una en el mostrador. */
+.cotizacion { display: flex; flex-direction: column; gap: 4px; max-width: 420px; }
+.tabla-cotizacion tbody th { font-weight: 600; }
 .seccion-correccion .campo--corto { max-width: 260px; }
 .seccion-correccion--peligro { border-color: var(--rojo); background: var(--rojo-claro); }
 

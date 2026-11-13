@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.catalogo.tablas import Configuracion
 from app.parqueadero.errores import TarifaInvalida
-from app.parqueadero.estados import TipoParqueo
+from app.parqueadero.estados import NOMBRE_DEL_TIPO, TipoParqueo
 from app.parqueadero.reglas import Tarifa, validar_tarifa
 
 PREFIJO = "parqueadero."
@@ -36,6 +36,18 @@ VALORES_INICIALES: tuple[tuple[str, Any, str], ...] = (
         "Valor de los primeros 15 minutos de moto; vacío = se cobra la hora completa",
     ),
     ("gracia_minutos", 15, "Minutos de gracia después de cada hora antes de cobrar la siguiente"),
+    ("dia_carro", None, "Lo máximo que paga un carro por día (24 horas); vacío = todo por horas"),
+    ("dia_moto", None, "Lo máximo que paga una moto por día (24 horas); vacío = todo por horas"),
+    (
+        "dia_siguiente_carro",
+        None,
+        "Lo que vale cada día de carro después del primero; vacío = lo mismo que el primero",
+    ),
+    (
+        "dia_siguiente_moto",
+        None,
+        "Lo que vale cada día de moto después del primero; vacío = lo mismo que el primero",
+    ),
     ("nombre", "Parqueadero", "Nombre del parqueadero en el ticket"),
     ("nit", "", "NIT del parqueadero en el ticket (solo el número, con su dígito de verificación)"),
     ("direccion", "", "Dirección del parqueadero en el ticket"),
@@ -70,6 +82,10 @@ class AjustesParqueadero:
     pie_ticket: str
     ancho_ticket: int
     correos_reporte: str = ""  # "jefe@gmail.com, socio@gmail.com"
+    dia_carro: int | None = None
+    dia_moto: int | None = None
+    dia_siguiente_carro: int | None = None
+    dia_siguiente_moto: int | None = None
 
     @property
     def destinos_del_reporte(self) -> list[str]:
@@ -77,8 +93,20 @@ class AjustesParqueadero:
 
     def tarifa(self, tipo: TipoParqueo) -> Tarifa:
         if tipo is TipoParqueo.MOTO:
-            return Tarifa(self.hora_moto, self.gracia_minutos, self.fraccion_moto)
-        return Tarifa(self.hora_carro, self.gracia_minutos, self.fraccion_carro)
+            return Tarifa(
+                self.hora_moto,
+                self.gracia_minutos,
+                self.fraccion_moto,
+                self.dia_moto,
+                self.dia_siguiente_moto,
+            )
+        return Tarifa(
+            self.hora_carro,
+            self.gracia_minutos,
+            self.fraccion_carro,
+            self.dia_carro,
+            self.dia_siguiente_carro,
+        )
 
 
 def leer_ajustes(sesion: Session) -> AjustesParqueadero:
@@ -100,6 +128,10 @@ def leer_ajustes(sesion: Session) -> AjustesParqueadero:
         pie_ticket=str(valores["pie_ticket"]),
         ancho_ticket=int(valores["ancho_ticket"]),
         correos_reporte=str(valores["correos_reporte"]),
+        dia_carro=_entero_o_nada(valores["dia_carro"]),
+        dia_moto=_entero_o_nada(valores["dia_moto"]),
+        dia_siguiente_carro=_entero_o_nada(valores["dia_siguiente_carro"]),
+        dia_siguiente_moto=_entero_o_nada(valores["dia_siguiente_moto"]),
     )
 
 
@@ -146,7 +178,10 @@ def limpiar_correos(texto: str) -> str:
 def guardar_ajustes(sesion: Session, ajustes: AjustesParqueadero) -> None:
     """Revisa y guarda. Las entradas que ya están adentro conservan la tarifa con que entraron."""
     for tipo in TipoParqueo:
-        validar_tarifa(ajustes.tarifa(tipo))
+        try:
+            validar_tarifa(ajustes.tarifa(tipo))
+        except TarifaInvalida as error:
+            raise TarifaInvalida(f"{NOMBRE_DEL_TIPO[tipo]}: {error}") from error
     if ajustes.ancho_ticket not in ANCHOS_DE_TICKET:
         raise TarifaInvalida("El ancho del ticket es de 58 o de 80 milímetros.")
     if not ajustes.nombre.strip():

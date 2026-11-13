@@ -28,6 +28,10 @@ FRACCION_MINUTOS = 15
 # diciembre. Así la define el decreto de tarifas de Bucaramanga.
 DIAS_DE_LA_MENSUALIDAD = 30
 
+# El mes siguiente se puede cobrar desde estos días antes de que se acabe lo pagado (y en la
+# lista sale en naranja). Antes de eso está al día: cobrarle sería adelantar un mes.
+DIAS_PARA_COBRAR_ANTES = 3
+
 # Una placa limpia: letras y números, con al menos una de cada una. Cabe la de carro
 # (ABC123), la de moto (ABC12D), la de moto vieja (ABC12) y las especiales (R12345).
 _PLACA = re.compile(r"(?=.*[A-Z])(?=.*\d)[A-Z0-9]{4,7}")
@@ -148,6 +152,17 @@ def cubierta_hasta(periodos: Iterable[tuple[date, date]], dia: date) -> date | N
         elif desde <= hasta + timedelta(days=1):
             hasta = max(hasta, fin)
     return hasta
+
+
+def se_puede_cobrar(al_dia_hasta: date | None, hoy: date) -> bool:
+    """¿Ya toca cobrarle el mes siguiente? Sí, si hoy no está pagado o lo pagado se acaba en
+    3 días o menos. Si está al día por más tiempo, cobrarle es adelantar un mes."""
+    return al_dia_hasta is None or (al_dia_hasta - hoy).days <= DIAS_PARA_COBRAR_ANTES
+
+
+def cobrar_desde(al_dia_hasta: date) -> date:
+    """El primer día en que se puede cobrar el mes siguiente sin que sea un adelanto."""
+    return al_dia_hasta - timedelta(days=DIAS_PARA_COBRAR_ANTES)
 
 
 def periodo_siguiente(ultimo_pagado: date | None, hoy: date) -> tuple[date, date]:

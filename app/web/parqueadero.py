@@ -12,7 +12,7 @@ import csv
 import io
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -149,7 +149,7 @@ def registrar_entrada(
         )
     aviso = f"{parqueo.placa} entró con el ticket {parqueo.id}."
     if liquidacion.debe_la_mensualidad:
-        aviso += " Debe la mensualidad: cóbrale el mes."
+        aviso += " Su mensualidad está pendiente de pago: cóbrale el mes."
     return _lista_adentro(
         request,
         sesion,
@@ -169,9 +169,16 @@ def _parqueo_adentro(sesion: Session, parqueo_id: int) -> Parqueo:
 def _contexto_salida(
     sesion: Session, parqueo: Parqueo, formulario: dict[str, Any], error: str | None = None
 ) -> dict[str, Any]:
+    liquidacion = casos.liquidar(sesion, parqueo)
+    debe_desde = None
+    if liquidacion.debe_la_mensualidad:
+        ultimo = casos.pagada_hasta(sesion, liquidacion.mensualidad.id)
+        if ultimo is not None and ultimo < _hoy():
+            debe_desde = ultimo + timedelta(days=1)
     return {
         "parqueo": parqueo,
-        "liquidacion": casos.liquidar(sesion, parqueo),
+        "liquidacion": liquidacion,
+        "debe_desde": debe_desde,
         "caja": casos.caja_abierta(sesion),
         "formulario": formulario,
         "medios": MEDIOS,
@@ -693,6 +700,10 @@ def _contexto_pago(
     error: str | None = None,
     salida: int | None = None,
 ) -> dict[str, Any]:
+    hoy = _hoy()
+    al_dia = casos.cubierta_hasta(sesion, mensualidad.id, hoy)
+    # Ya está al día por más de 3 días: este pago adelantaría un mes, y se pide confirmarlo.
+    adelanto = not reglas.se_puede_cobrar(al_dia, hoy)
     return {
         "mensualidad": mensualidad,
         "formulario": formulario,
@@ -702,6 +713,9 @@ def _contexto_pago(
         "error": error,
         # Se abrió desde el cobro de una salida: al pagar, vuelve a esa salida.
         "salida": salida,
+        "adelanto": adelanto,
+        "al_dia_hasta": al_dia,
+        "cobrar_desde": reglas.cobrar_desde(al_dia) if adelanto and al_dia else None,
     }
 
 
@@ -725,6 +739,7 @@ def dialogo_pagar(
         "hasta": hasta,
         "valor": mensualidad.valor_mensual,
         "medio_pago": MedioPago.EFECTIVO.value,
+        "adelantado": False,
     }
     parqueo = _salida_adentro(sesion, salida)
     contexto = _contexto_pago(
@@ -751,6 +766,7 @@ def pagar_mensualidad(
     valor: Annotated[str, Form()] = "",
     medio_pago: Annotated[str, Form()] = "",
     salida: Annotated[str, Form()] = "",
+    adelantado: Annotated[str, Form()] = "",
 ) -> Response:
     mensualidad = _mensualidad_o_404(sesion, mensualidad_id)
     formulario = {
@@ -758,6 +774,7 @@ def pagar_mensualidad(
         "hasta": _fecha(hasta),
         "valor": leer_pesos(valor),
         "medio_pago": medio_pago,
+        "adelantado": bool(adelantado),
     }
     salida_id = entero(salida)
     recibo: dict[str, Any] = {}
@@ -775,6 +792,7 @@ def pagar_mensualidad(
             hasta=formulario["hasta"],
             valor=formulario["valor"],
             medio_pago=medio,
+            adelantado=formulario["adelantado"],
             administrador_id=administrador.id,
         )
         recibo["imprimir"] = f"/parqueadero/mensualidades/pagos/{pago.id}/ticket"

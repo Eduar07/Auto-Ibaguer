@@ -46,8 +46,9 @@
         <input id="nombre" name="nombre" required maxlength="60" value="{{ valores.nombre }}">
       </div>
       <div class="campo">
-        <label for="nit">NIT o razón social <span class="suave">(opcional)</span></label>
-        <input id="nit" name="nit" maxlength="80" value="{{ valores.nit }}">
+        <label for="nit">NIT <span class="suave">(opcional)</span></label>
+        <input id="nit" name="nit" maxlength="30" inputmode="numeric" placeholder="900.123.456-7" value="{{ valores.nit }}">
+        <span class="ayuda">Solo el número, con el dígito de verificación. En el ticket sale "NIT 900.123.456-7".</span>
       </div>
       <div class="campo">
         <label for="direccion">Dirección</label>

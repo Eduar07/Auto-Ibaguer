@@ -40,7 +40,7 @@
     <div class="nota nota--suelta nota--verde">{{ iconos.icono("listo", 20) }}<span>Mensualista al día hasta el {{ l.al_dia_hasta|fecha }} ({{ l.mensualidad.titular }}): sale sin pagar.</span></div>
     {% elif l.mensualidad %}
     <div class="aviso-mensualidad">
-      <div class="error">La mensualidad de {{ l.mensualidad.titular }} no está paga para hoy. Si paga el mes, sale sin pagar horas; si no, esta salida se cobra por horas.</div>
+      <div class="error">La mensualidad de {{ l.mensualidad.titular }} está pendiente de pago{% if debe_desde %} desde el {{ debe_desde|fecha }}{% endif %}. Si paga el mes, sale sin pagar horas; si no, esta salida se cobra por horas.</div>
       <button type="button" class="boton boton--borde" hx-get="/parqueadero/mensualidades/{{ l.mensualidad.id }}/pagar?salida={{ p.id }}" hx-target="#dialogo-contenido">{{ iconos.icono("calendario", 20) }}Cobrar el mes</button>
     </div>
     {% endif %}

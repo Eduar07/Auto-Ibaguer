@@ -13,6 +13,7 @@ from app.parqueadero.reglas import (
     Cuadre,
     Tarifa,
     calcular_cobro,
+    cobrar_desde,
     cubierta_hasta,
     fin_de_la_mensualidad,
     horas_a_cobrar,
@@ -22,9 +23,11 @@ from app.parqueadero.reglas import (
     placa_o_ticket,
     revisar_periodo,
     revisar_recibido,
+    se_puede_cobrar,
     validar_placa,
     validar_tarifa,
 )
+from app.parqueadero.tarifas import limpiar_nit
 from app.turnos.estados import MedioPago
 
 CARRO = Tarifa(valor_hora=3000, gracia_minutos=15)
@@ -131,6 +134,45 @@ HOY = date(2026, 11, 13)
 )
 def test_el_siguiente_mes_sigue_al_ultimo_pagado(ultimo_pagado, periodo):
     assert periodo_siguiente(ultimo_pagado, HOY) == periodo
+
+
+@pytest.mark.parametrize(
+    ("al_dia_hasta", "se_puede"),
+    [
+        (None, True),  # no está pagado hoy: pendiente
+        (HOY, True),  # hoy es su último día
+        (date(2026, 11, 16), True),  # se acaba en 3 días
+        (date(2026, 11, 17), False),  # en 4 días: está al día, cobrar sería adelantar
+        (date(2027, 2, 9), False),
+    ],
+)
+def test_el_mes_siguiente_se_cobra_desde_3_dias_antes(al_dia_hasta, se_puede):
+    assert se_puede_cobrar(al_dia_hasta, HOY) is se_puede
+
+
+def test_desde_cuando_se_cobra_el_mes_siguiente():
+    assert cobrar_desde(date(2027, 2, 9)) == date(2027, 2, 6)
+    assert cobrar_desde(date(2026, 12, 2)) == date(2026, 11, 29)
+
+
+@pytest.mark.parametrize(
+    ("escrito", "nit"),
+    [
+        ("900.123.456-7", "900.123.456-7"),
+        ("NIT: 900.123.456-7", "900.123.456-7"),  # la palabra la pone el ticket
+        ("nit 900123456-7", "900123456-7"),
+        ("N.I.T. 1.098.765.432-1", "1.098.765.432-1"),
+        ("  ", ""),  # sin NIT, el ticket no lo muestra
+    ],
+)
+def test_el_nit_se_guarda_sin_la_palabra(escrito, nit):
+    assert limpiar_nit(escrito) == nit
+
+
+@pytest.mark.parametrize("escrito", ["Parqueadero Ibaguer SAS", "123", "900-ABC-1"])
+def test_lo_que_no_es_un_nit(escrito):
+    with pytest.raises(TarifaInvalida, match="solo el número"):
+        limpiar_nit(escrito)
 
 
 def test_hasta_donde_va_lo_pagado_sin_cortes():

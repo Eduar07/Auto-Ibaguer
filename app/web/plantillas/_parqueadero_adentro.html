@@ -24,7 +24,7 @@
       <span class="insignia insignia--verde">Mensualista</span>
       {% else %}
       <span class="suave">Va en {{ v.valor_a_la_fecha|pesos }}</span>
-      {% if v.mensualidad_vencida %}<span class="insignia insignia--rojo">Debe la mensualidad</span>{% endif %}
+      {% if v.mensualidad_vencida %}<span class="insignia insignia--rojo">Mensualidad pendiente</span>{% endif %}
       {% endif %}
     </span>
     <span class="parqueo__acciones">

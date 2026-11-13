@@ -1,4 +1,6 @@
-{#- Cobrar un periodo de mensualidad: 30 días seguidos desde el día siguiente al último pagado. -#}
+{#- Cobrar un periodo de mensualidad: 30 días seguidos desde el día siguiente al último pagado.
+    Si todavía está al día por más de 3 días, es un adelanto: hay que marcar que el cliente lo
+    pidió (la regla también está en casos_de_uso.pagar_mensualidad). -#}
 {% import "_iconos.html" as iconos %}
 {% set m = mensualidad %}
 <form class="dialogo__caja" data-formulario="pago-mensualidad"
@@ -11,13 +13,23 @@
     {% else %}
     <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
     {% endif %}
-    <h2 id="dialogo-titulo">Cobrar mensualidad de <span class="placa-texto">{{ m.placa }}</span></h2>
+    <h2 id="dialogo-titulo">{{ "Adelantar" if adelanto else "Cobrar" }} mensualidad de <span class="placa-texto">{{ m.placa }}</span></h2>
     <p>{{ m.titular }} · {{ nombre_del_tipo[m.tipo] }} · {{ m.valor_mensual|pesos }} al mes</p>
   </div>
   <div class="dialogo__cuerpo">
     {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
     {% if caja is none %}
     <div class="error" role="alert">La caja está cerrada. <a href="/parqueadero/caja">Abre la caja</a> para recibir el pago.</div>
+    {% endif %}
+    {% if adelanto %}
+    <div class="nota nota--suelta">
+      {{ iconos.icono("info", 20) }}
+      <span>Ya pagó hasta el {{ al_dia_hasta|fecha }}. El mes siguiente se cobra desde el {{ cobrar_desde|fecha }}: cobrarlo hoy es <strong>por adelantado</strong>.</span>
+    </div>
+    <label class="autorizacion">
+      <input type="checkbox" name="adelantado" value="si" required {% if formulario.adelantado %}checked{% endif %}>
+      <span>El cliente pidió pagar el mes siguiente por adelantado.</span>
+    </label>
     {% endif %}
     <div class="dos-columnas">
       <div class="campo">
@@ -63,7 +75,7 @@
     {% endif %}
   </div>
   <div class="dialogo__pie">
-    <button type="submit" class="boton boton--grande" {% if caja is none %}disabled{% endif %}>{{ iconos.icono("imprimir", 20) }}Cobrar e imprimir recibo</button>
+    <button type="submit" class="boton boton--grande" {% if caja is none %}disabled{% endif %}>{{ iconos.icono("imprimir", 20) }}{{ "Cobrar por adelantado" if adelanto else "Cobrar e imprimir recibo" }}</button>
     <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
   </div>
 </form>

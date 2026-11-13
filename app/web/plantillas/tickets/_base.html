@@ -12,7 +12,7 @@
 <body class="ticket ticket--{{ ajustes.ancho_ticket }}">
   <header class="ticket__negocio">
     <strong>{{ ajustes.nombre }}</strong>
-    {% if ajustes.nit %}<span>{{ ajustes.nit }}</span>{% endif %}
+    {% if ajustes.nit %}<span>NIT {{ ajustes.nit }}</span>{% endif %}
     {% if ajustes.direccion %}<span>{{ ajustes.direccion }}</span>{% endif %}
     {% if ajustes.telefono %}<span>Tel. {{ ajustes.telefono }}</span>{% endif %}
   </header>

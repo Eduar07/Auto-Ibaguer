@@ -1,8 +1,13 @@
-{#- Las mensualidades activas: primero las que hay que cobrar. -#}
+{#- Las mensualidades activas: primero las que hay que cobrar.
+
+    Verde: al día (el mes siguiente todavía no se cobra). Naranja: se acaba en 3 días o menos,
+    ya se puede cobrar. Rojo: pendiente de pago. "Cobrar mes" solo aparece cuando toca; si
+    está al día, queda "Adelantar mes", que pide confirmar que el cliente quiere adelantar. -#}
 {% import "_iconos.html" as iconos %}
+{% macro dia(fecha) %}{{ fecha.day }}/{{ fecha.month }}{% endmacro %}
 <div class="lista__cabeza">
   <h3>{{ filas|length }} activa{{ "s" if filas|length != 1 }}</h3>
-  {% if vencidas %}<span class="insignia insignia--rojo">{{ vencidas }} por cobrar</span>{% endif %}
+  {% if vencidas %}<span class="insignia insignia--rojo">{{ vencidas }} pendiente{{ "s" if vencidas != 1 }} de pago</span>{% endif %}
 </div>
 {% if filas %}
 <ul class="parqueos">
@@ -18,23 +23,27 @@
     <span class="parqueo__tiempo">
       <strong>{{ m.valor_mensual|pesos }}<span class="suave"> al mes</span></strong>
       {% if f.estado == "al_dia" %}
-      <span class="insignia insignia--verde">Al día hasta el {{ f.pagada_hasta.day }}/{{ f.pagada_hasta.month }}</span>
+      <span class="insignia insignia--verde">Al día hasta el {{ dia(f.pagada_hasta) }}</span>
+      <span class="suave">Próximo cobro desde el {{ dia(f.cobrar_desde) }}</span>
       {% elif f.estado == "vence_pronto" %}
-      <span class="insignia insignia--demorado">{{ "Vence hoy" if f.dias_restantes == 0 else "Vence en " ~ f.dias_restantes ~ " día" ~ ("s" if f.dias_restantes != 1 else "") }}</span>
+      <span class="insignia insignia--demorado">Vence el {{ dia(f.pagada_hasta) }}</span>
+      <span class="suave">{{ "hoy es el último día" if f.dias_restantes == 0 else "en " ~ f.dias_restantes ~ " día" ~ ("s" if f.dias_restantes != 1 else "") }}</span>
       {% elif f.estado == "vencida" %}
-      {% if f.debe_desde %}
-      <span class="insignia insignia--rojo">Debe desde el {{ f.debe_desde.day }}/{{ f.debe_desde.month }}</span>
-      <span class="suave">{{ -f.dias_restantes }} día{{ "s" if f.dias_restantes != -1 }} sin pagar</span>
+      <span class="insignia insignia--rojo">Pendiente de pago</span>
+      {% if f.debe_desde %}<span class="suave">desde el {{ dia(f.debe_desde) }} · {{ -f.dias_restantes }} día{{ "s" if f.dias_restantes != -1 }}</span>{% endif %}
       {% else %}
-      <span class="insignia insignia--rojo">Vencida</span>
-      {% endif %}
-      {% else %}
-      <span class="insignia insignia--rojo">Sin pagos</span>
+      <span class="insignia insignia--rojo">Pendiente de pago</span>
+      <span class="suave">el primer mes</span>
       {% endif %}
     </span>
     <span class="parqueo__acciones">
+      {% if f.se_puede_cobrar %}
       <button type="button" class="boton" hx-get="/parqueadero/mensualidades/{{ m.id }}/pagar" hx-target="#dialogo-contenido">Cobrar mes</button>
+      {% endif %}
       <button type="button" class="boton boton--borde" hx-get="/parqueadero/mensualidades/{{ m.id }}/editar" hx-target="#dialogo-contenido">Editar</button>
+      {% if not f.se_puede_cobrar %}
+      <button type="button" class="boton-texto" hx-get="/parqueadero/mensualidades/{{ m.id }}/pagar" hx-target="#dialogo-contenido">Adelantar mes</button>
+      {% endif %}
       <button type="button" class="boton-texto boton-texto--peligro" hx-get="/parqueadero/mensualidades/{{ m.id }}/baja" hx-target="#dialogo-contenido">Dar de baja</button>
     </span>
   </li>

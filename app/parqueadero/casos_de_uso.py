@@ -493,6 +493,7 @@ def pagar_mensualidad(
     hasta: date,
     valor: int | None,
     medio_pago: MedioPago,
+    adelantado: bool = False,
     administrador_id: int | None = None,
     ahora: datetime | None = None,
 ) -> PagoMensualidad:
@@ -500,6 +501,10 @@ def pagar_mensualidad(
 
     La mensualidad se bloquea primero: un doble clic no registra el mismo mes dos veces,
     porque el segundo ve que esos días ya están pagados.
+
+    El mes siguiente se cobra cuando toca: desde 3 días antes de que se acabe lo pagado. Si
+    está al día por más tiempo, solo se cobra con `adelantado` (el cliente pidió adelantar),
+    para que un clic de más no le cobre otro mes.
     """
     ahora = ahora or tiempo.ahora()
     reglas.revisar_periodo(desde, hasta)
@@ -508,6 +513,13 @@ def pagar_mensualidad(
     mensualidad = _bloquear_mensualidad(sesion, mensualidad_id)
     if not mensualidad.activa:
         raise MensualidadInvalida("Esa mensualidad está dada de baja: no recibe pagos.")
+    al_dia = cubierta_hasta(sesion, mensualidad.id, _hoy(ahora))
+    if not adelantado and not reglas.se_puede_cobrar(al_dia, _hoy(ahora)):
+        raise MensualidadInvalida(
+            f"Ya pagó hasta el {formato.fecha(al_dia)}: el mes siguiente se cobra desde el "
+            f"{formato.fecha(reglas.cobrar_desde(al_dia))}. Si el cliente quiere pagarlo ya, "
+            "marca que es por adelantado."
+        )
     caja = _caja_para_cobrar(sesion)
     cruce = sesion.execute(
         select(PagoMensualidad.desde, PagoMensualidad.hasta)

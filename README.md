@@ -82,7 +82,7 @@ Es la sección **Parqueadero** del dashboard (en el celular, **Parqueo** en la b
 | **Entradas y salidas** | Registrar la entrada (carro o moto, la placa y, si quieres, el estado o lo que deja: sale en el ticket) e imprimir el ticket. Cobrar la salida escribiendo la placa o el número del ticket, o con **Cobrar** en la lista de los que están adentro, que dice cuánto va cada uno. **Anular** una entrada mal hecha: pide el motivo y no cuenta en la caja. |
 | **Caja** | Abrirla con la base para vueltos, ver lo que ha entrado por cada medio de pago y cerrarla contando el efectivo: dice si cuadró, sobró o faltó, e imprime el resumen para firmar. Abajo, los cierres anteriores y el archivo para Excel. |
 | **Mensualidades** | Crear la del cliente (placa, nombre, celular opcional y el valor que acuerdes), cobrar cada mes e imprimir el recibo. Dice quién está al día, a quién se le vence en 3 días o menos y quién debe. |
-| **Tarifas y ticket** | El valor de la hora de carro y de moto, los minutos de gracia, la fracción de los primeros 15 minutos (opcional) y lo que sale impreso: nombre, NIT, dirección, teléfono, el texto del final del ticket y el ancho del papel. |
+| **Tarifas y ticket** | El valor de la hora de carro y de moto, los minutos de gracia, la fracción de los primeros 15 minutos (opcional) y lo que sale impreso: nombre, NIT (en el ticket sale "NIT 900.123.456-7"), dirección, teléfono, el texto del final del ticket y el ancho del papel. |
 
 ### Cómo cobra
 
@@ -112,14 +112,24 @@ Lo normal es cerrarla al final de cada día y abrir una nueva al otro día, para
 
 El valor lo pones tú en cada mensualidad, y al cobrar cada mes se puede cambiar. Cada pago cubre 30 días seguidos contando el primero (del 10 de noviembre al 9 de diciembre) y el sistema propone el siguiente periodo justo después del último pagado, aunque pague unos días tarde: si se le venció el 10 y paga el 13, el mes va del 11 al 10 (si no, cada atraso le regalaría días). Si lleva más de un mes sin pagar, el mes empieza el día que paga. En el cobro puedes cambiar las fechas. No deja cobrar dos veces los mismos días.
 
-Cuando a alguien se le vence la mensualidad, lo ves sin buscarlo:
+Cada mensualidad tiene un estado, con su fecha:
 
-- En **Entradas y salidas**, arriba y en rojo: cuántas hay por cobrar y desde cuándo debe cada una.
-- En **Mensualidades**, primero las que deben, con una raya roja: "Debe desde el 11/11 · 3 días sin pagar". Las que vencen en 3 días o menos salen en naranja.
-- Si su vehículo entra, el aviso dice que debe la mensualidad, y en la lista de los que están adentro sale **Debe la mensualidad**.
+| Estado | Cuándo | Qué se puede hacer |
+|---|---|---|
+| Verde: **Al día hasta el 9/12** | Lo pagado dura más de 3 días | Nada que cobrar: dice desde cuándo toca el próximo cobro ("Próximo cobro desde el 6/12") |
+| Naranja: **Vence el 9/12** | Lo pagado se acaba en 3 días o menos | **Cobrar mes** |
+| Rojo: **Pendiente de pago** | Ya se acabó lo pagado ("desde el 10/12 · 3 días"), o nunca ha pagado | **Cobrar mes** |
+
+El mes siguiente solo se cobra cuando toca, para que un clic de más no le cobre otro mes. Si un cliente al día quiere adelantar, está **Adelantar mes**: pide marcar que el cliente lo pidió (la regla también está en el código, no solo en el botón).
+
+Cuando una mensualidad queda pendiente de pago, lo ves sin buscarlo:
+
+- En **Entradas y salidas**, arriba y en rojo: cuántas hay pendientes y desde cuándo cada una.
+- En **Mensualidades**, primero las pendientes, con una raya roja.
+- Si su vehículo entra, el aviso dice que la mensualidad está pendiente, y en la lista de los que están adentro sale **Mensualidad pendiente**.
 - Al cobrar su salida, **Cobrar el mes** recibe el pago, imprime el recibo y vuelve a la salida, que ya sale en $0. Si no paga el mes, la salida se cobra por horas.
 
-Al pagar, cambia sola a verde ("Al día hasta el 10/12").
+Al pagar, cambia sola a verde ("Al día hasta el 10/1").
 
 Para los mensualistas que ya traían días pagados, por ejemplo con el dueño anterior, al crear la mensualidad llena **Ya trae pagado hasta**: sale sin pagar hasta ese día, el primer cobro empieza el día siguiente y en la caja no entra plata que no recibiste.
 

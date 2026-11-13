@@ -224,7 +224,7 @@ def test_mensualidad_de_punta_a_punta(adentro: TestClient, sesion: Session):
         headers=HTMX,
     )
     assert creada.headers["HX-Retarget"] == "#lista-mensualidades"
-    assert "MEN123" in creada.text and "Sin pagos" in creada.text
+    assert "MEN123" in creada.text and "el primer mes" in creada.text
     mensualidad = sesion.scalars(select(Mensualidad)).one()
 
     abrir_caja(adentro)
@@ -286,18 +286,129 @@ def test_la_mensualidad_vencida_se_ve_en_rojo_donde_se_atiende(
     mensualidad_vencida(adentro, sesion)
 
     pagina = adentro.get("/parqueadero").text
-    assert "1 mensualidad por cobrar" in pagina and "(debe desde el 24/10)" in pagina
+    assert "1 mensualidad pendiente de pago" in pagina and "(desde el 24/10)" in pagina
     lista = adentro.get("/parqueadero/mensualidades").text
-    assert "Debe desde el 24/10" in lista and "3 días sin pagar" in lista
+    assert "Pendiente de pago" in lista and "desde el 24/10 · 3 días" in lista
     assert "parqueo--debe" in lista
 
     entrada = entrar(adentro, "MEN123")
 
     p = parqueo(sesion, "MEN123")
     assert aviso(entrada) == (
-        f"MEN123 entró con el ticket {p.id}. Debe la mensualidad: cóbrale el mes."
+        f"MEN123 entró con el ticket {p.id}. Su mensualidad está pendiente de pago: cóbrale el mes."
     )
-    assert "Debe la mensualidad" in entrada.text
+    assert "Mensualidad pendiente" in entrada.text
+
+
+def mensualidad_pagada_hasta_el_24(adentro: TestClient, sesion: Session) -> Mensualidad:
+    """MEN123 pagó el lunes 26 de octubre su primer mes: del 26/10 al 24/11."""
+    adentro.post(
+        "/parqueadero/mensualidades",
+        data={
+            "placa": "men123",
+            "tipo": "moto",
+            "titular": "ana ruiz",
+            "valor_mensual": "200.000",
+            "autorizo": "si",
+        },
+        headers=HTMX,
+    )
+    mensualidad = sesion.scalars(select(Mensualidad)).one()
+    abrir_caja(adentro)
+    adentro.post(
+        f"/parqueadero/mensualidades/{mensualidad.id}/pagar",
+        data={
+            "desde": "2026-10-26",
+            "hasta": "2026-11-24",
+            "valor": "200.000",
+            "medio_pago": "efectivo",
+        },
+        headers=HTMX,
+    )
+    return mensualidad
+
+
+def pagos(sesion: Session) -> int:
+    return len(sesion.scalars(select(PagoMensualidad)).all())
+
+
+def test_al_dia_no_deja_cobrar_otro_mes_sin_marcar_que_es_adelantado(
+    adentro: TestClient, sesion: Session
+):
+    mensualidad = mensualidad_pagada_hasta_el_24(adentro, sesion)
+
+    # En la lista: al día, cuándo toca el próximo cobro y ningún botón "Cobrar mes".
+    lista = adentro.get("/parqueadero/mensualidades").text
+    assert "Al día hasta el 24/11" in lista and "Próximo cobro desde el 21/11" in lista
+    assert "Cobrar mes</button>" not in lista and "Adelantar mes" in lista
+
+    # El cobro, si lo abren, avisa que es un adelanto y pide marcarlo.
+    dialogo = adentro.get(f"/parqueadero/mensualidades/{mensualidad.id}/pagar", headers=HTMX)
+    assert "Adelantar mensualidad" in dialogo.text and 'name="adelantado"' in dialogo.text
+    assert 'value="2026-11-25"' in dialogo.text and 'value="2026-12-24"' in dialogo.text
+    datos = {
+        "desde": "2026-11-25",
+        "hasta": "2026-12-24",
+        "valor": "200.000",
+        "medio_pago": "efectivo",
+    }
+
+    sin_marcar = adentro.post(
+        f"/parqueadero/mensualidades/{mensualidad.id}/pagar", data=datos, headers=HTMX
+    )
+
+    assert "Ya pagó hasta el 24 de noviembre de 2026" in sin_marcar.text
+    assert "se cobra desde el 21 de noviembre de 2026" in sin_marcar.text
+    assert pagos(sesion) == 1  # no cobró nada
+
+    adelantado = adentro.post(
+        f"/parqueadero/mensualidades/{mensualidad.id}/pagar",
+        data={**datos, "adelantado": "si"},
+        headers=HTMX,
+    )
+
+    assert "pagada hasta el 24 de diciembre de 2026" in aviso(adelantado)
+    assert pagos(sesion) == 2
+
+
+def test_los_estados_de_la_mensualidad_a_lo_largo_del_mes(
+    adentro: TestClient, sesion: Session, reloj: dict
+):
+    mensualidad = mensualidad_pagada_hasta_el_24(adentro, sesion)
+    lunes = reloj["ahora"]
+
+    # 21 de noviembre: se acaba en 3 días; ya se puede cobrar, en naranja.
+    reloj["ahora"] = lunes + minutos(26 * 24 * 60)
+    lista = adentro.get("/parqueadero/mensualidades").text
+    assert "Vence el 24/11" in lista and "en 3 días" in lista
+    assert "Cobrar mes</button>" in lista and "Adelantar mes" not in lista
+    dialogo = adentro.get(f"/parqueadero/mensualidades/{mensualidad.id}/pagar", headers=HTMX)
+    assert "Cobrar mensualidad" in dialogo.text and 'name="adelantado"' not in dialogo.text
+
+    # 24 de noviembre: es el último día pagado.
+    reloj["ahora"] = lunes + minutos(29 * 24 * 60)
+    assert "hoy es el último día" in adentro.get("/parqueadero/mensualidades").text
+
+    # 27 de noviembre: pendiente de pago desde el 25, en rojo, también donde se atiende.
+    reloj["ahora"] = lunes + minutos(32 * 24 * 60)
+    lista = adentro.get("/parqueadero/mensualidades").text
+    assert "Pendiente de pago" in lista and "desde el 25/11 · 3 días" in lista
+    assert "parqueo--debe" in lista
+    assert "(desde el 25/11)" in adentro.get("/parqueadero").text
+
+    # Paga: el mes va del 25/11 al 24/12 (los días de atraso no se regalan) y vuelve a verde.
+    pagada = adentro.post(
+        f"/parqueadero/mensualidades/{mensualidad.id}/pagar",
+        data={
+            "desde": "2026-11-25",
+            "hasta": "2026-12-24",
+            "valor": "200.000",
+            "medio_pago": "nequi",
+        },
+        headers=HTMX,
+    )
+    assert "Al día hasta el 24/12" in pagada.text
+    assert "pendiente de pago" not in adentro.get("/parqueadero/por-cobrar", headers=HTMX).text
 
 
 def test_cobrar_el_mes_desde_la_salida_y_salir_sin_pagar_horas(
@@ -444,6 +555,32 @@ def test_guardar_tarifas_y_datos_del_ticket(adentro: TestClient, sesion: Session
 
     malo = adentro.post("/parqueadero/tarifas", data={**datos, "hora_moto": "0"}, headers=HTMX)
     assert "No se guardó nada" in malo.text
+
+
+def test_el_ticket_dice_nit_y_el_numero(adentro: TestClient, sesion: Session):
+    datos = {
+        "hora_carro": "3.000",
+        "hora_moto": "1.500",
+        "gracia_minutos": "15",
+        "nombre": "Parqueadero Ibaguer",
+        "direccion": "Cra. 2 #26-80",
+        "telefono": "300 000 0000",
+        "pie_ticket": "",
+        "ancho_ticket": "80",
+    }
+    # Aunque escriban la palabra, en el ticket sale una sola vez: "NIT 900.123.456-7".
+    adentro.post("/parqueadero/tarifas", data={**datos, "nit": "NIT: 900.123.456-7"}, headers=HTMX)
+    assert leer_ajustes(sesion).nit == "900.123.456-7"
+    entrar(adentro)
+
+    ticket = adentro.get(f"/parqueadero/tickets/{parqueo(sesion).id}").text
+
+    assert "NIT 900.123.456-7" in ticket and "NIT NIT" not in ticket
+    assert "Tel. 300 000 0000" in ticket
+    malo = adentro.post(
+        "/parqueadero/tarifas", data={**datos, "nit": "Parqueadero SAS"}, headers=HTMX
+    )
+    assert "El NIT es solo el número" in malo.text
 
 
 def test_el_archivo_para_excel(adentro: TestClient, sesion: Session, reloj: dict):

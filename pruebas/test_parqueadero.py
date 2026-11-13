@@ -235,16 +235,58 @@ def test_el_mismo_mes_no_se_paga_dos_veces(sesion: Session):
     con_caja(sesion)
     mensualidad = mensualista(sesion)
 
-    def pagar(desde: date, hasta: date) -> PagoMensualidad:
+    def pagar(desde: date, hasta: date, adelantado: bool = False) -> PagoMensualidad:
         return casos.pagar_mensualidad(
             sesion, mensualidad.id, desde=desde, hasta=hasta, valor=120000,
-            medio_pago=EFECTIVO, ahora=LUNES_8AM,
+            medio_pago=EFECTIVO, adelantado=adelantado, ahora=LUNES_8AM,
         )  # fmt: skip
 
     pagar(HOY, date(2026, 11, 24))
+    # Aunque el cliente pida adelantar, los días que ya pagó no se cobran otra vez.
     with pytest.raises(MensualidadInvalida, match="ya están pagados"):
-        pagar(date(2026, 11, 20), date(2026, 12, 19))
-    pagar(date(2026, 11, 25), date(2026, 12, 24))  # el mes siguiente sí
+        pagar(date(2026, 11, 20), date(2026, 12, 19), adelantado=True)
+    pagar(date(2026, 11, 25), date(2026, 12, 24), adelantado=True)  # el mes siguiente sí
+
+
+def test_al_dia_no_se_cobra_otro_mes_si_no_es_adelantado(sesion: Session):
+    con_caja(sesion)
+    mensualidad = mensualista(sesion)
+    casos.pagar_mensualidad(
+        sesion, mensualidad.id, desde=HOY, hasta=date(2026, 11, 24), valor=120000,
+        medio_pago=EFECTIVO, ahora=LUNES_8AM,
+    )  # fmt: skip
+    siguiente = {
+        "desde": date(2026, 11, 25),
+        "hasta": date(2026, 12, 24),
+        "valor": 120000,
+        "medio_pago": EFECTIVO,
+    }
+
+    # Un clic de más en "Cobrar" no le cobra otro mes.
+    with pytest.raises(MensualidadInvalida, match="se cobra desde el 21 de noviembre"):
+        casos.pagar_mensualidad(sesion, mensualidad.id, ahora=LUNES_8AM, **siguiente)
+
+    pago = casos.pagar_mensualidad(
+        sesion, mensualidad.id, adelantado=True, ahora=LUNES_8AM, **siguiente
+    )
+    assert pago.hasta == date(2026, 12, 24)
+
+
+def test_desde_3_dias_antes_de_vencer_ya_se_cobra_el_mes(sesion: Session):
+    con_caja(sesion)
+    mensualidad = mensualista(sesion)
+    casos.pagar_mensualidad(
+        sesion, mensualidad.id, desde=date(2026, 9, 30), hasta=date(2026, 10, 29),
+        valor=120000, medio_pago=EFECTIVO, ahora=LUNES_8AM,
+    )  # fmt: skip
+
+    # Hoy es el 26 y lo pagado se acaba el 29: ya toca, sin marcar adelanto.
+    pago = casos.pagar_mensualidad(
+        sesion, mensualidad.id, desde=date(2026, 10, 30), hasta=date(2026, 11, 28),
+        valor=120000, medio_pago=EFECTIVO, ahora=LUNES_8AM,
+    )  # fmt: skip
+
+    assert pago.desde == date(2026, 10, 30)
 
 
 def test_los_pagos_seguidos_alargan_lo_pagado(sesion: Session):
@@ -253,7 +295,7 @@ def test_los_pagos_seguidos_alargan_lo_pagado(sesion: Session):
     for desde, hasta in ((HOY, date(2026, 11, 24)), (date(2026, 11, 25), date(2026, 12, 24))):
         casos.pagar_mensualidad(
             sesion, mensualidad.id, desde=desde, hasta=hasta, valor=120000,
-            medio_pago=EFECTIVO, ahora=LUNES_8AM,
+            medio_pago=EFECTIVO, adelantado=desde != HOY, ahora=LUNES_8AM,
         )  # fmt: skip
 
     assert casos.cubierta_hasta(sesion, mensualidad.id, HOY) == date(2026, 12, 24)
@@ -356,11 +398,12 @@ def test_el_mensualista_que_ya_traia_dias_pagados(sesion: Session):
         date(2026, 12, 3),
     )
     caja = con_caja(sesion, base=0)
+    mes = {"desde": HOY, "hasta": date(2026, 11, 24), "valor": 120000, "medio_pago": EFECTIVO}
+    # Está al día por 8 días más: cobrarle hoy sería adelantar.
+    with pytest.raises(MensualidadInvalida, match="se cobra desde el 31 de octubre"):
+        casos.pagar_mensualidad(sesion, mensualidad.id, ahora=LUNES_8AM, **mes)
     with pytest.raises(MensualidadInvalida, match="ya están pagados"):
-        casos.pagar_mensualidad(
-            sesion, mensualidad.id, desde=HOY, hasta=date(2026, 11, 24), valor=120000,
-            medio_pago=EFECTIVO, ahora=LUNES_8AM,
-        )  # fmt: skip
+        casos.pagar_mensualidad(sesion, mensualidad.id, adelantado=True, ahora=LUNES_8AM, **mes)
     assert casos.cuadre_de_caja(sesion, caja).total == 0
 
 
@@ -563,3 +606,22 @@ def test_dos_cajas_abiertas_a_la_vez_quedan_en_una(base: Engine):
     resultados = al_mismo_tiempo(base, lambda s: con_caja(s).id, lambda s: con_caja(s).id)
 
     assert sorted(map(type, resultados), key=str) == sorted([int, CajaYaAbierta], key=str)
+
+
+def test_doble_clic_en_cobrar_el_mes_lo_cobra_una_sola_vez(base: Engine):
+    with Session(base) as sesion, sesion.begin():
+        con_caja(sesion, base=0)
+        mensualidad_id = mensualista(sesion).id
+
+    def pagar(sesion: Session) -> int:
+        return casos.pagar_mensualidad(
+            sesion, mensualidad_id, desde=HOY, hasta=date(2026, 11, 24), valor=120000,
+            medio_pago=EFECTIVO, ahora=LUNES_8AM,
+        ).valor  # fmt: skip
+
+    resultados = al_mismo_tiempo(base, pagar, pagar)
+
+    assert sorted(map(type, resultados), key=str) == sorted([int, MensualidadInvalida], key=str)
+    with Session(base) as sesion:
+        caja = casos.caja_abierta(sesion)
+        assert casos.cuadre_de_caja(sesion, caja).total == 120000

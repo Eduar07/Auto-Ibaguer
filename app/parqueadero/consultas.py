@@ -19,9 +19,6 @@ from app.parqueadero.tablas import CajaParqueadero, Mensualidad, PagoMensualidad
 from app.turnos.estados import MedioPago
 from app.web.tablas import Administrador
 
-# Una mensualidad que vence en estos días o menos sale como "vence pronto".
-DIAS_PARA_AVISAR = 3
-
 
 @dataclass(frozen=True)
 class VehiculoAdentro:
@@ -189,6 +186,18 @@ class FilaMensualidad:
             return None
         return self.pagada_hasta + timedelta(days=1)
 
+    @property
+    def se_puede_cobrar(self) -> bool:
+        """Al día por más de 3 días: el mes siguiente todavía no se cobra (sería adelantarlo)."""
+        return self.estado != "al_dia"
+
+    @property
+    def cobrar_desde(self) -> date | None:
+        """Al día: desde qué día se le puede cobrar el mes siguiente."""
+        if self.estado != "al_dia" or self.pagada_hasta is None:
+            return None
+        return reglas.cobrar_desde(self.pagada_hasta)
+
 
 def _fila(
     mensualidad: Mensualidad, periodos: list[tuple[date, date]], hoy: date
@@ -201,9 +210,8 @@ def _fila(
         ultimo = max(pasados) if pasados else None
         dias = (ultimo - hoy).days if ultimo is not None else None
         return FilaMensualidad(mensualidad, ultimo, "vencida", dias)
-    dias = (al_dia - hoy).days
-    estado = "vence_pronto" if dias <= DIAS_PARA_AVISAR else "al_dia"
-    return FilaMensualidad(mensualidad, al_dia, estado, dias)
+    estado = "vence_pronto" if reglas.se_puede_cobrar(al_dia, hoy) else "al_dia"
+    return FilaMensualidad(mensualidad, al_dia, estado, (al_dia - hoy).days)
 
 
 def mensualidades(

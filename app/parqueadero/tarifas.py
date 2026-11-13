@@ -5,6 +5,7 @@ Se guardan en la misma tabla `configuracion` del lavadero, con claves que empiez
 valor inicial de aquí abajo en vez de fallar.
 """
 
+import re
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -35,7 +36,7 @@ VALORES_INICIALES: tuple[tuple[str, Any, str], ...] = (
     ),
     ("gracia_minutos", 15, "Minutos de gracia después de cada hora antes de cobrar la siguiente"),
     ("nombre", "Parqueadero", "Nombre del parqueadero en el ticket"),
-    ("nit", "", "NIT o razón social en el ticket"),
+    ("nit", "", "NIT del parqueadero en el ticket (solo el número, con su dígito de verificación)"),
     ("direccion", "", "Dirección del parqueadero en el ticket"),
     ("telefono", "", "Teléfono del parqueadero en el ticket"),
     (
@@ -94,6 +95,18 @@ def _entero_o_nada(valor: Any) -> int | None:
     return None if valor is None else int(valor)
 
 
+def limpiar_nit(texto: str) -> str:
+    """El NIT tal como sale en el ticket después de la palabra "NIT": "900.123.456-7".
+
+    Si escriben "NIT: 900..." se quita la palabra (si no, saldría "NIT NIT 900..."). Solo
+    números, puntos, guiones y espacios: un nombre aquí es un error de quien lo llenó.
+    """
+    nit = re.sub(r"^\s*n\.?\s*i\.?\s*t\.?\s*[:.]?\s*", "", texto, flags=re.IGNORECASE).strip()
+    if nit and (not re.fullmatch(r"[\d.\- ]+", nit) or len(re.sub(r"\D", "", nit)) < 6):
+        raise TarifaInvalida("El NIT es solo el número, por ejemplo 900.123.456-7.")
+    return nit
+
+
 def guardar_ajustes(sesion: Session, ajustes: AjustesParqueadero) -> None:
     """Revisa y guarda. Las entradas que ya están adentro conservan la tarifa con que entraron."""
     for tipo in TipoParqueo:
@@ -105,7 +118,7 @@ def guardar_ajustes(sesion: Session, ajustes: AjustesParqueadero) -> None:
     limpios = replace(
         ajustes,
         nombre=ajustes.nombre.strip(),
-        nit=ajustes.nit.strip(),
+        nit=limpiar_nit(ajustes.nit),
         direccion=ajustes.direccion.strip(),
         telefono=ajustes.telefono.strip(),
         pie_ticket=ajustes.pie_ticket.strip(),

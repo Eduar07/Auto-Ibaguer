@@ -46,6 +46,16 @@ services:
       # true solo cuando el proyecto de Google tenga facturación (plan de pago).
       - key: GEMINI_PLAN_DE_PAGO
         value: "false"
+      # El correo del reporte diario del parqueadero (README: Reporte diario). Con Gmail:
+      # smtp.gmail.com, 465, el correo y una contraseña de aplicación. Vacíos: no se manda.
+      - key: CORREO_SERVIDOR
+        sync: false
+      - key: CORREO_PUERTO
+        value: "465"
+      - key: CORREO_USUARIO
+        sync: false
+      - key: CORREO_CLAVE
+        sync: false
 
 databases:
   - name: auto-ibaguer-base

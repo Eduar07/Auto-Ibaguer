@@ -64,9 +64,26 @@ class ConfiguracionEntorno(BaseSettings):
     # con clientes de verdad, Gemini solo se usa con el plan de pago.
     gemini_plan_de_pago: bool = False
 
+    # --- Correo, para el reporte diario del parqueadero (app.integraciones.correo). Por
+    # ejemplo un Gmail: smtp.gmail.com, puerto 465 y una "contraseña de aplicación". Sin el
+    # servidor no se manda correo; la clave es secreta: solo en el .env o en Render.
+    correo_servidor: str = ""
+    correo_puerto: int = 465
+    correo_usuario: str = ""
+    correo_clave: str = ""
+    correo_remitente: str = ""  # vacío: el mismo usuario
+
     @property
     def es_produccion(self) -> bool:
         return self.entorno == "produccion"
+
+    @property
+    def correo_configurado(self) -> bool:
+        return bool(self.correo_servidor)
+
+    @property
+    def correo_remitente_o_usuario(self) -> str:
+        return self.correo_remitente or self.correo_usuario or "parqueadero@localhost"
 
     @property
     def whatsapp_conectado(self) -> bool:

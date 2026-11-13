@@ -6,6 +6,7 @@
     ("entradas", "/parqueadero", "Entradas y salidas", "parqueo"),
     ("caja", "/parqueadero/caja", "Caja", "caja"),
     ("mensualidades", "/parqueadero/mensualidades", "Mensualidades", "calendario"),
+    ("balance", "/parqueadero/balance", "Balance", "grafica"),
     ("tarifas", "/parqueadero/tarifas", "Tarifas y ticket", "ajustes"),
   ] %}
   <a href="{{ ruta }}"{% if actual == clave %} aria-current="page"{% endif %}>{{ iconos.icono(icono, 18) }}{{ nombre }}</a>

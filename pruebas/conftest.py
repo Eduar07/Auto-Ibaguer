@@ -5,6 +5,7 @@ Las pruebas usan un PostgreSQL real (el de docker-compose.yml) con una base apar
 desarrollo no se tocan.
 """
 
+import smtplib
 from collections.abc import Iterator
 from datetime import datetime
 
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 from app import tiempo
 from app.catalogo.datos_iniciales import cargar_datos_iniciales
 from app.cli import MENSAJE_SIN_BASE, migrar
+from app.config import obtener_entorno
 from app.db.sesion import obtener_sesion
 from app.integraciones import gemini
 from app.main import app
@@ -24,6 +26,7 @@ from app.web import entrar, sesiones
 from app.web.administradores import guardar_administrador
 from app.web.tablas import Administrador
 from pruebas.base_de_pruebas import URL_PRUEBAS, recrear_base
+from pruebas.correo_falso import ServidorFalso
 from pruebas.fabricas import LUNES_8AM
 from pruebas.navegador import CLAVE
 
@@ -108,3 +111,23 @@ def adentro(web: TestClient, admin: Administrador) -> TestClient:
     )
     assert respuesta.status_code == 303
     return web
+
+
+# --- El correo ------------------------------------------------------------------------
+
+
+@pytest.fixture
+def correo_configurado(monkeypatch: pytest.MonkeyPatch) -> list:
+    """El correo como en Gmail (puerto 465), con un servidor falso. Devuelve lo enviado."""
+    entorno = obtener_entorno()
+    for campo, valor in {
+        "correo_servidor": "smtp.gmail.com",
+        "correo_puerto": 465,
+        "correo_usuario": "parqueadero@gmail.com",
+        "correo_clave": "abcd efgh ijkl mnop",
+        "correo_remitente": "",
+    }.items():
+        monkeypatch.setattr(entorno, campo, valor)
+    enviados: list = []
+    monkeypatch.setattr(smtplib, "SMTP_SSL", ServidorFalso(enviados))
+    return enviados

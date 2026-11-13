@@ -15,14 +15,20 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app import formato, tiempo
+from app.config import obtener_entorno
+from app.db.sesion import AbrirSesion, abrir_sesion
 from app.errores import ReglaDelNegocio
+from app.integraciones.correo import CorreoNoEnviado
 from app.parqueadero import casos_de_uso as casos
-from app.parqueadero import consultas, reglas
+from app.parqueadero import consultas, reglas, reporte
+from app.parqueadero.balance import TIPOS_DE_PERIODO, total_recogido
+from app.parqueadero.balance import balance as calcular_balance
+from app.parqueadero.balance import periodo as periodo_de
 from app.parqueadero.estados import NOMBRE_DEL_TIPO, EstadoParqueo, TipoParqueo
 from app.parqueadero.tablas import CajaParqueadero, Mensualidad, PagoMensualidad, Parqueo
 from app.parqueadero.tarifas import ANCHOS_DE_TICKET, guardar_ajustes, leer_ajustes
@@ -50,6 +56,7 @@ def _fecha_y_hora(momento: datetime) -> str:
 
 
 plantillas.env.filters["fecha_y_hora"] = _fecha_y_hora
+plantillas.env.filters["dia_corto"] = formato.dia_corto
 plantillas.env.globals.update(TipoParqueo=TipoParqueo, nombre_del_tipo=NOMBRE_DEL_TIPO)
 
 MEDIOS = list(MedioPago)
@@ -385,11 +392,19 @@ def dialogo_cerrar_caja(request: Request, sesion: SesionBD, _: Admin) -> Respons
     return html(request, "dialogos/parqueadero_cerrar_caja.html", contexto)
 
 
+def obtener_abrir_sesion() -> AbrirSesion:
+    """Con qué abrir una sesión para lo que corre después de contestar (el correo con el
+    reporte al cerrar la caja). Las pruebas la cambian por una dentro de su transacción."""
+    return abrir_sesion
+
+
 @router.post("/caja/cerrar", response_class=HTMLResponse)
 def cerrar_caja(
     request: Request,
     sesion: SesionBD,
     administrador: Admin,
+    tareas: BackgroundTasks,
+    abrir: Annotated[AbrirSesion, Depends(obtener_abrir_sesion)],
     caja_id: Annotated[int, Form()],
     efectivo_contado: Annotated[str, Form()] = "",
     nota: Annotated[str, Form()] = "",
@@ -398,9 +413,12 @@ def cerrar_caja(
     try:
         if contado is None:
             raise ReglaDelNegocio("Escribe cuánto efectivo contaste en el cajón.")
-        casos.cerrar_caja(
+        caja = casos.cerrar_caja(
             sesion, caja_id, efectivo_contado=contado, nota=nota, administrador_id=administrador.id
         )
+        # El reporte es del día en que se abrió la caja: si se cierra pasada la medianoche,
+        # sigue siendo el de ese día (y no uno de hoy casi vacío).
+        dia_de_la_caja = tiempo.hora_local(caja.abierta_en).date()
         sesion.commit()
     except ReglaDelNegocio as error:
         sesion.rollback()
@@ -414,6 +432,8 @@ def cerrar_caja(
             "error": str(error),
         }
         return html(request, "dialogos/parqueadero_cerrar_caja.html", contexto)
+    # Después de contestar: el reporte del día a los jefes, si hay correo configurado.
+    tareas.add_task(reporte.enviar_al_cerrar, abrir, dia_de_la_caja)
     # La página del cierre se abre e imprime el resumen sola.
     return Response(
         status_code=200, headers={"HX-Redirect": f"/parqueadero/caja/{caja_id}?imprimir=1"}
@@ -464,6 +484,61 @@ def exportar(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
     )
+
+
+# --- Balance y reporte del día --------------------------------------------------------------
+
+
+@router.get("/balance", response_class=HTMLResponse)
+def pagina_balance(
+    request: Request,
+    sesion: SesionBD,
+    _: Admin,
+    periodo: str = "dia",
+    fecha: date | None = None,
+) -> Response:
+    """Lo que entró y lo que pasó en un día, una semana o un mes. El del día es también el
+    reporte para los jefes: se imprime, se manda por WhatsApp o por correo."""
+    hoy = _hoy()
+    # Del futuro no hay nada que ver: una fecha que no ha llegado muestra hoy.
+    p = periodo_de(periodo if periodo in TIPOS_DE_PERIODO else "dia", min(fecha or hoy, hoy))
+    b = calcular_balance(sesion, p)
+    contexto: dict[str, Any] = {
+        "b": b,
+        "p": p,
+        "hoy": hoy,
+        "anterior": total_recogido(sesion, p.anterior()),
+        "nombre_del_anterior": p.nombre_del_anterior(hoy),
+        "nombre_del_medio": reporte.NOMBRE_DEL_MEDIO,
+    }
+    if p.tipo == "dia":
+        informe = reporte.armar(sesion, p.desde, balance_del_dia=b)
+        contexto |= {
+            "whatsapp": reporte.enlace_de_whatsapp(informe),
+            "texto_del_reporte": reporte.texto(informe, negrilla=False),
+            "correo_configurado": obtener_entorno().correo_configurado,
+            "destinos": leer_ajustes(sesion).destinos_del_reporte,
+        }
+    return pagina(request, sesion, "parqueadero_balance.html", contexto, seccion="parqueadero")
+
+
+@router.get("/balance/ticket", response_class=HTMLResponse)
+def ticket_del_reporte(
+    request: Request, sesion: SesionBD, _: Admin, fecha: date | None = None
+) -> Response:
+    informe = reporte.armar(sesion, min(fecha or _hoy(), _hoy()))
+    contexto = {"reporte": informe, "nombre_del_medio": reporte.NOMBRE_DEL_MEDIO}
+    return _ticket(request, sesion, "tickets/reporte.html", contexto)
+
+
+@router.post("/balance/enviar", response_class=HTMLResponse)
+def enviar_reporte(sesion: SesionBD, _: Admin, fecha: Annotated[str, Form()] = "") -> Response:
+    """Manda ya el reporte de un día por correo (por ejemplo, para probar el correo)."""
+    try:
+        cuantos = reporte.enviar_por_correo(sesion, min(_fecha(fecha) or _hoy(), _hoy()))
+    except CorreoNoEnviado as error:
+        return sin_cambios(error=str(error))
+    return sin_cambios(aviso=f"Reporte enviado a {cuantos} correo{'s' if cuantos != 1 else ''}.")
 
 
 # --- Mensualidades ------------------------------------------------------------------------
@@ -852,13 +927,19 @@ def _valores_de_ajustes(ajustes: Any) -> dict[str, Any]:
         "telefono": ajustes.telefono,
         "pie_ticket": ajustes.pie_ticket,
         "ancho_ticket": ajustes.ancho_ticket,
+        "correos_reporte": ajustes.correos_reporte,
     }
 
 
 def _formulario_tarifas(
     request: Request, valores: dict[str, Any], error: str | None = None
 ) -> Response:
-    contexto = {"valores": valores, "anchos": ANCHOS_DE_TICKET, "error": error}
+    contexto = {
+        "valores": valores,
+        "anchos": ANCHOS_DE_TICKET,
+        "error": error,
+        "correo_configurado": obtener_entorno().correo_configurado,
+    }
     return html(request, "_parqueadero_tarifas.html", contexto)
 
 
@@ -868,6 +949,7 @@ def pagina_tarifas(request: Request, sesion: SesionBD, _: Admin) -> Response:
         "valores": _valores_de_ajustes(leer_ajustes(sesion)),
         "anchos": ANCHOS_DE_TICKET,
         "error": None,
+        "correo_configurado": obtener_entorno().correo_configurado,
     }
     return pagina(request, sesion, "parqueadero_tarifas.html", contexto, seccion="parqueadero")
 
@@ -888,6 +970,7 @@ def guardar_tarifas(
     telefono: Annotated[str, Form()] = "",
     pie_ticket: Annotated[str, Form()] = "",
     ancho_ticket: Annotated[str, Form()] = "",
+    correos_reporte: Annotated[str, Form()] = "",
 ) -> Response:
     valores = {
         "hora_carro": leer_pesos(hora_carro),
@@ -901,6 +984,7 @@ def guardar_tarifas(
         "telefono": telefono,
         "pie_ticket": pie_ticket,
         "ancho_ticket": entero(ancho_ticket.strip()),
+        "correos_reporte": correos_reporte,
     }
     try:
         for clave, texto in (

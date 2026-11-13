@@ -1,8 +1,8 @@
 """Atajos para crear datos de prueba sin repetir código en cada prueba."""
 
 import itertools
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -30,6 +30,17 @@ _telefonos = itertools.count(573000000001)
 
 def minutos(cantidad: int) -> timedelta:
     return timedelta(minutes=cantidad)
+
+
+def misma_sesion(sesion: Session) -> Callable[[], AbstractContextManager[Session]]:
+    """Con qué abre una sesión lo que corre después de contestar (el correo al cerrar la
+    caja): en la prueba, la misma sesión de la prueba, sin cerrarla al terminar."""
+
+    @contextmanager
+    def abrir() -> Iterator[Session]:
+        yield sesion
+
+    return abrir
 
 
 @contextmanager

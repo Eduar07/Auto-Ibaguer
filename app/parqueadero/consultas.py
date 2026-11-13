@@ -4,7 +4,7 @@ Solo lee; no cambia nada (eso vive en casos_de_uso).
 """
 
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -42,9 +42,27 @@ def adentro(sesion: Session, ahora: datetime | None = None) -> list[VehiculoAden
         .where(Parqueo.estado == EstadoParqueo.ADENTRO)
         .order_by(Parqueo.entrada_en, Parqueo.id)
     ).all()
+    # Las mensualidades de los que están adentro y sus pagos, en dos consultas para todos
+    # (no dos por vehículo): con el parqueadero lleno, esta lista se pide cada minuto.
+    mensualidades = (
+        {
+            m.placa: m
+            for m in sesion.scalars(
+                select(Mensualidad).where(
+                    Mensualidad.placa.in_({p.placa for p in parqueos}), Mensualidad.activa
+                )
+            )
+        }
+        if parqueos
+        else {}
+    )
+    pagos = casos.periodos_por_mensualidad(sesion, [m.id for m in mensualidades.values()])
     vehiculos = []
     for parqueo in parqueos:
-        liquidacion = casos.liquidar(sesion, parqueo, ahora)
+        mensualidad = mensualidades.get(parqueo.placa)
+        liquidacion = casos.liquidar_con(
+            parqueo, ahora, mensualidad, pagos[mensualidad.id] if mensualidad else []
+        )
         vehiculos.append(
             VehiculoAdentro(
                 id=parqueo.id,
@@ -128,30 +146,74 @@ class ResumenDeCaja:
     cerro: str | None
 
 
-def _nombre(sesion: Session, administrador_id: int | None) -> str:
-    if administrador_id is None:
-        return "—"
-    administrador = sesion.get(Administrador, administrador_id)
-    return administrador.usuario if administrador else "—"
-
-
 def resumen_de_caja(sesion: Session, caja: CajaParqueadero) -> ResumenDeCaja:
-    salidas = sesion.scalar(
-        select(func.count())
-        .select_from(Parqueo)
-        .where(Parqueo.caja_id == caja.id, Parqueo.estado == EstadoParqueo.SALIO)
+    return resumenes_de_cajas(sesion, [caja])[0]
+
+
+def resumenes_de_cajas(sesion: Session, cajas: Sequence[CajaParqueadero]) -> list[ResumenDeCaja]:
+    """El cuadre de varias cajas con unas pocas consultas para todas (no cinco por caja): la
+    lista de cierres y el balance del mes muestran decenas."""
+    if not cajas:
+        return []
+    ids = [caja.id for caja in cajas]
+    cobros: dict[int, list[tuple[MedioPago, int]]] = defaultdict(list)
+    for caja_id, medio, total in sesion.execute(
+        select(Parqueo.caja_id, Parqueo.medio_pago, func.sum(Parqueo.valor_cobrado))
+        .where(
+            Parqueo.caja_id.in_(ids),
+            Parqueo.estado == EstadoParqueo.SALIO,
+            Parqueo.valor_cobrado > 0,
+        )
+        .group_by(Parqueo.caja_id, Parqueo.medio_pago)
+    ):
+        cobros[caja_id].append((medio, int(total)))
+    pagos: dict[int, list[tuple[MedioPago, int]]] = defaultdict(list)
+    for caja_id, medio, total in sesion.execute(
+        select(PagoMensualidad.caja_id, PagoMensualidad.medio_pago, func.sum(PagoMensualidad.valor))
+        .where(PagoMensualidad.caja_id.in_(ids))
+        .group_by(PagoMensualidad.caja_id, PagoMensualidad.medio_pago)
+    ):
+        pagos[caja_id].append((medio, int(total)))
+    salidas = dict(
+        sesion.execute(
+            select(Parqueo.caja_id, func.count())
+            .where(Parqueo.caja_id.in_(ids), Parqueo.estado == EstadoParqueo.SALIO)
+            .group_by(Parqueo.caja_id)
+        ).all()
     )
-    mensualidades = sesion.scalar(
-        select(func.count()).select_from(PagoMensualidad).where(PagoMensualidad.caja_id == caja.id)
+    cuantos_pagos = dict(
+        sesion.execute(
+            select(PagoMensualidad.caja_id, func.count())
+            .where(PagoMensualidad.caja_id.in_(ids))
+            .group_by(PagoMensualidad.caja_id)
+        ).all()
     )
-    return ResumenDeCaja(
-        caja=caja,
-        cuadre=casos.cuadre_de_caja(sesion, caja),
-        salidas=salidas or 0,
-        mensualidades=mensualidades or 0,
-        abrio=_nombre(sesion, caja.abierta_por),
-        cerro=_nombre(sesion, caja.cerrada_por) if caja.cerrada_en else None,
+    quienes = {caja.abierta_por for caja in cajas} | {caja.cerrada_por for caja in cajas}
+    quienes.discard(None)
+    nombres = (
+        dict(
+            sesion.execute(
+                select(Administrador.id, Administrador.usuario).where(Administrador.id.in_(quienes))
+            ).all()
+        )
+        if quienes
+        else {}
     )
+    return [
+        ResumenDeCaja(
+            caja=caja,
+            cuadre=reglas.Cuadre(
+                base=caja.base,
+                parqueos=reglas.sumar_por_medio(cobros[caja.id]),
+                mensualidades=reglas.sumar_por_medio(pagos[caja.id]),
+            ),
+            salidas=salidas.get(caja.id, 0),
+            mensualidades=cuantos_pagos.get(caja.id, 0),
+            abrio=nombres.get(caja.abierta_por, "—"),
+            cerro=nombres.get(caja.cerrada_por, "—") if caja.cerrada_en else None,
+        )
+        for caja in cajas
+    ]
 
 
 def cajas_cerradas(sesion: Session, limite: int = 30) -> list[ResumenDeCaja]:
@@ -161,7 +223,7 @@ def cajas_cerradas(sesion: Session, limite: int = 30) -> list[ResumenDeCaja]:
         .order_by(CajaParqueadero.cerrada_en.desc())
         .limit(limite)
     ).all()
-    return [resumen_de_caja(sesion, caja) for caja in cajas]
+    return resumenes_de_cajas(sesion, cajas)
 
 
 # --- Mensualidades ----------------------------------------------------------------------
@@ -224,15 +286,7 @@ def mensualidades(
         consulta = consulta.where(Mensualidad.activa)
     lista = sesion.scalars(consulta).all()
     # Todos los pagos en una sola consulta, no dos por mensualidad: la lista se pide seguido.
-    periodos: dict[int, list[tuple[date, date]]] = defaultdict(list)
-    if lista:
-        pagos = sesion.execute(
-            select(
-                PagoMensualidad.mensualidad_id, PagoMensualidad.desde, PagoMensualidad.hasta
-            ).where(PagoMensualidad.mensualidad_id.in_([m.id for m in lista]))
-        )
-        for mensualidad_id, desde, hasta in pagos:
-            periodos[mensualidad_id].append((desde, hasta))
+    periodos = casos.periodos_por_mensualidad(sesion, [m.id for m in lista])
     filas = [_fila(mensualidad, periodos[mensualidad.id], hoy) for mensualidad in lista]
     orden = {"vencida": 0, "sin_pagos": 1, "vence_pronto": 2, "al_dia": 3}
     return sorted(filas, key=lambda fila: (orden[fila.estado], fila.mensualidad.placa))

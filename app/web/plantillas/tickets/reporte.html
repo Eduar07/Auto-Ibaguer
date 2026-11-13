@@ -1,0 +1,57 @@
+{% extends "tickets/_base.html" %}
+{#- El reporte del día impreso en la impresora de tickets: para guardarlo con el cierre de caja
+    o entregarlo a los jefes en papel. -#}
+{% set r = reporte %}
+{% set b = reporte.balance %}
+{% block titulo %}Reporte del {{ r.dia|fecha }}{% endblock %}
+{% block contenido %}
+<section class="ticket__bloque ticket__bloque--centro">
+  <span class="ticket__tipo-documento">Reporte del día</span>
+  <span>{{ r.nombre_del_dia }}</span>
+  <span>{{ "Hasta " ~ (r.hecho_en|hora) if r.es_de_hoy else "Impreso " ~ (r.hecho_en|fecha_y_hora) }}</span>
+</section>
+<dl class="ticket__datos">
+  {% for medio, valor in b.por_medio.items() if valor %}
+  <dt>{{ nombre_del_medio[medio] }}</dt><dd>{{ valor|pesos }}</dd>
+  {% else %}
+  <dt>Sin cobros</dt><dd>{{ 0|pesos }}</dd>
+  {% endfor %}
+</dl>
+<div class="ticket__total"><span>Recogido</span><strong>{{ b.total|pesos }}</strong></div>
+<dl class="ticket__datos">
+  <dt>Salidas</dt><dd>{{ b.cuantas_salidas }} · {{ b.total_salidas|pesos }}</dd>
+  <dt class="ticket__sub">carros</dt><dd class="ticket__sub">{{ b.salidas[TipoParqueo.CARRO] }} · {{ b.cobrado_salidas[TipoParqueo.CARRO]|pesos }}</dd>
+  <dt class="ticket__sub">motos</dt><dd class="ticket__sub">{{ b.salidas[TipoParqueo.MOTO] }} · {{ b.cobrado_salidas[TipoParqueo.MOTO]|pesos }}</dd>
+  <dt>Mensualidades</dt><dd>{{ b.pagos_mensualidad }} · {{ b.cobrado_mensualidades|pesos }}</dd>
+  <dt>Entradas</dt><dd>{{ b.cuantas_entradas }}</dd>
+  {% if b.mensualistas_sin_pagar %}<dt>Mensualistas al día</dt><dd>{{ b.mensualistas_sin_pagar }}</dd>{% endif %}
+  {% if b.descuentos %}<dt>Descuentos</dt><dd>{{ b.descuentos|pesos }} ({{ b.salidas_con_descuento }})</dd>{% endif %}
+  {% if b.recargos %}<dt>Cobrado de más</dt><dd>{{ b.recargos|pesos }}</dd>{% endif %}
+  {% if b.total_anuladas %}<dt>Anuladas</dt><dd>{{ b.total_anuladas }}</dd>{% endif %}
+</dl>
+{% for resumen in b.cajas %}
+{% set c = resumen.caja %}
+<dl class="ticket__datos ticket__datos--separado">
+  {% if c.cerrada_en %}
+  <dt>Caja {{ c.id }}</dt><dd>Cerró {{ resumen.cerro }} {{ c.cerrada_en|hora }}</dd>
+  <dt>Base</dt><dd>{{ c.base|pesos }}</dd>
+  <dt>Debía haber</dt><dd>{{ c.efectivo_esperado|pesos }}</dd>
+  <dt>Contaron</dt><dd>{{ c.efectivo_contado|pesos }}</dd>
+  {% set d = c.diferencia %}
+  <dt>Diferencia</dt><dd>{{ "Cuadró" if d == 0 else (("Sobraron " if d > 0 else "Faltaron ") ~ (d|abs)|pesos) }}</dd>
+  {% if c.nota_cierre %}<dt>Nota</dt><dd>{{ c.nota_cierre }}</dd>{% endif %}
+  {% else %}
+  <dt>Caja {{ c.id }}</dt><dd>Sigue abierta</dd>
+  <dt>Debería haber</dt><dd>{{ resumen.cuadre.efectivo_esperado|pesos }}</dd>
+  {% endif %}
+</dl>
+{% else %}
+<p class="ticket__nota">No se abrió caja.</p>
+{% endfor %}
+<dl class="ticket__datos ticket__datos--separado">
+  <dt>{{ "Quedan adentro" if r.es_de_hoy else "Adentro al final del día" }}</dt><dd>{{ r.adentro.values()|sum }}</dd>
+  {% if r.pendientes %}<dt>{{ "Mensualidades pendientes" if r.es_de_hoy else "Pendientes al imprimir" }}</dt><dd>{{ r.pendientes|length }}</dd>{% endif %}
+</dl>
+{% if r.pendientes %}<p class="ticket__nota">{{ r.pendientes[:20]|join(", ") }}{% if r.pendientes|length > 20 %} y {{ r.pendientes|length - 20 }} más{% endif %}</p>{% endif %}
+{% endblock %}
+{% block pie %}<footer class="ticket__pie">Revisó: ______________________</footer>{% endblock %}

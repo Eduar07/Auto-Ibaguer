@@ -1,0 +1,204 @@
+{% extends "pagina.html" %}
+{#- El balance del parqueadero por día, semana o mes. El del día es también el reporte para
+    los jefes: se imprime, se manda por WhatsApp o por correo. -#}
+{% import "_iconos.html" as iconos %}
+{% from "_parqueadero_atajos.html" import atajos %}
+{% macro dif(d) -%}
+<span class="{{ 'diferencia--cuadra' if d == 0 else ('diferencia--sobra' if d > 0 else 'diferencia--falta') }}">{{ "Cuadró" if d == 0 else (("Sobraron " if d > 0 else "Faltaron ") ~ (d|abs)|pesos) }}</span>
+{%- endmacro %}
+{% macro enlace(tipo, dia) %}/parqueadero/balance?periodo={{ tipo }}&amp;fecha={{ dia.isoformat() }}{% endmacro %}
+{% macro veces(n, una, varias) %}{{ n }} {{ una if n == 1 else varias }}{% endmacro %}
+{% set nombre_del_periodo = {"dia": "del día", "semana": "de la semana", "mes": "del mes"}[p.tipo] %}
+
+{% block titulo %}Balance del parqueadero · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla parqueadero">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Balance del parqueadero</h1>
+      <p>Lo que se recogió y lo que pasó. Cada cobro cuenta el día en que se hizo.</p>
+    </div>
+  </div>
+  {{ atajos("balance") }}
+
+  <div class="balance__barra">
+    {#- Al cambiar de día a semana o a mes, se queda en la misma fecha. -#}
+    {% set referencia = hoy if p.contiene(hoy) else p.desde %}
+    <nav class="segmento" aria-label="Ver el balance por">
+      {% for tipo, nombre in [("dia", "Día"), ("semana", "Semana"), ("mes", "Mes")] %}
+      {% if tipo == p.tipo %}<span aria-current="page">{{ nombre }}</span>{% else %}<a href="{{ enlace(tipo, referencia) }}">{{ nombre }}</a>{% endif %}
+      {% endfor %}
+    </nav>
+    <div class="balance__navegacion">
+      <a class="boton boton--icono" href="{{ enlace(p.tipo, p.anterior().desde) }}" aria-label="{{ {'dia': 'Día anterior', 'semana': 'Semana anterior', 'mes': 'Mes anterior'}[p.tipo] }}">{{ iconos.icono("volver", 20) }}</a>
+      <h2>{{ p.titulo }}</h2>
+      {% if not p.contiene(hoy) %}
+      <a class="boton boton--icono" href="{{ enlace(p.tipo, p.siguiente().desde) }}" aria-label="{{ {'dia': 'Día siguiente', 'semana': 'Semana siguiente', 'mes': 'Mes siguiente'}[p.tipo] }}">{{ iconos.icono("adelante", 20) }}</a>
+      <a class="boton-texto" href="{{ enlace(p.tipo, hoy) }}">{{ {"dia": "Ir a hoy", "semana": "Ir a esta semana", "mes": "Ir a este mes"}[p.tipo] }}</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <section class="panel" aria-labelledby="t-recogido">
+    <div class="balance__total">
+      <span id="t-recogido" class="etiqueta">Recogido {{ nombre_del_periodo }}</span>
+      <strong>{{ b.total|pesos }}</strong>
+      <span class="suave">{{ nombre_del_anterior }}: {{ anterior|pesos }}</span>
+    </div>
+    <div class="cifras cifras--pequenas">
+      <div class="cifra"><span class="cifra__valor">{{ b.total_salidas|pesos }}</span><span class="cifra__nombre">{{ veces(b.cuantas_salidas, "salida", "salidas") }}</span></div>
+      <div class="cifra"><span class="cifra__valor">{{ b.cobrado_mensualidades|pesos }}</span><span class="cifra__nombre">{{ veces(b.pagos_mensualidad, "mensualidad", "mensualidades") }}</span></div>
+      <div class="cifra"><span class="cifra__valor">{{ b.cuantas_entradas }}</span><span class="cifra__nombre">{{ "entrada" if b.cuantas_entradas == 1 else "entradas" }} ({{ veces(b.entradas[TipoParqueo.MOTO], "moto", "motos") }}, {{ veces(b.entradas[TipoParqueo.CARRO], "carro", "carros") }})</span></div>
+    </div>
+  </section>
+
+  <div class="parqueadero__columnas">
+    <section class="panel" aria-labelledby="t-medios">
+      <h2 id="t-medios">Por medio de pago</h2>
+      <table class="tabla-caja tabla-caja--resumen">
+        <tbody>
+          {% for medio, valor in b.por_medio.items() %}
+          <tr><th scope="row">{{ nombre_del_medio[medio] }}</th><td>{{ valor|pesos }}</td></tr>
+          {% endfor %}
+          <tr class="tabla-caja__total"><th scope="row">Total</th><td>{{ b.total|pesos }}</td></tr>
+        </tbody>
+      </table>
+      <p class="ayuda">El efectivo es lo que entró al cajón. Nequi, Daviplata y tarjeta se comparan con lo que dicen sus apps.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="t-novedades">
+      <h2 id="t-novedades">Lo que pasó</h2>
+      <table class="tabla-caja tabla-caja--resumen">
+        <tbody>
+          <tr><th scope="row">Salidas de carros</th><td>{{ b.salidas[TipoParqueo.CARRO] }} · {{ b.cobrado_salidas[TipoParqueo.CARRO]|pesos }}</td></tr>
+          <tr><th scope="row">Salidas de motos</th><td>{{ b.salidas[TipoParqueo.MOTO] }} · {{ b.cobrado_salidas[TipoParqueo.MOTO]|pesos }}</td></tr>
+          <tr><th scope="row">Mensualistas al día que salieron (sin cobro)</th><td>{{ b.mensualistas_sin_pagar }}</td></tr>
+          <tr><th scope="row">Descuentos</th><td>{% if b.descuentos %}{{ b.descuentos|pesos }} en {{ veces(b.salidas_con_descuento, "salida", "salidas") }}{% else %}—{% endif %}</td></tr>
+          {% if b.recargos %}<tr><th scope="row">Cobrado por encima de la tarifa</th><td>{{ b.recargos|pesos }}</td></tr>{% endif %}
+          <tr><th scope="row">Entradas anuladas</th><td>{{ b.total_anuladas or "—" }}</td></tr>
+          <tr><th scope="row">Cajas cerradas{% if b.cajas_cerradas %} ({{ b.cajas_cerradas|length }}){% endif %}</th>
+            <td>{% if not b.cajas_cerradas %}—{% elif b.cajas_cerradas|length == 1 %}{{ dif(b.diferencia_de_cajas) }}{% else %}
+              {#- Los sobrantes y los faltantes van aparte: uno de un día no tapa el otro. -#}
+              {%- set partes = [] -%}
+              {%- if b.cajas_que_cuadraron %}{% set partes = partes + [("diferencia--cuadra", veces(b.cajas_que_cuadraron, "cuadró", "cuadraron"))] %}{% endif -%}
+              {%- if b.sobrantes %}{% set partes = partes + [("diferencia--sobra", "sobraron " ~ (b.sobrantes|sum)|pesos ~ (" en " ~ b.sobrantes|length if b.sobrantes|length > 1 else ""))] %}{% endif -%}
+              {%- if b.faltantes %}{% set partes = partes + [("diferencia--falta", "faltaron " ~ (b.faltantes|sum)|pesos ~ (" en " ~ b.faltantes|length if b.faltantes|length > 1 else ""))] %}{% endif -%}
+              {%- for clase, texto in partes %}{% if not loop.first %} · {% endif %}<span class="{{ clase }}">{{ texto }}</span>{% endfor -%}
+            {%- endif %}</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  {% if p.tipo != "dia" %}
+  <section class="lista" aria-labelledby="t-dias">
+    <div class="lista__cabeza"><h3 id="t-dias">Día por día</h3></div>
+    <div class="tabla-desplazable">
+      <table class="tabla-caja tabla-balance">
+        <thead>
+          <tr><th scope="col">Día</th><th scope="col">Recogido</th><th scope="col"><span class="solo-lector">Comparado con el mejor día</span></th><th scope="col">Salidas</th><th scope="col">Mensualidades</th><th scope="col">Entradas</th></tr>
+        </thead>
+        <tbody>
+          {% for d in b.dias if d.dia <= hoy %}
+          <tr{% if d.dia == hoy %} class="tabla-balance__hoy"{% endif %}>
+            <td><a href="{{ enlace('dia', d.dia) }}">{{ "Hoy" if d.dia == hoy else d.dia|dia_corto }}</a></td>
+            <td><strong>{{ d.total|pesos }}</strong></td>
+            <td class="tabla-balance__barra"><span style="--parte: {{ ((d.total * 100 / b.mayor_dia) if b.mayor_dia else 0)|round(1) }}%"></span></td>
+            <td>{{ d.salidas }} · {{ d.cobrado_salidas|pesos }}</td>
+            <td>{{ d.cobrado_mensualidades|pesos if d.cobrado_mensualidades else "—" }}</td>
+            <td>{{ d.entradas }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="lista" aria-labelledby="t-cajas">
+    <div class="lista__cabeza"><h3 id="t-cajas">Cajas {{ nombre_del_periodo }}</h3></div>
+    {% if b.cajas %}
+    <div class="tabla-desplazable">
+      <table class="tabla-caja tabla-caja--cierres">
+        <thead>
+          <tr><th scope="col">Abrió</th><th scope="col">Diferencia</th><th scope="col">Entró</th><th scope="col">Efectivo esperado</th><th scope="col">Contado</th><th scope="col">Cerró</th><th scope="col"><span class="solo-lector">Ver</span></th></tr>
+        </thead>
+        <tbody>
+          {% for r in b.cajas %}
+          <tr>
+            <td>{{ cuando(r.caja.abierta_en) }}<span class="suave"> · {{ r.abrio }}</span></td>
+            <td>{% if r.caja.cerrada_en %}{{ dif(r.caja.diferencia) }}{% else %}<span class="insignia insignia--verde">Sigue abierta</span>{% endif %}</td>
+            <td>{{ r.cuadre.total|pesos }}</td>
+            <td>{{ (r.caja.efectivo_esperado if r.caja.cerrada_en else r.cuadre.efectivo_esperado)|pesos }}</td>
+            <td>{{ r.caja.efectivo_contado|pesos if r.caja.cerrada_en else "—" }}</td>
+            <td>{% if r.caja.cerrada_en %}{{ cuando(r.caja.cerrada_en) }}<span class="suave"> · {{ r.cerro }}</span>{% else %}—{% endif %}</td>
+            <td><a href="/parqueadero/caja/{{ r.caja.id }}">Ver</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="ayuda">Cada caja es del día en que se abrió, aunque se cierre pasada la medianoche.</p>
+    {% else %}
+    <p class="lista__vacia">No se abrió caja {{ "ese día" if p.tipo == "dia" else ("esa semana" if p.tipo == "semana" else "ese mes") }}.</p>
+    {% endif %}
+  </section>
+
+  {% if b.ajustes or b.anuladas %}
+  <section class="panel" aria-labelledby="t-revisar">
+    <h2 id="t-revisar">Para revisar</h2>
+    {% if b.ajustes %}
+    <div>
+      <span class="etiqueta">Cobros distintos a la tarifa ({{ b.cuantos_ajustes }})</span>
+      <ul class="lista-simple">
+        {% for a in b.ajustes %}
+        <li><span class="placa-texto">{{ a.placa }}</span> · {{ cuando(a.hora) }} · tarifa {{ a.calculado|pesos }}, cobrado <strong>{{ a.cobrado|pesos }}</strong> · {{ a.motivo }}</li>
+        {% endfor %}
+        {% if b.cuantos_ajustes > b.ajustes|length %}<li class="suave">y {{ b.cuantos_ajustes - b.ajustes|length }} más: están todos en el archivo para Excel.</li>{% endif %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if b.anuladas %}
+    <div>
+      <span class="etiqueta">Entradas anuladas ({{ b.total_anuladas }})</span>
+      <ul class="lista-simple">
+        {% for a in b.anuladas %}
+        <li><span class="placa-texto">{{ a.placa }}</span> · ticket {{ a.ticket }} · {{ cuando(a.hora) }} · {{ a.motivo }}</li>
+        {% endfor %}
+        {% if b.total_anuladas > b.anuladas|length %}<li class="suave">y {{ b.total_anuladas - b.anuladas|length }} más.</li>{% endif %}
+      </ul>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if p.tipo == "dia" %}
+  <section class="panel" aria-labelledby="t-reporte">
+    <h2 id="t-reporte">Reporte del día para los jefes</h2>
+    <p class="suave">Lo que se hizo y lo que se recogió, con placas y plata: sin nombres ni celulares de los clientes.{% if correo_configurado and destinos %} Al cerrar la caja les llega solo por correo.{% endif %}</p>
+    <div class="botones">
+      <a class="boton" href="{{ whatsapp }}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
+      <button type="button" class="boton boton--borde" data-imprimir="/parqueadero/balance/ticket?fecha={{ p.desde.isoformat() }}">{{ iconos.icono("imprimir", 18) }}Imprimir</button>
+      {% if correo_configurado and destinos %}
+      <form hx-post="/parqueadero/balance/enviar" hx-swap="none" hx-disabled-elt="find button">
+        <input type="hidden" name="fecha" value="{{ p.desde.isoformat() }}">
+        <button type="submit" class="boton boton--borde">Enviar por correo ahora</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if not destinos %}
+    <p class="ayuda">Para que les llegue solo por correo al cerrar la caja, escribe los correos de los jefes en <a href="/parqueadero/tarifas">Tarifas y ticket</a>.</p>
+    {% elif not correo_configurado %}
+    <p class="ayuda">El correo del sistema todavía no está configurado: mientras tanto, mándalo por WhatsApp.</p>
+    {% endif %}
+    <details class="ajuste">
+      <summary>Ver el texto del reporte</summary>
+      <pre class="reporte-texto">{{ texto_del_reporte }}</pre>
+    </details>
+  </section>
+  {% endif %}
+
+  <p class="ayuda"><a href="/parqueadero/exportar?desde={{ p.desde.isoformat() }}&amp;hasta={{ p.hasta.isoformat() }}">Descargar {{ "ese día" if p.tipo == "dia" else ("esa semana" if p.tipo == "semana" else "ese mes") }} para Excel</a> (cada cobro, uno por fila).</p>
+</main>
+{% endblock %}

@@ -267,6 +267,7 @@ code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-si
 .lista__cabeza h3 { font-size: 17px; font-weight: 700; }
 .lista__cabeza .suave { font-size: 13px; }
 .lista__vacia { padding: 0 18px 16px; color: var(--tinta-suave); }
+.lista > .ayuda { padding: 10px 18px 14px; }
 .nota {
   margin: 0 18px 14px; padding: 12px 14px; border-radius: 10px; background: var(--naranja-claro);
   color: var(--naranja-oscuro); font-size: 14px; line-height: 1.45; display: flex; gap: 10px; align-items: flex-start;
@@ -493,6 +494,7 @@ legend { padding: 0; margin-bottom: 8px; }
   .lista__cabeza h3 { font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta-suave); }
   .lista__cabeza .suave { display: none; }
   .lista__vacia { padding: 0; }
+  .lista > .ayuda { padding: 0; }
   .nota { margin: 0; }
   .turno {
     background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px;
@@ -690,7 +692,9 @@ legend { padding: 0; margin-bottom: 8px; }
 
 .menu-de-la-fila { display: flex; flex-direction: column; gap: 8px; }
 .menu-de-la-fila__cabeza { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.tabla-desplazable { overflow-x: auto; }
+/* `position: relative`: sin esto, un texto solo para lectores de pantalla (que va en
+   `position: absolute`) se sale del cuadro que se desplaza y estira la página en el celular. */
+.tabla-desplazable { overflow-x: auto; position: relative; }
 .tabla-menu { width: 100%; border-collapse: collapse; font-size: 15px; }
 .tabla-menu th, .tabla-menu td { padding: 8px 10px; border-bottom: 1px solid var(--linea); text-align: left; vertical-align: middle; }
 .tabla-menu thead th { font-size: 13px; color: var(--tinta-suave); font-weight: 700; white-space: nowrap; }
@@ -1030,7 +1034,9 @@ legend { padding: 0; margin-bottom: 8px; }
 .estado-caja a { color: var(--azul-texto); }
 .parqueadero .nota a, .parqueadero .error a { color: inherit; font-weight: 700; }
 
-.parqueadero__columnas { display: grid; grid-template-columns: 1fr; gap: 16px; }
+/* minmax(0, 1fr): la columna nunca es más ancha que la pantalla, aunque adentro haya un
+   texto largo (con 1fr a secas, el texto ensancha la columna y la página se corre en el celular). */
+.parqueadero__columnas { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 /* La regla general de los campos (.campo input con tres :not) pesa más que una clase sola:
    repitiendo esa cadena, estos dos tamaños sí le ganan. */
 .campo input.placa--grande:not([type="radio"]):not([type="checkbox"]):not([type="hidden"]) {
@@ -1095,11 +1101,45 @@ legend { padding: 0; margin-bottom: 8px; }
 .exportar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .exportar .campo { min-width: 160px; }
 
+/* --- Balance del parqueadero --- */
+.balance__barra { display: flex; flex-direction: column; gap: 12px; }
+/* Día / Semana / Mes: un solo control, el elegido resaltado. */
+.segmento {
+  display: inline-flex; gap: 4px; padding: 4px; align-self: flex-start;
+  background: var(--gris-claro); border-radius: 12px;
+}
+.segmento a, .segmento span {
+  min-height: 40px; min-width: 80px; padding: 0 14px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--tinta-gris); font-size: 15px; font-weight: 600; text-decoration: none;
+}
+.segmento a:hover { color: var(--tinta); background: var(--superficie); }
+.segmento [aria-current="page"] { background: var(--superficie); color: var(--tinta); box-shadow: 0 1px 3px rgba(14, 26, 43, 0.14); }
+.balance__navegacion { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.balance__navegacion h2 { font-size: 19px; font-weight: 700; min-width: 0; }
+.balance__total { display: flex; flex-direction: column; gap: 4px; }
+.balance__total strong { font-family: var(--condensada); font-size: 46px; line-height: 1; font-variant-numeric: tabular-nums; }
+.tabla-caja--resumen th { font-weight: 400; }
+.tabla-caja--resumen th, .tabla-caja--resumen td { white-space: normal; }
+.tabla-caja__total th, .tabla-caja__total td { font-weight: 700; border-top: 2px solid var(--tinta); border-bottom: 0; }
+.tabla-balance td { font-variant-numeric: tabular-nums; }
+.tabla-balance__hoy td { background: var(--azul-resalte); }
+.tabla-balance__barra { width: 30%; min-width: 90px; }
+.tabla-caja .tabla-balance__barra { text-align: left; padding-left: 4px; }
+.tabla-balance__barra span {
+  display: block; width: var(--parte); min-width: 2px; height: 10px; border-radius: 5px; background: var(--azul);
+}
+.reporte-texto {
+  margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--fondo);
+  font-family: inherit; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
 /* El marco donde se carga el ticket para imprimirlo: existe, pero no se ve. */
 .marco-impresion { position: fixed; right: 0; bottom: 0; width: 0; height: 0; border: 0; opacity: 0; pointer-events: none; }
 
 @media (min-width: 720px) {
   .parqueadero__columnas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .balance__barra { flex-direction: row-reverse; align-items: center; justify-content: space-between; }
   .parqueo { grid-template-columns: auto minmax(180px, 1.3fr) minmax(160px, 1fr) auto; }
   .parqueo__icono { grid-row: auto; align-self: center; padding-top: 0; }
   .parqueo__tiempo { flex-direction: column; align-items: flex-start; }

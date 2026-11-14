@@ -208,7 +208,7 @@ def test_una_seccion_mal_escrita_se_avisa_de_una_vez(seccion: str):
 def test_el_lavadero_muestra_solo_lo_suyo(adentro: TestClient):
     pagina = adentro.get("/fila").text
 
-    rutas = ["/fila", "/caja", "/clientes", "/comentarios", "/configuracion"]
+    rutas = ["/fila", "/caja", "/balance", "/clientes", "/comentarios", "/configuracion"]
     assert secciones(pagina, "navegacion") == secciones(pagina, "navegacion-celular") == rutas
     arriba = encabezado(pagina)
     assert "Nuevo turno" in arriba and "Bot activo" in arriba

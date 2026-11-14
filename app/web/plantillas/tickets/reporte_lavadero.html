@@ -1,0 +1,34 @@
+{% extends "tickets/_base.html" %}
+{#- El reporte del día del lavadero impreso en la impresora de tickets: para guardarlo con el
+    cierre de caja o entregarlo a los jefes en papel. -#}
+{% block titulo %}Reporte del {{ b.periodo.desde|fecha }}{% endblock %}
+{% block contenido %}
+<section class="ticket__bloque ticket__bloque--centro">
+  <span class="ticket__tipo-documento">Reporte del día · Lavadero</span>
+  <span>{{ b.periodo.titulo }}</span>
+</section>
+<dl class="ticket__datos">
+  {% for medio, valor in b.por_medio.items() %}
+  <dt>{{ nombre_del_medio[medio] }}</dt><dd>{{ valor|pesos }}</dd>
+  {% else %}
+  <dt>Sin cobros</dt><dd>{{ 0|pesos }}</dd>
+  {% endfor %}
+</dl>
+<div class="ticket__total"><span>Cobrado</span><strong>{{ b.cobrado|pesos }}</strong></div>
+<dl class="ticket__datos">
+  <dt>Turnos cobrados</dt><dd>{{ b.cobros }}</dd>
+  {% for r in b.por_servicio %}<dt class="ticket__sub">{{ r.nombre|lower }}</dt><dd class="ticket__sub">{{ r.cobros }} · {{ r.cobrado|pesos }}</dd>{% endfor %}
+  <dt>Turnos pedidos</dt><dd>{{ b.turnos }}</dd>
+  <dt class="ticket__sub">por WhatsApp</dt><dd class="ticket__sub">{{ b.por_whatsapp }}</dd>
+  {% if b.cancelados %}<dt>Cancelados</dt><dd>{{ b.cancelados }}</dd>{% endif %}
+  {% if b.no_llegaron %}<dt>No llegaron</dt><dd>{{ b.no_llegaron }}</dd>{% endif %}
+  {% if b.descuentos %}<dt>Descuentos</dt><dd>{{ b.descuentos|pesos }} ({{ b.con_descuento }})</dd>{% endif %}
+  {% if b.recargos %}<dt>Cobrado de más</dt><dd>{{ b.recargos|pesos }}</dd>{% endif %}
+  {% for r in b.cajas_cerradas %}{% set d = r.caja.diferencia %}
+  <dt>Caja {{ r.caja.id }}</dt><dd>{{ "Cuadró" if d == 0 else (("Sobró " if d > 0 else "Faltó ") ~ (d|abs)|pesos) }}</dd>
+  {% endfor %}
+  {% set correcciones = b.correcciones + b.correcciones_de_antes %}
+  {% if correcciones %}<dt>Correcciones</dt><dd>{{ correcciones|length }}</dd>{% endif %}
+</dl>
+{% endblock %}
+{% block pie %}<footer class="ticket__pie">Firma: ______________________</footer>{% endblock %}

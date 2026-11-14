@@ -22,6 +22,7 @@ from app.db.sesion import obtener_sesion
 from app.integraciones import whatsapp
 from app.reloj import proceso as reloj
 from app.web import (
+    balance_del_lavadero,
     caja_del_lavadero,
     clientes,
     comentarios,
@@ -90,6 +91,7 @@ for modulo in (
     inicio,
     fila,
     caja_del_lavadero,
+    balance_del_lavadero,
     clientes,
     comentarios,
     parqueadero,

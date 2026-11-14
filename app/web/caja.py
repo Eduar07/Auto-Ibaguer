@@ -33,6 +33,7 @@ from app.web.comun import (
     Admin,
     SesionBD,
     con_eventos,
+    entero,
     html,
     leer_pesos,
     pagina,
@@ -181,7 +182,7 @@ def filtro_de_cierres(
         desde=inicio,
         hasta=fin,
         resultado=resultado if resultado in RESULTADOS else "todos",
-        quien=int(quien) if quien and quien.isdigit() else None,
+        quien=entero(quien) if quien else None,
     )
 
 

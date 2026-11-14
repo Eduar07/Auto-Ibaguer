@@ -149,7 +149,7 @@ def _valores_escritos(formulario: FormData) -> dict[str, Any]:
     """Lo que el administrador escribió, para devolvérselo si algo no se pudo guardar."""
     valores: dict[str, Any] = {clave: valor for clave, valor in formulario.items()}
     valores["dias_atencion"] = [
-        int(dia) for dia in formulario.getlist("dias_atencion") if dia.isdigit()
+        dia for dia in map(entero, formulario.getlist("dias_atencion")) if dia is not None
     ]
     valores["bot_activo"] = formulario.get("bot_activo") == "si"
     valores["gemini_activo"] = formulario.get("gemini_activo") == "si"

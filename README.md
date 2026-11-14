@@ -143,6 +143,8 @@ Lo normal es cerrarla al final de cada día y abrir una nueva al otro día, para
 
 Si alguien está cobrando justo cuando otro cierra la caja, el sistema hace esperar a uno de los dos: o el cierre cuenta ese cobro, o el cobro pide abrir caja. Nunca queda un cobro en una caja ya contada.
 
+Un cero de más no se guarda, en ninguno de los dos negocios: la base o lo contado al cerrar van hasta $100.000.000, y un cobro (un lavado, una salida, una mensualidad, una tarifa) hasta $5.000.000. Si se pasa, el sistema pide revisar los ceros.
+
 ### Corregir un cobro o una caja
 
 En **Caja > Cobros de esta caja**, cada cobro tiene **Corregir**:
@@ -656,6 +658,7 @@ app/
 ├── config.py       configuración técnica, leída del archivo .env
 ├── errores.py      el error base de las reglas del negocio
 ├── formato.py      pesos, horas y fechas a la colombiana ($40.000, 5:30 a.m.)
+├── numeros.py      leer los números que escribe una persona sin que el servidor se caiga (un "²", miles de cifras)
 ├── tiempo.py       la hora del sistema y la hora de Bogotá
 └── main.py         servidor web
 migraciones/        cambios de la base de datos, numerados y en orden (Alembic)
@@ -769,6 +772,7 @@ En la nube se aplica sola: al unir el cambio, Render publica la versión nueva y
 - En producción, `CLAVE_SECRETA` es obligatoria: el servidor no arranca sin una clave larga y aleatoria. `.env.example` dice cómo generarla.
 - Después de 5 contraseñas equivocadas, ese usuario queda bloqueado 15 minutos.
 - Ninguna otra página puede enviar formularios al dashboard: el servidor revisa de dónde viene cada envío.
+- Un número absurdo en un formulario o en la dirección (un cero de más, miles de cifras, un "²") no tumba el servidor: la plata tiene tope, y lo que no cabe en la base de datos se responde con "Ese valor no es posible" en vez de una falla. El registro anota dónde pasó, nunca los datos.
 - Lo que el reloj escribe en la terminal no lleva nombres ni celulares: en la nube, esos registros los pueden ver otras personas. El registro de peticiones tampoco guarda lo que va después del `?` en cada dirección: ahí viajan las búsquedas del dashboard y la palabra secreta del webhook.
 - En la nube todo va por HTTPS, y el navegador ya no intenta entrar sin él. Ninguna otra página puede mostrar el dashboard dentro de la suya.
 - El servidor de la nube corre con un usuario sin permisos de administrador, y la imagen no lleva el `.env`, las pruebas ni la historia de git.

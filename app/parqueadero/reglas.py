@@ -10,11 +10,14 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from app import numeros
 from app.caja.reglas import (  # noqa: F401  (las reglas de caja de siempre, ahora comunes)
     DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA,
     NOMBRE_DEL_MEDIO,
+    VALOR_MAXIMO_DE_UN_COBRO,
     caja_corregible,
     como_se_pago,
+    sin_ceros_de_mas,
     sumar_por_medio,
 )
 from app.clientes.reglas import normalizar_placa
@@ -91,6 +94,14 @@ def validar_placa(texto: str) -> str:
 def validar_tarifa(tarifa: Tarifa) -> Tarifa:
     if tarifa.valor_hora <= 0:
         raise TarifaInvalida("El valor de la hora debe ser mayor que cero.")
+    for valor in (
+        tarifa.valor_hora,
+        tarifa.valor_fraccion,
+        tarifa.valor_dia,
+        tarifa.valor_dia_siguiente,
+    ):
+        if valor is not None:
+            sin_ceros_de_mas(valor, VALOR_MAXIMO_DE_UN_COBRO, TarifaInvalida)
     if not 0 <= tarifa.gracia_minutos <= 59:
         raise TarifaInvalida("Los minutos de gracia van de 0 a 59.")
     if tarifa.valor_fraccion is not None and tarifa.valor_fraccion < 0:
@@ -193,6 +204,7 @@ def motivo_del_ajuste(calculado: int, cobrado: int, motivo: str | None) -> str |
     así el cierre de caja muestra cuánto se fue en descuentos."""
     if cobrado < 0:
         raise ValorInvalido("El valor cobrado no puede ser negativo.")
+    sin_ceros_de_mas(cobrado, VALOR_MAXIMO_DE_UN_COBRO)
     limpio = (motivo or "").strip() or None
     if cobrado != calculado and limpio is None:
         raise ValorInvalido(
@@ -211,7 +223,7 @@ def revisar_recibido(cobrado: int, medio: MedioPago, recibido: int | None) -> in
         return None
     if recibido < cobrado:
         raise ValorInvalido(f"Con {pesos(recibido)} no alcanza: el cobro es de {pesos(cobrado)}.")
-    return recibido
+    return sin_ceros_de_mas(recibido, VALOR_MAXIMO_DE_UN_COBRO)
 
 
 def fin_de_la_mensualidad(desde: date) -> date:
@@ -279,8 +291,9 @@ def revisar_dias_traidos(hasta: date, hoy: date) -> None:
 def placa_o_ticket(texto: str) -> tuple[str | None, int | None]:
     """Lo que se escribe para buscar una salida: "123" es el ticket 123; "abc123", una placa."""
     limpio = texto.strip().lstrip("#")
-    if limpio.isdigit():
-        return None, int(limpio)
+    ticket = numeros.entero(limpio)
+    if ticket is not None:
+        return None, ticket
     placa = normalizar_placa(limpio)
     return (placa or None), None
 

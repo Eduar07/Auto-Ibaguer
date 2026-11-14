@@ -19,7 +19,7 @@ from app import tiempo
 from app.caja import casos_de_uso as cajas
 from app.caja.errores import CobroNoCorregible, ValorInvalido
 from app.caja.estados import TipoCorreccion
-from app.caja.reglas import como_se_pago
+from app.caja.reglas import VALOR_MAXIMO_DE_UN_COBRO, como_se_pago, sin_ceros_de_mas
 from app.caja.tablas import CorreccionCobro
 from app.catalogo.parametros import Parametros, leer_parametros
 from app.catalogo.tablas import Fila, Puesto, Servicio, TipoVehiculo
@@ -733,6 +733,7 @@ def corregir_cobro(
     caja = caja_del_lavadero.caja_del_cobro(sesion, pago.caja_id, ahora)
     if precio_cobrado < 0:
         raise ValorInvalido("El valor no puede ser negativo.")
+    sin_ceros_de_mas(precio_cobrado, VALOR_MAXIMO_DE_UN_COBRO)
     if not medio_pago:
         raise ValorInvalido("Elige el medio de pago.")
     medio = MedioPago(medio_pago)

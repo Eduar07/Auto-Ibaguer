@@ -60,6 +60,7 @@ def abrir_caja(
     ahora = ahora or tiempo.ahora()
     if base < 0:
         raise ValorInvalido("La base no puede ser negativa.")
+    reglas.sin_ceros_de_mas(base, reglas.VALOR_MAXIMO_EN_LA_CAJA)
     candado(sesion, f"{negocio}:caja")
     abierta = caja_abierta(sesion, negocio)
     if abierta is not None:
@@ -103,6 +104,7 @@ def cerrar_caja(
     ahora = ahora or tiempo.ahora()
     if efectivo_contado < 0:
         raise ValorInvalido("El efectivo contado no puede ser negativo.")
+    reglas.sin_ceros_de_mas(efectivo_contado, reglas.VALOR_MAXIMO_EN_LA_CAJA)
     candado(sesion, f"{negocio}:caja")
     caja = bloquear_caja(sesion, negocio, caja_id)
     if caja is None or not caja.abierta:
@@ -226,6 +228,7 @@ def corregir_base(
     limpio = motivo_de_la_correccion(motivo)
     if base < 0:
         raise ValorInvalido("La base no puede ser negativa.")
+    reglas.sin_ceros_de_mas(base, reglas.VALOR_MAXIMO_EN_LA_CAJA)
     caja = _caja_para_corregir(sesion, negocio, caja_id, ahora)
     if base == caja.base:
         raise ValorInvalido(f"No hay nada que cambiar: la base ya es {formato.pesos(base)}.")
@@ -261,6 +264,7 @@ def corregir_conteo(
     limpio = motivo_de_la_correccion(motivo)
     if efectivo_contado < 0:
         raise ValorInvalido("El efectivo contado no puede ser negativo.")
+    reglas.sin_ceros_de_mas(efectivo_contado, reglas.VALOR_MAXIMO_EN_LA_CAJA)
     caja = _caja_para_corregir(sesion, negocio, caja_id, ahora)
     if caja.abierta:
         raise CajaNoCorregible("Esa caja sigue abierta: el efectivo se cuenta al cerrarla.")

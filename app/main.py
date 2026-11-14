@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DataError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -103,6 +103,9 @@ for modulo in (
 ):
     app.include_router(modulo.router)
 app.add_exception_handler(comun.NecesitaEntrar, comun.responder_sin_sesion)
+# Un valor que no cabe en la base de datos (un id de 20 cifras en la dirección, por ejemplo) es
+# un error de quien lo escribió: se explica, no se responde como una falla del servidor.
+app.add_exception_handler(DataError, comun.responder_dato_imposible)
 
 SesionBD = Annotated[Session, Depends(obtener_sesion)]
 

@@ -515,16 +515,19 @@ Los secretos de la nube no van en un `.env`: van en el servidor de Render, pesta
 
 ### Mientras estés en el plan gratis de Render
 
-Sirve para probar antes de pagar, con tres diferencias: el servidor se apaga si nadie entra en 15 minutos (la pantalla del parqueadero abierta lo mantiene despierto), la base gratis vence a los 30 días y no hay **Shell** ni **Pre-deploy**. Por eso, cuando una versión nueva trae tablas nuevas (el pull request lo dice), las preparas tú desde tu computador, con la *External Database URL* de la base (en Render: la base > **Connect** > **External**), justo después de unir el cambio:
+Sirve para probar antes de pagar, con tres diferencias: el servidor se apaga si nadie entra en 15 minutos (la pantalla del parqueadero abierta lo mantiene despierto), la base gratis vence a los 30 días y no hay **Shell** ni **Pre-deploy**.
+
+Las tablas nuevas no necesitan nada de tu parte: **el servidor las pone al día solo cada vez que enciende**, antes de atender (`auto-ibaguer actualizar-tablas`, en el `Dockerfile`). Así, cuando unes un cambio que trae tablas nuevas, Render lo publica y la base queda al día sola. Si algo falla, esa versión no enciende y Render no la publica: el motivo está en **Logs**. En los **Logs** de cada encendido sale `Tablas al día.` (y, si había migraciones, `Running upgrade ...`).
+
+Para revisarla desde tu computador, con la *External Database URL* de la base (en Render: la base > **Connect** > **External**):
 
 ```bash
 read -rsp "URL externa de Render: " DATABASE_URL && export DATABASE_URL   # pégala y Enter (no se ve)
-uv run auto-ibaguer preparar-base
 uv run auto-ibaguer revisar-base      # debe decir "Tablas: al día"
 unset DATABASE_URL
 ```
 
-Esa URL lleva la contraseña de la base: no la pegues en ningún chat ni la guardes en un archivo. Al pasar a pago, en el servidor > **Settings** pon `auto-ibaguer preparar-base` como **Pre-Deploy Command**: desde ahí Render lo corre solo antes de cada publicación.
+Esa URL lleva la contraseña de la base: no la pegues en ningún chat ni la guardes en un archivo. Al pasar a pago, en el servidor > **Settings** puedes poner `auto-ibaguer actualizar-tablas` como **Pre-Deploy Command**: Render lo corre antes de publicar y, si falla, ni siquiera intenta encender la versión nueva.
 
 ### El día de la SIM, con el sistema en la nube
 
@@ -633,7 +636,7 @@ app/
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores
 ├── reloj/          lo que pasa solo cada 30 segundos (gracias, sesiones del bot, avisos)
 ├── db/             conexión a la base de datos y lo que mira revisar-base
-├── cli.py          comandos de la terminal (preparar-base, revisar-base, crear-admin, simular-turno, registrar-whatsapp, probar-gemini)
+├── cli.py          comandos de la terminal (preparar-base, actualizar-tablas, revisar-base, crear-admin, simular-turno, registrar-whatsapp, probar-gemini)
 ├── config.py       configuración técnica, leída del archivo .env
 ├── errores.py      el error base de las reglas del negocio
 ├── formato.py      pesos, horas y fechas a la colombiana ($40.000, 5:30 a.m.)
@@ -693,8 +696,10 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 2. Crea la migración con el siguiente número (la última es la 0011):
    `uv run alembic revision --autogenerate --rev-id 0012 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
-4. Aplícala: `uv run auto-ibaguer preparar-base`
+4. Aplícala: `uv run auto-ibaguer preparar-base` (o solo las tablas: `uv run auto-ibaguer actualizar-tablas`)
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.
+
+En la nube se aplica sola: al unir el cambio, Render publica la versión nueva y el servidor pone las tablas al día al encender.
 
 ## Comandos útiles
 
@@ -730,6 +735,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | `simular-turno` dice `No se dio el turno: Los turnos por WhatsApp se dan de...` | Es la regla del horario. Para probar a esa hora, amplía el horario en **Configuración** y después déjalo como estaba. |
 | Un llamado se queda en `Llamado · tiempo vencido` | El reloj lo pasa al final en menos de 30 segundos. Si no pasa, mira en la terminal del servidor si dice `Reloj encendido` y que `RELOJ_ACTIVO` no esté en `false`. |
 | En Render, una publicación falla en **Pre-deploy** | `preparar-base` no pudo con la base: el motivo está en el registro de esa publicación (**Events**). Sigue funcionando la versión anterior. |
+| En Render, una publicación nueva no enciende y los **Logs** dicen `alembic` o `migration` | `actualizar-tablas` no pudo poner las tablas al día al encender: el motivo está en los **Logs**. Sigue funcionando la versión anterior. |
 | Te llega el correo de Render de que el servidor no está sano | Abre `https://…/salud`: dice si es la base de datos o el reloj. Render ya reinició el servidor; si sigue igual, mira **Logs** y que la base diga **Available**. |
 | Un cambio ya está en `main` y Render no lo publica | Render espera a que GitHub termine las pruebas (pestaña **Actions**); si alguna sale en rojo, no lo publica. |
 | La copia de seguridad sale en rojo | Abre la corrida en **Actions**: si no pudo conectarse, revisa `RESPALDO_DATABASE_URL` (cambia si la base de Render se crea de nuevo). |

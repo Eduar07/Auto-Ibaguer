@@ -1,6 +1,7 @@
 """Comandos de Auto Ibaguer para la terminal.
 
 uv run auto-ibaguer preparar-base             crea las tablas y carga los datos iniciales
+uv run auto-ibaguer actualizar-tablas         solo pone las tablas al día (la nube, al encender)
 uv run auto-ibaguer revisar-base              dice si las tablas están al día y cuánto hay
 uv run auto-ibaguer crear-admin --usuario X   crea un administrador del dashboard
 uv run auto-ibaguer simular-turno             pide un turno como lo hará el bot (pruebas)
@@ -73,6 +74,16 @@ def configuracion_alembic(url: str | None = None, configurar_logs: bool = True) 
 def migrar(url: str | None = None, configurar_logs: bool = True) -> None:
     """Lleva las tablas a la última versión (aplica las migraciones que falten)."""
     command.upgrade(configuracion_alembic(url, configurar_logs), "head")
+
+
+def actualizar_tablas() -> int:
+    """Solo lleva las tablas a la última versión (aplica las migraciones que falten), sin
+    tocar ningún dato. Lo corre el servidor de la nube cada vez que enciende, antes de
+    atender: si ya están al día, no hace nada. Así el plan gratis de Render, que no tiene
+    "Pre-Deploy Command", nunca queda con el código nuevo y las tablas viejas."""
+    migrar()
+    print("Tablas al día.")
+    return 0
 
 
 def preparar_base() -> int:
@@ -397,6 +408,10 @@ def main(argv: list[str] | None = None) -> int:
     comandos.add_parser(
         "preparar-base", help="Crea o actualiza las tablas y carga los datos iniciales."
     )
+    comandos.add_parser(
+        "actualizar-tablas",
+        help="Solo pone las tablas al día, sin tocar datos (lo corre la nube al encender).",
+    )
     revisar_comando = comandos.add_parser(
         "revisar-base",
         help="Dice si las tablas están al día y cuántos datos hay (sin mostrar ninguno).",
@@ -443,6 +458,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if argumentos.comando == "preparar-base":
             return preparar_base()
+        if argumentos.comando == "actualizar-tablas":
+            return actualizar_tablas()
         if argumentos.comando == "revisar-base":
             return revisar_base(argumentos.url)
         if argumentos.comando == "simular-turno":

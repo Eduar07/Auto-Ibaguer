@@ -280,8 +280,15 @@ def con_eventos(
     return respuesta
 
 
+# Un número de un formulario con más cifras que esto no lo escribió nadie de verdad (y
+# Python no convierte textos de miles de cifras): se toma como "no es un número".
+CIFRAS_MAXIMAS = 18
+
+
 def entero(texto: str) -> int | None:
-    return int(texto) if texto.isdigit() else None
+    """ "12" -> 12; vacío, "abc" o "²" -> None. `isdecimal` y no `isdigit`: "²" es un dígito
+    para Python, pero int("²") falla."""
+    return int(texto) if texto.isdecimal() and len(texto) <= CIFRAS_MAXIMAS else None
 
 
 def leer_pesos(texto: str) -> int | None:

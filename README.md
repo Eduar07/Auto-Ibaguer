@@ -76,10 +76,10 @@ Las secciones del **Lavadero**:
 | Botón principal de cada turno | **Marcar llegada** (llamado), **Pasar a puesto** (ya llegó), **Marcar listo** (en el puesto) y **Cobrar** (listo). |
 | Menú ⋯ de cada turno | Marcar llegada, corregir datos (tipo de vehículo, placa, servicio) y cancelar. |
 | **Nuevo turno** | Para el cliente que llega sin escribir por WhatsApp. Muestra antes qué número le toca y cuánto esperaría. |
-| **Caja** | La caja del lavadero, aparte de la del parqueadero y con las mismas partes: se abre con la base para vueltos y **sin la caja abierta no se cobra un turno** (la fila y el diálogo de cobrar lo dicen, con el enlace para abrirla). Cada turno cobrado entra a ella; se ve lo que entró por cada medio y lo que debe haber en el cajón, y se cierra contando el efectivo (dice si cuadró, sobró o faltó, e imprime el resumen). Un cobro equivocado se **corrige** (otro valor u otro medio) o se **deshace** (el turno vuelve a quedar por cobrar), siempre con el motivo; también con la caja cerrada, hasta 30 días después. Abajo, los cierres anteriores con filtros y los archivos para Excel (cada turno cobrado, con el precio del menú y el descuento, y los cierres). |
-| **Balance** | Lo cobrado por día, semana, mes o los días que escojas (hasta 92): por medio de pago, por servicio y por tipo de vehículo, el promedio por turno, los turnos pedidos (por WhatsApp o en el local), los cancelados y los que no llegaron, cuánto dura un lavado, los descuentos con su motivo, las cajas y sus correcciones. La semana, el mes y el rango traen las **gráficas** día por día y por día de la semana (en plata o en turnos). El del día es el **reporte para los jefes**: por WhatsApp o impreso, sin nombres ni celulares de los clientes. |
+| **Caja** | La caja del lavadero, aparte de la del parqueadero y con las mismas partes: se abre con la base para vueltos y **sin la caja abierta no se cobra un turno** (la fila y el diálogo de cobrar lo dicen, con el enlace para abrirla). Cada turno cobrado entra a ella; se ve lo que entró por cada medio y lo que debe haber en el cajón, y se cierra contando el efectivo (dice si cuadró, sobró o faltó, e imprime el resumen). Un cobro equivocado se **corrige** (otro valor u otro medio) o se **deshace** (el turno vuelve a quedar por cobrar), siempre con el motivo; también con la caja cerrada, hasta 30 días después. Cada cobro tiene su botón **Recibo** para volver a imprimirlo. Abajo, los cierres anteriores con filtros y los archivos para Excel (cada turno cobrado, con el precio del menú y el descuento, y los cierres). |
+| **Balance** | Lo cobrado por día, semana, mes o los días que escojas (hasta 92): por medio de pago, por servicio y por tipo de vehículo, el promedio por turno, los turnos pedidos (por WhatsApp o en el local), los cancelados y los que no llegaron, cuánto dura un lavado, los descuentos con su motivo, las cajas y sus correcciones. La semana, el mes y el rango traen las **gráficas** día por día y por día de la semana (en plata o en turnos). El del día es el **reporte para los jefes**: por WhatsApp, impreso o por correo (y por correo, solo, al cerrar la caja), sin nombres ni celulares de los clientes. |
 | **Clientes** | Buscar por nombre, celular o placa; la ficha con sus vehículos y visitas; dar turno, editar datos y borrarlos si el cliente lo pide (Ley 1581). |
-| **Configuración** | Negocio y horario, bot de WhatsApp, puestos (prender, apagar y agregar), menú y precios, y el aviso de datos personales. Se guarda todo junto, y si algo está mal no se guarda nada. Desde ahí se abren **Textos del bot** (cada texto se guarda por separado) y **Mensajes de WhatsApp**. |
+| **Configuración** | Negocio y horario, bot de WhatsApp, puestos (prender, apagar y agregar), menú y precios, y el aviso de datos personales. Se guarda todo junto, y si algo está mal no se guarda nada. Aparte, con su botón, **Recibo y reporte**: el NIT, la dirección y el texto del final del recibo, el ancho del papel, si el recibo se imprime solo al cobrar y los correos de los jefes para el reporte del día. Desde ahí se abren **Textos del bot** (cada texto se guarda por separado) y **Mensajes de WhatsApp**. |
 | Lavado **Demorado** | Cuando un lavado pasa su duración estimada, su puesto se pone naranja y arriba se cuenta. En el celular, la pestaña de esa fila muestra un punto naranja aunque estés viendo la otra. Casi siempre quiere decir que ya está listo y falta marcarlo: mientras tanto el cliente no recibe el aviso y la espera de la fila se calcula mal. |
 
 En el celular se ve una fila a la vez (pestañas **Carros** y **Motos**) y las secciones quedan en la barra de abajo. Para ver cómo queda en el celular sin salir del computador: en Chrome, `F12` y luego `Ctrl+Shift+M`. Desde el celular de verdad, cuando esté en la nube: [Poner el sistema en la nube](#poner-el-sistema-en-la-nube).
@@ -206,6 +206,8 @@ Si la impresora deja mucho papel en blanco después del ticket, en las **Prefere
 
 Cualquier ticket se puede reimprimir: el botón de la impresora en la lista de los que están adentro, **Recibo** en los pagos de una mensualidad e **Imprimir resumen** en la caja.
 
+El lavadero usa la misma impresora: su recibo lleva el nombre y el teléfono de **Configuración**, y el NIT, la dirección, el texto del final y el ancho del papel de **Configuración > Recibo y reporte**. Con **Imprimir el recibo al cobrar** prendido, sale solo al cobrar cada turno; si no, con el botón **Recibo** de ese cobro en la caja. No lleva el nombre ni el celular del cliente, solo la placa.
+
 ### Las cuentas en Excel
 
 En **Caja > Cierres anteriores** filtras por días (los de apertura de la caja, como en el Balance), por cómo cerró (cuadró, sobró, faltó o se corrigió después) y por quién cerró. Arriba de la tabla salen las cuentas de todo lo filtrado, no solo de la página: cuántos cierres, lo que entró y lo que sobró y faltó, cada cosa aparte. Van de a 30 por página, y **Descargar estos cierres para Excel** baja todos los filtrados, uno por fila: cuánto entró por cada medio, lo que debía haber, lo que se contó, la diferencia y si se corrigió después.
@@ -235,7 +237,7 @@ Para saber qué días son flojos y cuáles buenos, y reforzar los flojos:
 - **Qué ver**: **Todo lo recogido**, solo **Salidas** (sin mensualidades, que llegan de a montones el día que se pagan y hacen ver bueno un día que no lo fue) o **Vehículos** (los que entraron). Y de **Todos**, solo **Carros** o solo **Motos**. La tabla **Día por día** sigue el mismo filtro de vehículos.
 - **Al pasar el puntero** (o con el teclado) por una barra, dice el valor, el día y cómo se compone. Tocar una barra del día por día abre el balance de ese día.
 - Los días antes del primero con movimiento no cuentan para comparar: no son días flojos, el sistema todavía no se usaba.
-- Las gráficas son HTML hecho en el servidor (`app/parqueadero/graficas.py` calcula cada barra; `_grafica.html` la pinta): no hay librería de gráficas, y la letra se lee igual en el celular.
+- Las gráficas son HTML hecho en el servidor (`app/caja/graficas.py` calcula cada barra para los dos negocios; `_grafica.html` la pinta): no hay librería de gráficas, y la letra se lee igual en el celular.
 
 ### Reporte diario a los jefes
 
@@ -245,17 +247,19 @@ Es el balance del día escrito para leerlo en el celular: lo que se recogió y p
 - **Imprimir**: en la impresora de tickets, con una raya para firmar.
 - **Por correo, solo**: al cerrar la caja les llega el reporte del día de esa caja (si la cierras pasada la medianoche, sigue siendo el del día en que se abrió). También está **Enviar por correo ahora**, para mandarlo a mano o probar. Si el correo falla, la caja igual se cierra y el error queda en **Logs**.
 
+El lavadero tiene el suyo, con el mismo orden (lo cobrado y por qué medio, los turnos, los cobros distintos al menú y la caja), en su **Balance > Día**. Sus correos van en **Configuración > Recibo y reporte** y le llega al cerrar la caja del lavadero. El correo del sistema (los pasos de abajo) es uno solo para los dos negocios.
+
 Para el correo:
 
 1. Escribe los correos de los jefes en **Tarifas y ticket > Reporte diario a los jefes** (hasta 5, separados por coma). Uno mal escrito no se guarda: mejor saberlo hoy que descubrir en un mes que nunca llegó.
-2. Crea un Gmail para el parqueadero (no uses el tuyo personal) y sácale una **contraseña de aplicación**: en [myaccount.google.com](https://myaccount.google.com) > **Seguridad** activa la **Verificación en 2 pasos**; después busca **Contraseñas de aplicación**, escribe un nombre ("Auto Ibaguer") y copia las 16 letras que muestra. No es la contraseña normal del correo, y es secreta como las de WhatsApp.
+2. Crea un Gmail para el negocio (no uses el tuyo personal) y sácale una **contraseña de aplicación**: en [myaccount.google.com](https://myaccount.google.com) > **Seguridad** activa la **Verificación en 2 pasos**; después busca **Contraseñas de aplicación**, escribe un nombre ("Auto Ibaguer") y copia las 16 letras que muestra. No es la contraseña normal del correo, y es secreta como las de WhatsApp.
 3. En Render, el servidor > **Environment** (en tu computador, en el `.env`):
 
    | Variable | Valor |
    |---|---|
    | `CORREO_SERVIDOR` | `smtp.gmail.com` |
    | `CORREO_PUERTO` | `465` |
-   | `CORREO_USUARIO` | el Gmail del parqueadero |
+   | `CORREO_USUARIO` | el Gmail del negocio |
    | `CORREO_CLAVE` | las 16 letras de la contraseña de aplicación |
 
 4. En **Balance**, **Enviar por correo ahora**: si dice "Reporte enviado", ya quedó.
@@ -639,10 +643,10 @@ GitHub corre lo mismo en cada pull request (pestaña **Actions**) y, además, ar
 app/
 ├── catalogo/       filas, puestos, tipos de vehículo, servicios, precios y parámetros
 ├── clientes/       clientes, vehículos, placas y teléfonos
-├── turnos/         la fila: turnos, llamados, avisos, puestos, historial, cobro, y la caja y el balance del lavadero (caja.py, consultas_de_caja.py, balance.py)
+├── turnos/         la fila: turnos, llamados, avisos, puestos, historial, cobro, y la caja, el balance, el recibo y el reporte diario del lavadero (caja.py, consultas_de_caja.py, balance.py, recibo.py, reporte.py)
 ├── bot/            conversación de WhatsApp: pasos, botones, textos, avisos y la pausa
 ├── comentarios/    quejas, felicitaciones y preguntas para el administrador, y responderle al cliente
-├── caja/           lo común de las cuentas de los dos negocios: la caja (abrirla, cerrarla, cuadrarla, corregirla, los cierres con filtros), los periodos del balance y sus gráficas
+├── caja/           lo común de las cuentas de los dos negocios: la caja (abrirla, cerrarla, cuadrarla, corregirla, los cierres con filtros), los periodos del balance, sus gráficas y lo que el reporte del día dice de la caja
 ├── parqueadero/    entradas y salidas, cobro por hora, mensualidades, lo que entra a su caja, sus tarifas, el balance y el reporte diario
 ├── integraciones/  mensajes que entran y salen de WhatsApp (bandejas y reintentos) y el correo del reporte
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores

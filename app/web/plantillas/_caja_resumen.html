@@ -71,6 +71,9 @@
     <span class="movimientos__valor">
       <strong>{{ m.valor|pesos }}</strong>
       <span class="suave">{{ m.medio.value|capitalize if m.medio else "Sin pago" }}</span>
+      {% if m.para_imprimir %}
+      <button type="button" class="boton-texto movimientos__corregir" data-imprimir="{{ m.para_imprimir }}">Recibo</button>
+      {% endif %}
       {% if corregir %}
       <button type="button" class="boton-texto movimientos__corregir" hx-get="{{ m.para_corregir }}" hx-target="#dialogo-contenido">Corregir</button>
       {% endif %}

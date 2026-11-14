@@ -16,11 +16,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.caja.periodos import periodo
-from app.turnos import balance
+from app.turnos import balance, reporte
 from app.turnos import caja as caja_lavadero
 from app.turnos import casos_de_uso as casos
 from app.turnos.estados import Actor, MedioPago
-from app.web.balance_del_lavadero import texto_del_reporte
 from pruebas.fabricas import LUNES_8AM, minutos, por_whatsapp, turno_listo
 
 HOY = LUNES_8AM.date()
@@ -96,13 +95,14 @@ def test_cada_caja_es_del_dia_en_que_se_abrio(sesion: Session, un_dia):
 
 
 def test_el_reporte_del_dia(sesion: Session, un_dia):
-    texto = texto_del_reporte(balance.balance(sesion, periodo("dia", HOY)), "Lavadero")
+    texto = reporte.texto(reporte.armar(sesion, HOY, LUNES_8AM + minutos(600)))
 
-    assert texto.startswith("*Lavadero · Lunes 26 de octubre de 2026*")
-    assert "Cobrado: *$85.000* en 2 turnos (promedio $42.500)" in texto
-    assert "Efectivo $40.000 · Nequi $45.000" in texto
-    assert "Turnos pedidos: 3 (WhatsApp 1, en el local 2) · cancelados 1 · no llegaron 0" in texto
+    assert "*Cobrado: $85.000*\nEfectivo: $40.000\nNequi: $45.000" in texto
+    assert "Turnos pedidos: 3 (WhatsApp 1, en el local 2)" in texto
+    assert "Cancelados: 1 · No llegaron: 0" in texto
     assert "Descuentos: $5.000 en 1 turno" in texto
+    # La caja se abrió ayer: es del reporte de ayer, no del de hoy.
+    assert "No se abrió caja este día." in texto
     assert "Cliente" not in texto.replace("Cliente frecuente", "")  # sin nombres de clientes
 
 

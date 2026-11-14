@@ -1,0 +1,61 @@
+{#- Configuración > Recibo y reporte. Se guarda aparte del resto de la configuración (tiene su
+    botón) y se vuelve a pintar entero: con el aviso si quedó, o con el error y lo escrito. -#}
+{% import "_iconos.html" as iconos %}
+<section id="recibo" class="panel seccion-configuracion" aria-labelledby="t-recibo">
+  <h2 id="t-recibo">Recibo y reporte del día</h2>
+  <form class="configuracion" hx-post="/configuracion/recibo" hx-target="#recibo" hx-swap="outerHTML"
+        hx-disabled-elt="find button[type=submit]">
+    {% if error_recibo %}<p class="error" role="alert">{{ error_recibo }}</p>{% endif %}
+    <p class="suave">El recibo lleva arriba el nombre y el teléfono del negocio (los de Negocio y horario), y estos datos.</p>
+    <div class="dos-columnas dos-columnas--apiladas-en-celular">
+      <div class="campo">
+        <label for="recibo-nit">NIT <span class="suave">(opcional)</span></label>
+        <input id="recibo-nit" name="nit" maxlength="30" inputmode="numeric" placeholder="900.123.456-7" value="{{ recibo.nit }}">
+        <span class="ayuda">Solo el número, con el dígito de verificación. En el recibo sale "NIT 900.123.456-7".</span>
+      </div>
+      <div class="campo">
+        <label for="recibo-direccion">Dirección <span class="suave">(opcional)</span></label>
+        <input id="recibo-direccion" name="direccion" maxlength="80" value="{{ recibo.direccion }}">
+      </div>
+    </div>
+    <div class="campo">
+      <label for="recibo-pie">Texto al final del recibo</label>
+      <input id="recibo-pie" name="pie_recibo" maxlength="240" value="{{ recibo.pie_recibo }}">
+      <span class="ayuda">Por ejemplo, "Gracias por preferirnos" o el horario.</span>
+    </div>
+    <fieldset>
+      <legend>Ancho del papel de la impresora</legend>
+      <div class="opciones opciones--2">
+        {% for ancho in anchos_de_ticket %}
+        <label class="opcion opcion--centrada opcion--corta">
+          <input type="radio" name="ancho_ticket" value="{{ ancho }}" {% if recibo.ancho_ticket == ancho %}checked{% endif %}>
+          <span>{{ ancho }} mm</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <label class="interruptor">
+      <span>
+        <strong>Imprimir el recibo al cobrar</strong>
+        <span class="ayuda">Al cobrar un turno se abre el recibo para imprimir. Si está apagado, se imprime cuando lo pidan, desde la caja.</span>
+      </span>
+      <input type="checkbox" role="switch" name="imprimir_al_cobrar" value="si" {% if recibo.imprimir_al_cobrar %}checked{% endif %}>
+      <span class="interruptor__control" aria-hidden="true"></span>
+    </label>
+
+    <h3>Reporte diario a los jefes</h3>
+    <p class="suave">Al cerrar la caja del lavadero, el reporte del día (lo cobrado, los turnos y la caja) les llega por correo. También se puede mandar por WhatsApp desde <a href="/balance">Balance</a>.</p>
+    {% if not correo_configurado %}
+    <div class="nota nota--suelta">{{ iconos.icono("info", 20) }}<span>El correo del sistema todavía no está configurado: mientras tanto, el reporte se manda por WhatsApp. Cómo configurarlo, en el README (El parqueadero &gt; Reporte diario).</span></div>
+    {% endif %}
+    <div class="campo">
+      <label for="recibo-correos">Correos de los jefes <span class="suave">(opcional, máximo 5)</span></label>
+      <input id="recibo-correos" name="correos_reporte" type="text" inputmode="email" maxlength="300" autocomplete="off"
+             placeholder="jefe@gmail.com, socio@gmail.com" value="{{ recibo.correos_reporte }}">
+      <span class="ayuda">Sepáralos con coma.</span>
+    </div>
+    <div class="seccion-configuracion__acciones">
+      <button type="submit" class="boton">Guardar recibo y reporte</button>
+    </div>
+  </form>
+</section>

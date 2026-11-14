@@ -7,10 +7,10 @@ Los periodos y las gráficas son los mismos del Balance del parqueadero (app/caj
 """
 
 from datetime import date, timedelta
-from typing import Any
-from urllib.parse import quote, urlencode
+from typing import Annotated, Any
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, Response
 
 from app import formato
@@ -19,12 +19,15 @@ from app.caja.graficas import DiaDeLaGrafica, Medida
 from app.caja.periodos import DIAS_MAXIMOS_DEL_RANGO, TIPOS_DE_PERIODO, Periodo, rango
 from app.caja.periodos import periodo as periodo_de
 from app.caja.reglas import NOMBRE_DEL_MEDIO
+from app.config import obtener_entorno
+from app.integraciones.correo import CorreoNoEnviado
 from app.turnos import balance as balance_del_lavadero
+from app.turnos import reporte as reporte_del_lavadero
 from app.turnos.balance import Balance, DiaDelLavadero
+from app.turnos.recibo import datos_del_ticket, leer_ajustes
 from app.web.caja import fecha as leer_fecha
 from app.web.caja import hoy, ticket
-from app.web.caja_del_lavadero import ajustes_del_ticket
-from app.web.comun import Admin, SesionBD, pagina, verificar_origen
+from app.web.comun import Admin, SesionBD, pagina, sin_cambios, verificar_origen
 
 router = APIRouter(dependencies=[Depends(verificar_origen)])
 
@@ -73,61 +76,6 @@ def _enlace(p: Periodo, ver: str = "plata", dia: date | None = None) -> str:
 
 def _ultimos(dias: int, de_hoy: date) -> Periodo:
     return rango(de_hoy - timedelta(days=dias - 1), de_hoy)
-
-
-# --- El reporte del día ----------------------------------------------------------------------
-
-
-def _caja_en_palabras(b: Balance) -> str:
-    if not b.cajas:
-        return "No se abrió caja."
-    if not b.cajas_cerradas:
-        return "La caja sigue abierta."
-    partes = []
-    if b.cajas_que_cuadraron:
-        partes.append(_veces(b.cajas_que_cuadraron, "cuadró", "cuadraron"))
-    if b.sobrantes:
-        partes.append(f"sobraron {formato.pesos(sum(b.sobrantes))}")
-    if b.faltantes:
-        partes.append(f"faltaron {formato.pesos(sum(b.faltantes))}")
-    texto = ", ".join(partes)
-    return f"Caja: {texto}." if len(b.cajas_cerradas) == 1 else f"Cajas: {texto}."
-
-
-def texto_del_reporte(b: Balance, negocio: str, negrilla: bool = True) -> str:
-    """El reporte del día en texto, para WhatsApp (con *negrilla*) o para leer en la pantalla.
-    Con placas y plata, sin nombres ni celulares de los clientes."""
-    n = "*" if negrilla else ""
-    lineas = [
-        f"{n}{negocio} · {b.periodo.titulo}{n}",
-        f"Cobrado: {n}{formato.pesos(b.cobrado)}{n} en "
-        + _veces(b.cobros, "turno", "turnos")
-        + (f" (promedio {formato.pesos(b.ticket_promedio)})" if b.ticket_promedio else ""),
-    ]
-    if b.por_medio:
-        lineas.append(
-            " · ".join(
-                f"{NOMBRE_DEL_MEDIO[medio]} {formato.pesos(valor)}"
-                for medio, valor in b.por_medio.items()
-            )
-        )
-    lineas.append(
-        f"Turnos pedidos: {b.turnos} (WhatsApp {b.por_whatsapp}, en el local {b.en_el_local})"
-        f" · cancelados {b.cancelados} · no llegaron {b.no_llegaron}"
-    )
-    if b.lavado_promedio_min is not None:
-        lineas.append(f"Lavado promedio: {formato.duracion(b.lavado_promedio_min)}")
-    if b.descuentos:
-        lineas.append(
-            f"Descuentos: {formato.pesos(b.descuentos)} en "
-            + _veces(b.con_descuento, "turno", "turnos")
-        )
-    lineas.append(_caja_en_palabras(b))
-    correcciones = [*b.correcciones, *b.correcciones_de_antes]
-    if correcciones:
-        lineas.append(f"Correcciones ({len(correcciones)}):")
-        lineas += [f"- {fila.en_una_linea}" for fila in correcciones]
-    return "\n".join(lineas)
 
 
 # --- Las pantallas ---------------------------------------------------------------------------
@@ -195,10 +143,12 @@ def pagina_balance(
         "enlace_del_dia": lambda dia: _enlace(periodo_de("dia", dia)),
     }
     if p.tipo == "dia":
-        texto = texto_del_reporte(b, "Lavadero")
+        informe = reporte_del_lavadero.armar(sesion, p.desde, balance_del_dia=b)
         contexto |= {
-            "whatsapp": f"https://wa.me/?text={quote(texto)}",
-            "texto_del_reporte": texto_del_reporte(b, "Lavadero", negrilla=False),
+            "whatsapp": reporte_del_lavadero.enlace_de_whatsapp(informe),
+            "texto_del_reporte": reporte_del_lavadero.texto(informe, negrilla=False),
+            "correo_configurado": obtener_entorno().correo_configurado,
+            "destinos": leer_ajustes(sesion).destinos_del_reporte,
             "ver_el_mes": ir(periodo_de("mes", p.desde)),
         }
     else:
@@ -229,4 +179,16 @@ def ticket_del_reporte(
     """El reporte del día impreso, para firmar o dejar en la caja."""
     b = balance_del_lavadero.balance(sesion, periodo_de("dia", min(fecha or hoy(), hoy())))
     contexto = {"b": b, "nombre_del_medio": NOMBRE_DEL_MEDIO}
-    return ticket(request, "tickets/reporte_lavadero.html", contexto, ajustes_del_ticket(sesion))
+    return ticket(request, "tickets/reporte_lavadero.html", contexto, datos_del_ticket(sesion))
+
+
+@router.post("/balance/enviar", response_class=HTMLResponse)
+def enviar_reporte(sesion: SesionBD, _: Admin, fecha: Annotated[str, Form()] = "") -> Response:
+    """Manda ya el reporte de un día por correo (por ejemplo, para probar el correo)."""
+    try:
+        cuantos = reporte_del_lavadero.enviar_por_correo(
+            sesion, min(leer_fecha(fecha) or hoy(), hoy())
+        )
+    except CorreoNoEnviado as error:
+        return sin_cambios(error=str(error))
+    return sin_cambios(aviso=f"Reporte enviado a {cuantos} correo{'s' if cuantos != 1 else ''}.")

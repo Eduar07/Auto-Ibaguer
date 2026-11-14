@@ -1,9 +1,10 @@
-"""La pantalla de configuración: negocio y horario, bot, puestos, menú y precios, y el aviso
-de datos personales.
+"""La pantalla de configuración: negocio y horario, bot, puestos, menú y precios, el aviso
+de datos personales, y el recibo y el reporte del día.
 
 Todo se guarda junto con un solo botón: si algo no sirve, no se guarda nada y cada campo
 dice qué le falta. Las reglas viven en app.catalogo.configuracion (parámetros, precios y
-servicios) y en app.turnos.casos_de_uso (puestos, porque mueven la fila).
+servicios) y en app.turnos.casos_de_uso (puestos, porque mueven la fila). El recibo y el
+reporte se guardan aparte, con su botón (sus reglas, en app.turnos.recibo).
 """
 
 from dataclasses import dataclass
@@ -20,10 +21,15 @@ from app import formato, tiempo
 from app.catalogo import configuracion
 from app.catalogo.parametros import leer_parametros
 from app.catalogo.tablas import Fila, Puesto, Servicio, ServicioPrecio, TipoVehiculo
+from app.config import obtener_entorno
 from app.errores import ReglaDelNegocio
 from app.integraciones import gemini
+from app.parqueadero.tarifas import ANCHOS_DE_TICKET
 from app.turnos import casos_de_uso as casos
 from app.turnos import consultas
+from app.turnos.recibo import AjustesDelRecibo
+from app.turnos.recibo import guardar_ajustes as guardar_ajustes_del_recibo
+from app.turnos.recibo import leer_ajustes as leer_ajustes_del_recibo
 from app.web.comun import (
     Admin,
     SesionBD,
@@ -182,7 +188,7 @@ def pagina_configuracion(request: Request, sesion: SesionBD, _: Admin) -> Respon
         "dias_de_duracion_real": DIAS_DE_DURACION_REAL,
         "gemini": gemini.estado(leer_parametros(sesion)),
         "largo_de_la_ficha": configuracion.LARGO_DE_LA_FICHA,
-    }
+    } | _contexto_del_recibo(leer_ajustes_del_recibo(sesion))
     return pagina(request, sesion, "configuracion.html", contexto, seccion="lavadero/configuracion")
 
 
@@ -336,3 +342,49 @@ async def agregar_servicio(request: Request, sesion: SesionBD, _: Admin) -> Resp
         cerrar_dialogo=True,
         aviso=f"{nombre} ya está en el menú de {fila.nombre.lower()}.",
     )
+
+
+# --- Recibo y reporte -------------------------------------------------------------------------
+
+
+def _contexto_del_recibo(recibo: AjustesDelRecibo, error: str | None = None) -> dict[str, Any]:
+    return {
+        "recibo": recibo,
+        "error_recibo": error,
+        "anchos_de_ticket": ANCHOS_DE_TICKET,
+        "correo_configurado": obtener_entorno().correo_configurado,
+    }
+
+
+@router.post("/configuracion/recibo", response_class=HTMLResponse)
+def guardar_recibo(
+    request: Request,
+    sesion: SesionBD,
+    _: Admin,
+    nit: Annotated[str, Form()] = "",
+    direccion: Annotated[str, Form()] = "",
+    pie_recibo: Annotated[str, Form()] = "",
+    ancho_ticket: Annotated[str, Form()] = "",
+    imprimir_al_cobrar: Annotated[str, Form()] = "",
+    correos_reporte: Annotated[str, Form()] = "",
+) -> Response:
+    """Lo que sale en el recibo del lavadero y a quién le llega su reporte del día."""
+    escrito = AjustesDelRecibo(
+        nit=nit,
+        direccion=direccion,
+        pie_recibo=pie_recibo,
+        ancho_ticket=entero(ancho_ticket.strip()) or 0,
+        imprimir_al_cobrar=imprimir_al_cobrar == "si",
+        correos_reporte=correos_reporte,
+    )
+    try:
+        guardar_ajustes_del_recibo(sesion, escrito)
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        # Se vuelve a pintar con lo que escribió, para que corrija sin escribir todo de nuevo.
+        return html(request, "_recibo_y_reporte.html", _contexto_del_recibo(escrito, str(error)))
+    respuesta = html(
+        request, "_recibo_y_reporte.html", _contexto_del_recibo(leer_ajustes_del_recibo(sesion))
+    )
+    return con_eventos(respuesta, aviso="Recibo y reporte guardados.")

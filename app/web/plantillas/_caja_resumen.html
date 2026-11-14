@@ -37,7 +37,7 @@
   <div class="tarjeta-dato">
     <span>Efectivo que debe haber en el cajón</span>
     <strong>{{ cuadre.efectivo_esperado|pesos }}</strong>
-    <span>Base {{ c.base|pesos }} + efectivo {{ cuadre.por_medio(MedioPago.EFECTIVO)|pesos }}</span>
+    <span>Base {{ c.base|pesos }} + efectivo {{ cuadre.por_medio(MedioPago.EFECTIVO)|pesos }}{% if cuadre.salidas_de_caja %} − salidas {{ cuadre.salidas_de_caja|pesos }}{% endif %}</span>
   </div>
   {% if c.cerrada_en %}
   <div class="tarjeta-dato">
@@ -112,3 +112,37 @@
   </ul>
 </section>
 {%- endmacro %}
+
+{#- La plata que salió del cajón de esta caja: gastos, retiros y consignaciones. Las anuladas
+    se ven tachadas, con el motivo. Con `anular`, cada una trae su botón. -#}
+{% macro salidas_de_caja(salidas, rutas, anular=False, registrar=False) -%}
+<section class="lista" aria-labelledby="t-salidas">
+  <div class="lista__cabeza">
+    <h3 id="t-salidas">Salidas de esta caja</h3>
+    {% if registrar %}<button type="button" class="boton boton--borde boton--pequeno" hx-get="{{ rutas.caja }}/salidas/nueva" hx-target="#dialogo-contenido">Registrar salida</button>{% endif %}
+  </div>
+  {% if salidas %}
+  <ul class="movimientos">
+    {% for f in salidas %}{% set s = f.salida %}
+    <li{% if s.anulada %} class="movimientos--anulado"{% endif %}>
+      <time>{{ s.registrada_en|hora }}</time>
+      <span class="movimientos__que">
+        <strong>{{ f.que }}</strong>
+        <span class="suave">{{ s.descripcion }} · {{ f.registro }}</span>
+        {% if s.anulada %}<span class="suave">Anulada por {{ f.anulo }}: {{ s.motivo_anulacion }}</span>{% endif %}
+      </span>
+      <span class="movimientos__valor">
+        <strong class="{{ 'tachado' if s.anulada else 'diferencia--falta' }}">−{{ s.valor|pesos }}</strong>
+        {% if anular and not s.anulada %}
+        <button type="button" class="boton-texto movimientos__corregir" hx-get="{{ rutas.caja }}/salidas/{{ s.id }}/anular" hx-target="#dialogo-contenido">Anular</button>
+        {% endif %}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="lista__vacia">No ha salido plata del cajón.{% if registrar %} Si pagas algo con plata de la caja, o un jefe se lleva plata, regístralo aquí: así la caja cuadra.{% endif %}</p>
+  {% endif %}
+</section>
+{%- endmacro %}
+

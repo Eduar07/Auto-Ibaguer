@@ -25,6 +25,10 @@
 </dl>
 <div class="ticket__total"><span>Entró</span><strong>{{ cuadre.total|pesos }}</strong></div>
 <dl class="ticket__datos">
+  {% if cuadre.salidas_de_caja %}
+  <dt>Salidas</dt><dd>−{{ cuadre.salidas_de_caja|pesos }}</dd>
+  {% for f in salidas if not f.salida.anulada %}<dt class="ticket__sub">{{ f.salida.descripcion }}</dt><dd class="ticket__sub">{{ f.salida.valor|pesos }}</dd>{% endfor %}
+  {% endif %}
   <dt>Efectivo esperado</dt><dd>{{ cuadre.efectivo_esperado|pesos }}</dd>
   {% if c.cerrada_en %}
   <dt>Contado</dt><dd>{{ c.efectivo_contado|pesos }}</dd>

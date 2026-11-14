@@ -1,0 +1,24 @@
+{#- Anular una salida que no fue. No se borra: queda tachada, con el motivo y tu usuario, y
+    como corrección de la caja (después del cierre, si ya se cerró). -#}
+{% import "_iconos.html" as iconos %}
+{% set s = fila.salida %}
+<form class="dialogo__caja" hx-post="{{ rutas.caja }}/salidas/{{ s.id }}/anular" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Anular la salida</h2>
+    <p>{{ fila.que }} · {{ s.descripcion }} · <strong>{{ s.valor|pesos }}</strong> · {{ cuando_paso(s.registrada_en) }}, {{ fila.registro }}</p>
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <p>{% if caja_cerrada %}La caja ya se cerró: lo que debía haber en el cajón sube {{ s.valor|pesos }} y la diferencia cambia.{% else %}Lo que debe haber en el cajón al cerrar sube {{ s.valor|pesos }}.{% endif %}</p>
+    <div class="campo">
+      <label for="motivo-anular">¿Por qué se anula?</label>
+      <input id="motivo-anular" name="motivo" required maxlength="200" value="{{ motivo or '' }}" placeholder="Se registró dos veces">
+    </div>
+  </div>
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--peligro boton--grande">Anular la salida</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

@@ -1,0 +1,47 @@
+{#- Registrar plata que sale del cajón de la caja abierta: un gasto (y en qué), un retiro o una
+    consignación. Lo que debe haber al cerrar baja en ese valor. -#}
+{% import "_iconos.html" as iconos %}
+{% set f = formulario or {} %}
+<form class="dialogo__caja" hx-post="{{ rutas.caja }}/salidas" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Registrar una salida</h2>
+    <p>Plata que sale del cajón de la caja {{ caja.id }}. Ahora debe haber {{ efectivo|pesos }}.</p>
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <fieldset>
+      <legend>¿Qué fue?</legend>
+      <div class="opciones opciones--3">
+        {% for tipo, nombre, ayuda in tipos_de_salida %}
+        <label class="opcion opcion--centrada">
+          <input type="radio" name="tipo" value="{{ tipo }}" required {% if (f.tipo or "gasto") == tipo %}checked{% endif %}>
+          <span><strong>{{ nombre }}</strong><small class="suave">{{ ayuda }}</small></span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="campo solo-si-es-gasto">
+      <label for="salida-categoria">¿En qué se gastó?</label>
+      <select id="salida-categoria" name="categoria">
+        <option value="">Elige…</option>
+        {% for clave, nombre in categorias %}<option value="{{ clave }}" {% if f.categoria == clave %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="salida-descripcion">Descripción</label>
+      <input id="salida-descripcion" name="descripcion" required maxlength="120" value="{{ f.descripcion or '' }}"
+             placeholder="Bolsas de basura y jabón">
+    </div>
+    <div class="campo campo--corto">
+      <label for="salida-valor">Valor</label>
+      <input id="salida-valor" name="valor" inputmode="numeric" class="monto" required maxlength="12" value="{{ f.valor or '' }}" placeholder="12.000">
+    </div>
+    <div class="nota nota--suelta">{{ iconos.icono("info", 20) }}<span>Queda con tu usuario y sale en el cierre, en el Balance y en el reporte a los jefes. Si te equivocas, se anula con el motivo: no se borra.</span></div>
+  </div>
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande">Registrar la salida</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

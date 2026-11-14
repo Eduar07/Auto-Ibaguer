@@ -1,5 +1,6 @@
-"""Tablas de la caja de cada negocio: la caja misma y sus correcciones (de un cobro equivocado y
-de la base o el conteo de la caja).
+"""Tablas de la caja de cada negocio: la caja misma, la plata que sale de ella (gastos, retiros
+y consignaciones) y sus correcciones (de un cobro equivocado, y de la base, el conteo o una
+salida de la caja).
 
 Las reglas de plata también viven en la base (CHECK e índices únicos): aunque dos personas
 toquen "Abrir caja" en el mismo segundo, o un error del programa lo intente, la base no deja
@@ -23,7 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.caja.estados import DatoDeCaja, Negocio, TipoCorreccion
+from app.caja.estados import CategoriaDeGasto, DatoDeCaja, Negocio, TipoCorreccion, TipoDeSalida
 from app.db.base import Base, lista_cerrada
 from app.turnos.estados import MedioPago
 
@@ -160,6 +161,9 @@ class CorreccionDeCaja(Base):
     despues_del_cierre: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     valor_antes: Mapped[int] = mapped_column(Integer)
     valor_despues: Mapped[int] = mapped_column(Integer)
+    # Qué salida se anuló, en palabras ("Gasto · Aseo: bolsas de basura"). Solo en las de
+    # una salida: la base y el conteo se explican solos.
+    detalle: Mapped[str | None] = mapped_column(Text)
     motivo: Mapped[str] = mapped_column(Text)
     administrador_id: Mapped[int | None] = mapped_column(ForeignKey("administrador.id"))
     fecha_hora: Mapped[datetime] = mapped_column(
@@ -168,6 +172,55 @@ class CorreccionDeCaja(Base):
 
     @property
     def cambio_en_efectivo(self) -> int:
-        """Cuánto cambió el efectivo que debe haber en el cajón: la base cuenta; el conteo no
-        (cambia lo que se contó, no lo que debía haber)."""
-        return self.valor_despues - self.valor_antes if self.dato is DatoDeCaja.BASE else 0
+        """Cuánto cambió el efectivo que debe haber en el cajón. La base cuenta; una salida
+        anulada también (esa plata no salió: debe estar); el conteo no (cambia lo que se
+        contó, no lo que debía haber)."""
+        if self.dato is DatoDeCaja.BASE:
+            return self.valor_despues - self.valor_antes
+        if self.dato is DatoDeCaja.SALIDA:
+            return self.valor_antes - self.valor_despues
+        return 0
+
+
+class SalidaDeCaja(Base):
+    """Plata que salió del cajón: un gasto (con su categoría), un retiro o una consignación.
+
+    Lo que debe haber al cerrar es la base, más lo cobrado en efectivo, menos las salidas. Una
+    salida no se borra: se anula, con motivo y quién (si ya se cerró la caja, también queda
+    como corrección de la caja). Así nadie saca plata "sin que quede escrito".
+    """
+
+    __tablename__ = "salida_de_caja"
+    __table_args__ = (
+        CheckConstraint("valor > 0", name="valor_positivo"),
+        CheckConstraint("btrim(descripcion) <> ''", name="con_descripcion"),
+        # Un gasto dice en qué; un retiro o una consignación no tienen categoría.
+        CheckConstraint("(tipo = 'gasto') = (categoria IS NOT NULL)", name="categoria_del_gasto"),
+        # Anulada: cuándo, quién y por qué, juntos.
+        CheckConstraint(
+            "(anulada_en IS NULL) = (motivo_anulacion IS NULL)", name="anulada_con_motivo"
+        ),
+        CheckConstraint(
+            "motivo_anulacion IS NULL OR btrim(motivo_anulacion) <> ''", name="motivo_no_vacio"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    caja_id: Mapped[int] = mapped_column(ForeignKey("caja.id"), index=True)
+    tipo: Mapped[TipoDeSalida] = mapped_column(lista_cerrada(TipoDeSalida, "tipo_de_salida"))
+    categoria: Mapped[CategoriaDeGasto | None] = mapped_column(
+        lista_cerrada(CategoriaDeGasto, "categoria_de_gasto")
+    )
+    descripcion: Mapped[str] = mapped_column(Text)
+    valor: Mapped[int] = mapped_column(Integer)
+    registrada_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    registrada_por: Mapped[int | None] = mapped_column(ForeignKey("administrador.id"))
+    anulada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    anulada_por: Mapped[int | None] = mapped_column(ForeignKey("administrador.id"))
+    motivo_anulacion: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def anulada(self) -> bool:
+        return self.anulada_en is not None

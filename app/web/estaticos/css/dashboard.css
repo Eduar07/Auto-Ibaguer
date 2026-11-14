@@ -728,6 +728,11 @@ legend { padding: 0; margin-bottom: 8px; }
   background: linear-gradient(to top, var(--fondo) 75%, rgba(243, 245, 247, 0));
 }
 .barra-guardar .boton { min-height: 48px; padding: 0 22px; }
+/* Salidas de caja: el campo de la categoría solo cuando es un gasto; las anuladas, apagadas. */
+form:not(:has(input[name="tipo"][value="gasto"]:checked)) .solo-si-es-gasto { display: none; }
+.movimientos--anulado { opacity: 0.6; }
+.opcion small { display: block; font-size: 12px; font-weight: 400; margin-top: 2px; }
+.boton--pequeno { min-height: 36px; padding: 0 12px; font-size: 14px; }
 /* El botón de una sección que se guarda aparte (Recibo y reporte), al final de la sección. */
 .seccion-configuracion__acciones { display: flex; justify-content: flex-end; }
 .seccion-configuracion__acciones .boton { min-height: 48px; padding: 0 22px; }

@@ -15,8 +15,15 @@ from sqlalchemy.orm import Session
 
 from app import formato, tiempo
 from app.caja import reglas
-from app.caja.estados import DatoDeCaja, Negocio, TipoCorreccion
-from app.caja.tablas import Caja, CorreccionCobro, CorreccionDeCaja
+from app.caja.estados import (
+    NOMBRE_DE_LA_CATEGORIA,
+    NOMBRE_DE_LA_SALIDA,
+    DatoDeCaja,
+    Negocio,
+    TipoCorreccion,
+    TipoDeSalida,
+)
+from app.caja.tablas import Caja, CorreccionCobro, CorreccionDeCaja, SalidaDeCaja
 from app.web.tablas import Administrador
 
 # Cómo cerró la caja: cuadró, sobró o faltó plata, o se corrigió después del cierre.
@@ -305,11 +312,19 @@ class FilaCorreccionDeCaja:
         return self.correccion.dato is DatoDeCaja.CONTEO
 
     @property
+    def es_de_una_salida(self) -> bool:
+        return self.correccion.dato is DatoDeCaja.SALIDA
+
+    @property
     def que_paso(self) -> str:
+        if self.es_de_una_salida:
+            return "Se anuló una salida"
         return "Se corrigió el efectivo contado" if self.es_del_conteo else "Se corrigió la base"
 
     @property
     def detalle(self) -> str:
+        if self.es_de_una_salida:
+            return self.correccion.detalle or "Plata que salió del cajón"
         return "Lo que se contó al cerrar" if self.es_del_conteo else "La plata para vueltos"
 
     @property
@@ -318,7 +333,8 @@ class FilaCorreccionDeCaja:
 
     @property
     def despues(self) -> str:
-        return formato.pesos(self.correccion.valor_despues)
+        """Vacío si la salida se anuló: esa plata ya no sale (se muestra tachada)."""
+        return "" if self.es_de_una_salida else formato.pesos(self.correccion.valor_despues)
 
     @property
     def cambio_en_efectivo(self) -> int:
@@ -327,15 +343,19 @@ class FilaCorreccionDeCaja:
     @property
     def efecto(self) -> tuple[str, int]:
         c = self.correccion
+        if self.es_de_una_salida:
+            return "En el cajón", c.cambio_en_efectivo
         return ("Contado" if self.es_del_conteo else "Base", c.valor_despues - c.valor_antes)
 
     @property
     def en_una_linea(self) -> str:
         """ "Se corrigió el efectivo contado ($150.000 → $105.000), después del cierre.
         Motivo: se escribió mal. Por eduar." """
-        que_paso = _despues_del_cierre(
-            f"{self.que_paso} ({self.antes} → {self.despues})", self.despues_del_cierre
-        )
+        if self.es_de_una_salida:
+            que_paso = f"Se anuló la salida «{self.detalle}» de {self.antes}"
+        else:
+            que_paso = f"{self.que_paso} ({self.antes} → {self.despues})"
+        que_paso = _despues_del_cierre(que_paso, self.despues_del_cierre)
         return f"{que_paso}. Motivo: {self.motivo}. Por {self.quien}."
 
 
@@ -467,3 +487,154 @@ def correcciones_a_cajas_de_antes(
     correcciones = [correccion for correccion, _ in [*de_cobros, *de_cajas]]
     quienes = nombres(sesion, {c.administrador_id for c in correcciones})
     return filas_de_correcciones([c for c, _ in de_cobros], [c for c, _ in de_cajas], quienes, dias)
+
+
+# --- La plata que sale del cajón -------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FilaSalida:
+    """Una salida de caja lista para mostrar: quién la registró y, si se anuló, quién."""
+
+    salida: SalidaDeCaja
+    registro: str
+    anulo: str | None = None
+
+    @property
+    def que(self) -> str:
+        """ "Gasto · Aseo", "Retiro", "Consignación"."""
+        s = self.salida
+        nombre = NOMBRE_DE_LA_SALIDA[s.tipo]
+        return f"{nombre} · {NOMBRE_DE_LA_CATEGORIA[s.categoria]}" if s.categoria else nombre
+
+
+def salidas_de_las_cajas(sesion: Session, caja_ids: Sequence[int]) -> dict[int, list[FilaSalida]]:
+    """Las salidas de cada caja (también las anuladas, que se muestran tachadas), en orden."""
+    if not caja_ids:
+        return {}
+    salidas = list(
+        sesion.scalars(
+            select(SalidaDeCaja)
+            .where(SalidaDeCaja.caja_id.in_(caja_ids))
+            .order_by(SalidaDeCaja.registrada_en, SalidaDeCaja.id)
+        )
+    )
+    quienes = nombres(
+        sesion, {s.registrada_por for s in salidas} | {s.anulada_por for s in salidas}
+    )
+    por_caja: dict[int, list[FilaSalida]] = {caja_id: [] for caja_id in caja_ids}
+    for s in salidas:
+        por_caja[s.caja_id].append(
+            FilaSalida(
+                s,
+                quienes.get(s.registrada_por, "—"),
+                quienes.get(s.anulada_por, "—") if s.anulada else None,
+            )
+        )
+    return por_caja
+
+
+@dataclass(frozen=True)
+class SalidasDelPeriodo:
+    """Lo que salió de las cajas de un negocio en un periodo (sin las anuladas): los gastos
+    por categoría, y aparte lo que se llevaron los jefes y lo que se consignó."""
+
+    gastos: list[tuple[str, int, int]]  # (categoría, total, cuántos), de mayor a menor
+    retiros: int = 0
+    consignaciones: int = 0
+
+    @property
+    def total_gastos(self) -> int:
+        return sum(total for _, total, _ in self.gastos)
+
+    @property
+    def total(self) -> int:
+        return self.total_gastos + self.retiros + self.consignaciones
+
+
+def salidas_del_periodo(
+    sesion: Session, negocio: Negocio, inicio: datetime, fin: datetime
+) -> SalidasDelPeriodo:
+    """Las salidas registradas entre `inicio` y `fin` (sin incluirlo), sin las anuladas."""
+    filas = sesion.execute(
+        select(
+            SalidaDeCaja.tipo,
+            SalidaDeCaja.categoria,
+            func.sum(SalidaDeCaja.valor),
+            func.count(),
+        )
+        .join(Caja, Caja.id == SalidaDeCaja.caja_id)
+        .where(
+            Caja.negocio == negocio,
+            SalidaDeCaja.anulada_en.is_(None),
+            SalidaDeCaja.registrada_en >= inicio,
+            SalidaDeCaja.registrada_en < fin,
+        )
+        .group_by(SalidaDeCaja.tipo, SalidaDeCaja.categoria)
+    ).all()
+    gastos = sorted(
+        (
+            (NOMBRE_DE_LA_CATEGORIA[categoria], int(total), cuantos)
+            for tipo, categoria, total, cuantos in filas
+            if tipo is TipoDeSalida.GASTO
+        ),
+        key=lambda gasto: -gasto[1],
+    )
+    por_tipo = {tipo: int(total) for tipo, _, total, _ in filas if tipo is not TipoDeSalida.GASTO}
+    return SalidasDelPeriodo(
+        gastos=gastos,
+        retiros=por_tipo.get(TipoDeSalida.RETIRO, 0),
+        consignaciones=por_tipo.get(TipoDeSalida.CONSIGNACION, 0),
+    )
+
+
+def lineas_de_salidas_para_excel(
+    sesion: Session, negocio: Negocio, inicio: datetime, fin: datetime
+) -> list[tuple[str, ...]]:
+    """Cada salida del periodo (también las anuladas, marcadas), para el archivo de Excel."""
+    salidas = list(
+        sesion.scalars(
+            select(SalidaDeCaja)
+            .join(Caja, Caja.id == SalidaDeCaja.caja_id)
+            .where(
+                Caja.negocio == negocio,
+                SalidaDeCaja.registrada_en >= inicio,
+                SalidaDeCaja.registrada_en < fin,
+            )
+            .order_by(SalidaDeCaja.registrada_en, SalidaDeCaja.id)
+        )
+    )
+    quienes = nombres(
+        sesion, {s.registrada_por for s in salidas} | {s.anulada_por for s in salidas}
+    )
+    lineas: list[tuple[str, ...]] = [
+        (
+            "Fecha",
+            "Hora",
+            "Caja",
+            "Tipo",
+            "Categoría",
+            "Descripción",
+            "Valor",
+            "Registró",
+            "Anulada",
+            "Motivo de la anulación",
+        )
+    ]
+    for s in salidas:
+        local = tiempo.hora_local(s.registrada_en)
+        lineas.append(
+            (
+                f"{local:%d/%m/%Y}",
+                formato.hora(local),
+                str(s.caja_id),
+                NOMBRE_DE_LA_SALIDA[s.tipo],
+                NOMBRE_DE_LA_CATEGORIA[s.categoria] if s.categoria else "",
+                s.descripcion,
+                str(s.valor),
+                quienes.get(s.registrada_por, "—"),
+                "Sí" if s.anulada else "No",
+                s.motivo_anulacion or "",
+            )
+        )
+    return lineas

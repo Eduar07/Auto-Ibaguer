@@ -3,7 +3,7 @@
     botón y la caja el de corregir el conteo o la base. Se vuelve a pintar sola después de
     corregir. -#}
 {% import "_iconos.html" as iconos %}
-{% from "_caja_resumen.html" import resumen_de_caja, movimientos_de_caja, correcciones_de_caja %}
+{% from "_caja_resumen.html" import resumen_de_caja, movimientos_de_caja, correcciones_de_caja, salidas_de_caja %}
 {% set c = resumen.caja %}
 <section class="panel" aria-labelledby="t-caja">
   <div class="panel__cabeza">
@@ -37,4 +37,5 @@
   <div class="lista__cabeza"><h3 id="t-movimientos">Cobros de esta caja</h3></div>
   {{ movimientos_de_caja(movimientos, corregir=se_puede_corregir) }}
 </section>
+{% if salidas or not c.cerrada_en %}{{ salidas_de_caja(salidas, rutas, anular=se_puede_corregir, registrar=not c.cerrada_en) }}{% endif %}
 {% if resumen.correcciones %}{{ correcciones_de_caja(resumen.correcciones) }}{% endif %}

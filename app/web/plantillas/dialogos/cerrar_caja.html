@@ -17,7 +17,7 @@
       <div class="tarjeta-dato">
         <span>Debe haber en el cajón</span>
         <strong>{{ esperado|pesos }}</strong>
-        <span>Base {{ c.base|pesos }} + efectivo {{ resumen.cuadre.por_medio(MedioPago.EFECTIVO)|pesos }}</span>
+        <span>Base {{ c.base|pesos }} + efectivo {{ resumen.cuadre.por_medio(MedioPago.EFECTIVO)|pesos }}{% if resumen.cuadre.salidas_de_caja %} − salidas {{ resumen.cuadre.salidas_de_caja|pesos }}{% endif %}</span>
       </div>
       <div class="tarjeta-dato">
         <span>Por otros medios (no están en el cajón)</span>

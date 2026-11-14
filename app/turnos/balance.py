@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.caja import consultas as de_la_caja
-from app.caja.consultas import Correccion
+from app.caja.consultas import Correccion, SalidasDelPeriodo
 from app.caja.periodos import Periodo, dia_en_bogota, limites
 from app.catalogo.tablas import Fila, Servicio, TipoVehiculo
 from app.clientes.tablas import Vehiculo
@@ -81,6 +81,8 @@ class Balance:
     # Las que se hicieron en el periodo a cajas de antes (ya cerradas): cambiaron días que ya
     # se habían revisado. Las de las cajas del periodo están en `correcciones`.
     correcciones_de_antes: list[Correccion] = field(default_factory=list)
+    # La plata que salió de las cajas del periodo: gastos, retiros y consignaciones.
+    salidas_de_caja: SalidasDelPeriodo = field(default_factory=lambda: SalidasDelPeriodo(gastos=[]))
 
     @property
     def ticket_promedio(self) -> int | None:
@@ -260,6 +262,7 @@ def balance(sesion: Session, p: Periodo) -> Balance:
         correcciones_de_antes=de_la_caja.correcciones_a_cajas_de_antes(
             sesion, NEGOCIO, inicio, fin
         ),
+        salidas_de_caja=de_la_caja.salidas_del_periodo(sesion, NEGOCIO, inicio, fin),
     )
 
 

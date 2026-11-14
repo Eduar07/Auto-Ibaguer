@@ -21,11 +21,18 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app import formato, tiempo
+from app.caja import casos_de_uso as cajas
+from app.caja import consultas as de_la_caja
 from app.caja import reglas
 from app.caja.consultas import RESULTADOS, Cierres, FiltroDeCierres
 from app.caja.errores import CajaNoCorregible, ValorInvalido
-from app.caja.estados import Negocio
-from app.caja.tablas import Caja, CorreccionDeCaja
+from app.caja.estados import (
+    NOMBRE_DE_LA_CATEGORIA,
+    NOMBRE_DE_LA_SALIDA,
+    Negocio,
+    TipoDeSalida,
+)
+from app.caja.tablas import Caja, CorreccionDeCaja, SalidaDeCaja
 from app.db.sesion import AbrirSesion, abrir_sesion
 from app.errores import ReglaDelNegocio
 from app.turnos.estados import MedioPago
@@ -53,6 +60,11 @@ class RutasDeCaja:
     caja: str  # la pantalla de la caja: "/parqueadero/caja" o "/caja"
     exportar: str  # el archivo para Excel con cada cobro
     exportar_cierres: str  # el de los cierres
+
+    @property
+    def exportar_salidas(self) -> str:
+        """El archivo para Excel con cada salida de caja (gastos, retiros y consignaciones)."""
+        return f"{self.caja}/exportar-salidas"
 
 
 @dataclass(frozen=True)
@@ -197,6 +209,25 @@ def consulta_de_cierres(filtro: FiltroDeCierres, **mas: Any) -> str:
     return urlencode({clave: valor for clave, valor in datos.items() if valor})
 
 
+def salidas_de(sesion: Session, caja: Caja | None) -> list[de_la_caja.FilaSalida]:
+    if caja is None:
+        return []
+    return de_la_caja.salidas_de_las_cajas(sesion, [caja.id])[caja.id]
+
+
+# Qué puede ser una salida, para el diálogo: (clave, nombre, para qué es).
+TIPOS_DE_SALIDA = [
+    (TipoDeSalida.GASTO.value, NOMBRE_DE_LA_SALIDA[TipoDeSalida.GASTO], "Se pagó algo"),
+    (TipoDeSalida.RETIRO.value, NOMBRE_DE_LA_SALIDA[TipoDeSalida.RETIRO], "Se la llevó un jefe"),
+    (
+        TipoDeSalida.CONSIGNACION.value,
+        NOMBRE_DE_LA_SALIDA[TipoDeSalida.CONSIGNACION],
+        "Se llevó al banco",
+    ),
+]
+CATEGORIAS = [(categoria.value, nombre) for categoria, nombre in NOMBRE_DE_LA_CATEGORIA.items()]
+
+
 # --- Lo que se pinta ---------------------------------------------------------------------
 
 
@@ -216,6 +247,7 @@ def contexto_de_la_caja(
         "caja_de_otro_dia": caja_de_otro_dia(caja),
         "resumen": c.resumen(sesion, caja) if caja else None,
         "movimientos": c.movimientos(sesion, caja.id) if caja else [],
+        "salidas": salidas_de(sesion, caja),
         "cierres": cierres,
         "filtro": filtro,
         "resultados": RESULTADOS,
@@ -243,6 +275,7 @@ def contexto_de_una_caja(c: CajaDeUnNegocio, sesion: Session, caja: Caja) -> dic
         "rutas": c.rutas,
         "resumen": c.resumen(sesion, caja),
         "movimientos": c.movimientos(sesion, caja.id),
+        "salidas": salidas_de(sesion, caja),
         "medios": MEDIOS,
         "se_puede_corregir": reglas.caja_corregible(cerrada_en, tiempo.ahora()),
         "corregible_hasta": (
@@ -264,6 +297,7 @@ def caja_abierta_pintada(
         "caja": caja,
         "resumen": c.resumen(sesion, caja) if caja else None,
         "movimientos": c.movimientos(sesion, caja.id) if caja else [],
+        "salidas": salidas_de(sesion, caja),
     }
     respuesta = html(request, "_caja_abierta.html", contexto)
     return con_retarget(con_eventos(respuesta, **eventos), "#caja-abierta")
@@ -325,6 +359,157 @@ def rutas_de_caja(c: CajaDeUnNegocio) -> APIRouter:
         return archivo_para_excel(
             c.lineas_para_excel(sesion, desde, hasta),
             f"{c.nombre_del_archivo}-{desde.isoformat()}-a-{hasta.isoformat()}.csv",
+        )
+
+    @router.get(c.relativa(c.rutas.exportar_salidas))
+    def exportar_salidas(
+        sesion: SesionBD, _: Admin, desde: date | None = None, hasta: date | None = None
+    ) -> Response:
+        """Un archivo para Excel con cada salida de caja entre dos días (también las anuladas,
+        marcadas): gastos con su categoría, retiros y consignaciones."""
+        hasta = hasta or hoy()
+        desde = desde or hasta.replace(day=1)
+        if hasta < desde:
+            desde, hasta = hasta, desde
+        inicio = datetime.combine(desde, datetime.min.time(), tiempo.zona_horaria())
+        fin = datetime.combine(
+            hasta + timedelta(days=1), datetime.min.time(), tiempo.zona_horaria()
+        )
+        return archivo_para_excel(
+            de_la_caja.lineas_de_salidas_para_excel(sesion, c.negocio, inicio, fin),
+            f"salidas-{c.nombre_del_archivo}-{desde.isoformat()}-a-{hasta.isoformat()}.csv",
+        )
+
+    # La plata que sale del cajón: registrar una salida y anularla.
+
+    def efectivo_esperado(sesion: Session, caja: Caja) -> int:
+        return c.resumen(sesion, caja).cuadre.efectivo_esperado
+
+    def dialogo_de_salida(
+        request: Request,
+        sesion: Session,
+        caja: Caja,
+        *,
+        formulario: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> Response:
+        contexto = {
+            "rutas": c.rutas,
+            "caja": caja,
+            "efectivo": efectivo_esperado(sesion, caja),
+            "tipos_de_salida": TIPOS_DE_SALIDA,
+            "categorias": CATEGORIAS,
+            "formulario": formulario,
+            "error": error,
+        }
+        return html(request, "dialogos/salida_de_caja.html", contexto)
+
+    @router.get("/caja/salidas/nueva", response_class=HTMLResponse)
+    def nueva_salida(request: Request, sesion: SesionBD, _: Admin) -> Response:
+        caja = c.caja_abierta(sesion)
+        if caja is None:
+            return sin_cambios(
+                cerrar_dialogo=True, error="La caja está cerrada: ábrela para registrar una salida."
+            )
+        return dialogo_de_salida(request, sesion, caja)
+
+    @router.post("/caja/salidas", response_class=HTMLResponse)
+    def registrar_salida(
+        request: Request,
+        sesion: SesionBD,
+        administrador: Admin,
+        tipo: Annotated[str, Form()] = "",
+        categoria: Annotated[str, Form()] = "",
+        descripcion: Annotated[str, Form()] = "",
+        valor: Annotated[str, Form()] = "",
+    ) -> Response:
+        formulario = {
+            "tipo": tipo,
+            "categoria": categoria,
+            "descripcion": descripcion,
+            "valor": valor,
+        }
+        try:
+            salida = cajas.registrar_salida(
+                sesion,
+                c.negocio,
+                tipo=tipo,
+                categoria=categoria or None,
+                descripcion=descripcion,
+                valor=leer_pesos(valor),
+                efectivo_esperado=efectivo_esperado,
+                administrador_id=administrador.id,
+            )
+            sesion.commit()
+        except ReglaDelNegocio as error:
+            sesion.rollback()
+            caja = c.caja_abierta(sesion)
+            if caja is None:
+                return sin_cambios(cerrar_dialogo=True, error=str(error))
+            return dialogo_de_salida(request, sesion, caja, formulario=formulario, error=str(error))
+        que = NOMBRE_DE_LA_SALIDA[salida.tipo].lower()
+        return caja_abierta_pintada(
+            c,
+            request,
+            sesion,
+            cerrar_dialogo=True,
+            aviso=f"Salida anotada: {formato.pesos(salida.valor)} ({que}). La caja la descuenta.",
+        )
+
+    def salida_o_404(sesion: Session, salida_id: int) -> de_la_caja.FilaSalida:
+        salida = sesion.get(SalidaDeCaja, salida_id)
+        caja = c.caja_por_numero(sesion, salida.caja_id) if salida else None
+        if salida is None or caja is None:
+            raise HTTPException(status_code=404, detail="Esa salida no existe.")
+        return next(f for f in salidas_de(sesion, caja) if f.salida.id == salida_id)
+
+    def dialogo_de_anular(
+        request: Request,
+        sesion: Session,
+        fila: de_la_caja.FilaSalida,
+        *,
+        motivo: str = "",
+        error: str | None = None,
+    ) -> Response:
+        caja = c.caja_por_numero(sesion, fila.salida.caja_id)
+        contexto = {
+            "rutas": c.rutas,
+            "fila": fila,
+            "caja_cerrada": caja is not None and not caja.abierta,
+            "motivo": motivo,
+            "error": error,
+        }
+        return html(request, "dialogos/anular_salida.html", contexto)
+
+    @router.get("/caja/salidas/{salida_id}/anular", response_class=HTMLResponse)
+    def anular_salida_dialogo(
+        request: Request, sesion: SesionBD, _: Admin, salida_id: int
+    ) -> Response:
+        return dialogo_de_anular(request, sesion, salida_o_404(sesion, salida_id))
+
+    @router.post("/caja/salidas/{salida_id}/anular", response_class=HTMLResponse)
+    def anular_salida(
+        request: Request,
+        sesion: SesionBD,
+        administrador: Admin,
+        salida_id: int,
+        motivo: Annotated[str, Form()] = "",
+    ) -> Response:
+        fila = salida_o_404(sesion, salida_id)
+        try:
+            salida = cajas.anular_salida(
+                sesion, c.negocio, salida_id, motivo=motivo, administrador_id=administrador.id
+            )
+            sesion.commit()
+        except ReglaDelNegocio as error:
+            sesion.rollback()
+            return dialogo_de_anular(request, sesion, fila, motivo=motivo, error=str(error))
+        return caja_de_la_pantalla(
+            c,
+            request,
+            sesion,
+            cerrar_dialogo=True,
+            aviso=f"Salida anulada: {formato.pesos(salida.valor)} vuelven a contar en el cajón.",
         )
 
     @router.get(c.relativa(c.rutas.exportar_cierres))
@@ -473,7 +658,11 @@ def rutas_de_caja(c: CajaDeUnNegocio) -> APIRouter:
     @router.get("/caja/{caja_id}/ticket", response_class=HTMLResponse)
     def ticket_de_caja(request: Request, sesion: SesionBD, _: Admin, caja_id: int) -> Response:
         caja = caja_o_404(sesion, caja_id)
-        contexto = {"resumen": c.resumen(sesion, caja), "medios": MEDIOS}
+        contexto = {
+            "resumen": c.resumen(sesion, caja),
+            "salidas": salidas_de(sesion, caja),
+            "medios": MEDIOS,
+        }
         return ticket(request, "tickets/caja.html", contexto, c.ajustes_del_ticket(sesion))
 
     # Corregir la caja misma: el conteo (ya cerrada) o la base.

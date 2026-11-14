@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta
 from typing import Annotated, Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
@@ -356,14 +356,62 @@ def ticket_de_salida(request: Request, sesion: SesionBD, _: Admin, parqueo_id: i
 # --- Caja --------------------------------------------------------------------------------
 
 
-def _contexto_caja(sesion: Session, caja: CajaParqueadero | None) -> dict[str, Any]:
+def _filtro_de_cierres(
+    desde: str | None, hasta: str | None, resultado: str, quien: str | None
+) -> consultas.FiltroDeCierres:
+    """Lo que llega en la dirección, limpio: una fecha que no es fecha o un resultado que no
+    existe se ignoran, y si las fechas vienen al revés se voltean."""
+    inicio, fin = _fecha(desde), _fecha(hasta)
+    if inicio and fin and fin < inicio:
+        inicio, fin = fin, inicio
+    return consultas.FiltroDeCierres(
+        desde=inicio,
+        hasta=fin,
+        resultado=resultado if resultado in consultas.RESULTADOS else "todos",
+        quien=int(quien) if quien and quien.isdigit() else None,
+    )
+
+
+def _consulta_de_cierres(filtro: consultas.FiltroDeCierres, **mas: Any) -> str:
+    """El filtro escrito en la dirección (sin lo que está vacío), para los enlaces."""
+    datos = {
+        "desde": filtro.desde.isoformat() if filtro.desde else None,
+        "hasta": filtro.hasta.isoformat() if filtro.hasta else None,
+        "resultado": filtro.resultado if filtro.resultado != "todos" else None,
+        "quien": filtro.quien,
+    } | mas
+    return urlencode({clave: valor for clave, valor in datos.items() if valor})
+
+
+def _contexto_caja(
+    sesion: Session,
+    caja: CajaParqueadero | None,
+    filtro: consultas.FiltroDeCierres | None = None,
+    pagina_de_cierres: int = 1,
+) -> dict[str, Any]:
     hoy = _hoy()
+    filtro = filtro or consultas.FiltroDeCierres()
+    cierres = consultas.cierres(sesion, filtro, pagina_de_cierres)
     return {
         "caja": caja,
         "caja_de_otro_dia": _caja_de_otro_dia(caja),
         "resumen": consultas.resumen_de_caja(sesion, caja) if caja else None,
         "movimientos": consultas.movimientos_de_caja(sesion, caja.id) if caja else [],
-        "cerradas": consultas.cajas_cerradas(sesion),
+        "cierres": cierres,
+        "filtro": filtro,
+        "resultados": consultas.RESULTADOS,
+        "quienes": consultas.quienes_cerraron(sesion),
+        "pagina_anterior": (
+            "/parqueadero/caja?" + _consulta_de_cierres(filtro, pagina=cierres.pagina - 1)
+            if cierres.pagina > 1
+            else None
+        ),
+        "pagina_siguiente": (
+            "/parqueadero/caja?" + _consulta_de_cierres(filtro, pagina=cierres.pagina + 1)
+            if cierres.pagina < cierres.paginas
+            else None
+        ),
+        "exportar_cierres": "/parqueadero/exportar-cierres?" + _consulta_de_cierres(filtro),
         "medios": MEDIOS,
         "exportar_desde": hoy.replace(day=1),
         "exportar_hasta": hoy,
@@ -371,9 +419,84 @@ def _contexto_caja(sesion: Session, caja: CajaParqueadero | None) -> dict[str, A
 
 
 @router.get("/caja", response_class=HTMLResponse)
-def pagina_caja(request: Request, sesion: SesionBD, _: Admin) -> Response:
-    contexto = _contexto_caja(sesion, casos.caja_abierta(sesion))
+def pagina_caja(
+    request: Request,
+    sesion: SesionBD,
+    _: Admin,
+    desde: str | None = None,
+    hasta: str | None = None,
+    resultado: str = "todos",
+    quien: str | None = None,
+    pagina_de_cierres: Annotated[int, Query(alias="pagina")] = 1,
+) -> Response:
+    """La caja abierta (o abrirla) y, abajo, los cierres anteriores con sus filtros: desde y
+    hasta qué día, cómo cerró y quién la cerró."""
+    filtro = _filtro_de_cierres(desde, hasta, resultado, quien)
+    contexto = _contexto_caja(sesion, casos.caja_abierta(sesion), filtro, pagina_de_cierres)
     return pagina(request, sesion, "parqueadero_caja.html", contexto, seccion="parqueadero")
+
+
+@router.get("/exportar-cierres")
+def exportar_cierres(
+    sesion: SesionBD,
+    _: Admin,
+    desde: str | None = None,
+    hasta: str | None = None,
+    resultado: str = "todos",
+    quien: str | None = None,
+) -> Response:
+    """Los cierres que se están viendo (con su filtro, todas las páginas), uno por fila, para
+    Excel: cuánto entró por cada medio, lo que debía haber, lo que se contó y la diferencia."""
+    filtro = _filtro_de_cierres(desde, hasta, resultado, quien)
+    salida = io.StringIO()
+    escritor = csv.writer(salida, delimiter=";")
+    escritor.writerow(
+        [
+            "Caja",
+            "Abrió",
+            "Abrió por",
+            "Cerró",
+            "Cerró por",
+            "Base",
+            *(medio.value.capitalize() for medio in MedioPago),
+            "Entró en total",
+            "Efectivo esperado",
+            "Contado",
+            "Diferencia",
+            "Corregida después del cierre",
+            "Nota del cierre",
+        ]
+    )
+    for r in consultas.todos_los_cierres(sesion, filtro):
+        c = r.caja
+        escritor.writerow(
+            [
+                c.id,
+                _fecha_y_hora(c.abierta_en),
+                r.abrio,
+                _fecha_y_hora(c.cerrada_en) if c.cerrada_en else "",
+                r.cerro or "",
+                c.base,
+                *(r.cuadre.por_medio(medio) for medio in MedioPago),
+                r.cuadre.total,
+                c.efectivo_esperado,
+                c.efectivo_contado,
+                c.diferencia,
+                "Sí" if r.corregida_despues_del_cierre else "No",
+                c.nota_cierre or "",
+            ]
+        )
+    nombre = "cierres-de-caja.csv"
+    if filtro.desde or filtro.hasta:
+        nombre = (
+            f"cierres-{(filtro.desde or filtro.hasta).isoformat()}"
+            f"-a-{(filtro.hasta or filtro.desde).isoformat()}.csv"
+        )
+    return Response(
+        content="\ufeff" + salida.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
 
 
 @router.post("/caja/abrir", response_class=HTMLResponse)

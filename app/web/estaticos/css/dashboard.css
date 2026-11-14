@@ -1120,6 +1120,18 @@ legend { padding: 0; margin-bottom: 8px; }
 .exportar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .exportar .campo { min-width: 160px; }
 
+/* Cierres anteriores: los filtros en una fila arriba de la tabla, y sus cuentas. */
+.cierres__filtros { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; padding: 0 18px 12px; }
+.cierres__filtros .campo { min-width: 140px; flex: 1 1 140px; }
+.cierres__botones { display: flex; align-items: center; gap: 12px; }
+.cierres__cuentas { margin: 0; padding: 0 18px 12px; color: var(--tinta-gris); font-size: 14px; }
+.cierres__pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 18px 0; }
+.cierres__paginas { display: flex; align-items: center; gap: 12px; }
+@media (max-width: 719px) {
+  /* En el celular la lista va sin marco: sus filas, pegadas a la orilla como el título. */
+  .cierres__filtros, .cierres__cuentas, .cierres__pie { padding-left: 0; padding-right: 0; }
+}
+
 /* --- Balance del parqueadero --- */
 .balance__barra { display: flex; flex-direction: column; gap: 12px; }
 /* Día / Semana / Mes: un solo control, el elegido resaltado. */

@@ -1,4 +1,5 @@
-"""Los comandos de la terminal: preparar-base, revisar-base, crear-admin y simular-turno."""
+"""Los comandos de la terminal: preparar-base, actualizar-tablas, revisar-base, crear-admin y
+simular-turno."""
 
 from collections.abc import Iterator
 
@@ -68,6 +69,29 @@ def test_preparar_base(base_de_pruebas, monkeypatch, capsys):
     assert "servicios: 0" in salida  # los datos ya estaban cargados
     assert "tipos de vehículo: 0" in salida
     assert "Listo" in salida
+
+
+def test_actualizar_tablas_solo_migra_y_no_toca_los_datos(monkeypatch, capsys):
+    """Lo corre la nube cada vez que enciende: las tablas al día y nada más (los datos
+    iniciales se cargan una vez, con preparar-base)."""
+    migraciones = []
+    monkeypatch.setattr(cli, "migrar", lambda: migraciones.append("aplicadas"))
+    monkeypatch.setattr(
+        cli, "cargar_datos_iniciales", lambda _sesion: pytest.fail("no debe tocar los datos")
+    )
+
+    assert cli.main(["actualizar-tablas"]) == 0
+
+    assert migraciones == ["aplicadas"]
+    assert "Tablas al día." in capsys.readouterr().out
+
+
+def test_actualizar_tablas_sin_base_de_datos_dice_que_revisar(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "migrar", base_apagada)
+    monkeypatch.setattr(obtener_entorno(), "entorno", "produccion")
+
+    assert cli.main(["actualizar-tablas"]) == 1
+    assert "No hay conexión con PostgreSQL" in capsys.readouterr().err
 
 
 # --- revisar-base: si las tablas están al día y cuánto hay ---------------------------------

@@ -96,11 +96,8 @@ jobs:
           docker build --tag auto-ibaguer .
           docker image ls auto-ibaguer
 
-      - name: Preparar la base, como antes de cada publicación
-        run: >-
-          docker run --rm --network host -e DATABASE_URL -e ENTORNO -e CLAVE_SECRETA
-          auto-ibaguer auto-ibaguer preparar-base
-
+      # Con la base vacía y sin prepararla antes: al encender, el servidor pone las tablas al
+      # día solo (como en el plan gratis de Render, que no tiene "Pre-Deploy Command").
       - name: Encender el servidor y esperar a que esté sano
         run: |
           docker run --detach --name servidor --network host \
@@ -116,7 +113,19 @@ jobs:
 
       - name: Revisar lo que va a recibir Render
         run: |
-          # Las tablas quedaron al día.
+          # Las tablas quedaron al día solas, al encender.
+          docker exec servidor auto-ibaguer revisar-base
+          # Los datos iniciales se cargan aparte, una vez (como el primer día en la nube).
+          docker exec servidor auto-ibaguer preparar-base
+          # Encender otra vez, con las tablas ya al día, no cambia nada y enciende igual.
+          docker restart servidor
+          for _ in $(seq 30); do
+            if salud=$(curl --silent --fail-with-body http://localhost:10000/salud); then
+              break
+            fi
+            sleep 1
+          done
+          jq --exit-status '.estado == "ok"' <<< "$salud"
           docker exec servidor auto-ibaguer revisar-base
           # Corre con un usuario sin permisos de administrador.
           test "$(docker exec servidor id -u)" = 10001

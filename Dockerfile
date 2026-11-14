@@ -40,7 +40,12 @@ USER auto
 ENV PATH="/app/.venv/bin:$PATH" \
     ENTORNO=produccion
 
+# Al encender, primero pone las tablas al día (actualizar-tablas: las migraciones que
+# falten, sin tocar datos; si ya están al día, no hace nada) y después enciende el servidor.
+# Así, después de unir un cambio que trae tablas nuevas, nadie tiene que acordarse de
+# preparar la base: el plan gratis de Render no tiene "Pre-Deploy Command". Si las tablas
+# no se pueden actualizar, esa versión no enciende y Render no la publica.
 # Render le dice al servidor en qué puerto escuchar (PORT). Detrás de Render, el HTTPS
 # llega al proxy de Render: --proxy-headers hace que el servidor lo sepa.
 EXPOSE 10000
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000} --proxy-headers --forwarded-allow-ips='*' --no-server-header"]
+CMD ["sh", "-c", "auto-ibaguer actualizar-tablas && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000} --proxy-headers --forwarded-allow-ips='*' --no-server-header"]

@@ -553,9 +553,7 @@ def test_la_base_no_deja_un_pago_de_mensualidad_sin_caja_con_plata(
 def base(motor: Engine) -> Iterator[Engine]:
     yield motor
     with motor.begin() as conexion:
-        conexion.execute(
-            text("TRUNCATE parqueo, pago_mensualidad, mensualidad, caja_parqueadero CASCADE")
-        )
+        conexion.execute(text("TRUNCATE parqueo, pago_mensualidad, mensualidad, caja CASCADE"))
 
 
 def al_mismo_tiempo(motor: Engine, *acciones: Callable[[Session], Any]) -> list[Any]:

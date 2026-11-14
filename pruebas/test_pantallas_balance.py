@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.main import app
 from app.parqueadero import casos_de_uso as casos
 from app.parqueadero.estados import TipoParqueo
-from app.parqueadero.tablas import CajaParqueadero, Parqueo
+from app.parqueadero.tablas import Caja, Parqueo
 from app.parqueadero.tarifas import guardar_ajustes, leer_ajustes
 from app.turnos.estados import MedioPago
 from app.web import parqueadero as pantallas
@@ -43,8 +43,8 @@ def salir(adentro: TestClient, sesion: Session, placa: str, **datos):
     return adentro.post(f"/parqueadero/{parqueo.id}/salida", data=datos, headers=HTMX)
 
 
-def caja_abierta(sesion: Session) -> CajaParqueadero:
-    return sesion.scalars(select(CajaParqueadero).where(CajaParqueadero.abierta)).one()
+def caja_abierta(sesion: Session) -> Caja:
+    return sesion.scalars(select(Caja).where(Caja.abierta)).one()
 
 
 @pytest.fixture

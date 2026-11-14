@@ -40,8 +40,9 @@ TABLAS_DE_LA_FASE_1 = {
 # Hito 7b: las quejas, felicitaciones y pedidos de hablar con una persona, y el bot en
 # pausa mientras el administrador le responde a un cliente.
 TODAS_LAS_TABLAS = TABLAS_DE_LA_FASE_1 | {"comentario", "pausa_del_bot"}
-# El parqueadero: cada entrada, las mensualidades con sus pagos y su propia caja.
-TODAS_LAS_TABLAS |= {"parqueo", "mensualidad", "pago_mensualidad", "caja_parqueadero"}
+# El parqueadero: cada entrada y las mensualidades con sus pagos. Y la caja, que desde la
+# versión 0012 es de los dos negocios (cada uno la suya).
+TODAS_LAS_TABLAS |= {"parqueo", "mensualidad", "pago_mensualidad", "caja"}
 # Y cada corrección: de un cobro equivocado, o de la base o el conteo de una caja.
 TODAS_LAS_TABLAS |= {"correccion_cobro", "correccion_de_caja"}
 

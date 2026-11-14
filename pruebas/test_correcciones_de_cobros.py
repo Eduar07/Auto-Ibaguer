@@ -31,7 +31,7 @@ from app.parqueadero.errores import (
     YaEstaAdentro,
 )
 from app.parqueadero.estados import EstadoParqueo, TipoCorreccion
-from app.parqueadero.tablas import CajaParqueadero, CorreccionCobro, PagoMensualidad, Parqueo
+from app.parqueadero.tablas import Caja, CorreccionCobro, PagoMensualidad, Parqueo
 from pruebas.fabricas import LUNES_8AM, debe_rechazar, minutos
 from pruebas.test_parqueadero import CARRO, EFECTIVO, HOY, NEQUI, con_caja, entra, mensualista, sale
 
@@ -386,10 +386,7 @@ def base(motor: Engine) -> Iterator[Engine]:
     yield motor
     with motor.begin() as conexion:
         conexion.execute(
-            text(
-                "TRUNCATE correccion_cobro, parqueo, pago_mensualidad, mensualidad, "
-                "caja_parqueadero CASCADE"
-            )
+            text("TRUNCATE correccion_cobro, parqueo, pago_mensualidad, mensualidad, caja CASCADE")
         )
 
 
@@ -492,7 +489,7 @@ def test_cerrar_la_caja_mientras_se_cobra_espera_y_cuenta_ese_cobro(base: Engine
 
     assert cierre == [0]  # contó los $3.000: cuadró
     with Session(base) as sesion:
-        caja = sesion.get(CajaParqueadero, caja_id)
+        caja = sesion.get(Caja, caja_id)
         assert caja.efectivo_esperado == casos.cuadre_de_caja(sesion, caja).efectivo_esperado
 
 
@@ -542,7 +539,7 @@ def test_corregir_mientras_se_cierra_la_caja_espera_y_corrige_despues_del_cierre
         assert sesion.get(Parqueo, parqueo_id).estado is EstadoParqueo.ADENTRO
         (hecha,) = correcciones(sesion)
         assert hecha.despues_del_cierre
-        caja = sesion.get(CajaParqueadero, caja_id)
+        caja = sesion.get(Caja, caja_id)
         assert caja.efectivo_esperado == casos.cuadre_de_caja(sesion, caja).efectivo_esperado == 0
         assert caja.diferencia == 3000
 

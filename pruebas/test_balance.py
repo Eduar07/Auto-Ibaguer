@@ -24,7 +24,7 @@ from app.parqueadero import reporte
 from app.parqueadero.balance import balance, periodo, total_recogido
 from app.parqueadero.errores import TarifaInvalida
 from app.parqueadero.estados import TipoParqueo
-from app.parqueadero.tablas import CajaParqueadero, Parqueo
+from app.parqueadero.tablas import Caja, Parqueo
 from app.parqueadero.tarifas import (
     AjustesParqueadero,
     guardar_ajustes,
@@ -76,7 +76,7 @@ def ajustes_con(sesion: Session, **cambios) -> AjustesParqueadero:
 
 
 @pytest.fixture
-def semana(sesion: Session) -> dict[str, CajaParqueadero]:
+def semana(sesion: Session) -> dict[str, Caja]:
     # Domingo 25 (semana anterior): $3.000. Su caja abre y cierra ese día y cuadra.
     z = casos.abrir_caja(sesion, base=20000, ahora=a_las(DOMINGO, 8))
     estadia(sesion, "SUN111", CARRO, a_las(DOMINGO, 9), a_las(DOMINGO, 10))

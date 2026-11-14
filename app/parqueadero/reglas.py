@@ -10,6 +10,13 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from app.caja.reglas import (  # noqa: F401  (las reglas de caja de siempre, ahora comunes)
+    DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA,
+    NOMBRE_DEL_MEDIO,
+    caja_corregible,
+    como_se_pago,
+    sumar_por_medio,
+)
 from app.clientes.reglas import normalizar_placa
 from app.formato import pesos
 from app.parqueadero.errores import (
@@ -34,10 +41,6 @@ DIAS_PARA_COBRAR_ANTES = 3
 
 # Un día del cobro por días: las 24 horas del día y la noche, como lo define el decreto.
 HORAS_DEL_DIA = 24
-
-# Una caja cerrada todavía se puede corregir (un cobro, la base o el conteo) hasta estos días
-# después del cierre. Después, sus cuentas ya se entregaron y no se cambian.
-DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA = 30
 
 # Una placa limpia: letras y números, con al menos una de cada una. Cabe la de carro
 # (ABC123), la de moto (ABC12D), la de moto vieja (ABC12) y las especiales (R12345).
@@ -237,14 +240,6 @@ def cubierta_hasta(periodos: Iterable[tuple[date, date]], dia: date) -> date | N
     return hasta
 
 
-def caja_corregible(cerrada_en: datetime | None, ahora: datetime) -> bool:
-    """¿Esa caja todavía se puede corregir? La abierta, siempre; la cerrada, hasta 30 días
-    después del cierre."""
-    return cerrada_en is None or ahora - cerrada_en <= timedelta(
-        days=DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA
-    )
-
-
 def se_puede_cobrar(al_dia_hasta: date | None, hoy: date) -> bool:
     """¿Ya toca cobrarle el mes siguiente? Sí, si hoy no está pagado o lo pagado se acaba en
     3 días o menos. Si está al día por más tiempo, cobrarle es adelantar un mes."""
@@ -290,25 +285,6 @@ def placa_o_ticket(texto: str) -> tuple[str | None, int | None]:
     return (placa or None), None
 
 
-NOMBRE_DEL_MEDIO = {
-    MedioPago.EFECTIVO: "Efectivo",
-    MedioPago.NEQUI: "Nequi",
-    MedioPago.DAVIPLATA: "Daviplata",
-    MedioPago.TARJETA: "Tarjeta",
-}
-
-
-def como_se_pago(medio: MedioPago | None) -> str:
-    """Para una frase: "en efectivo", "por Nequi", "por Daviplata", "con tarjeta" o "sin pago"."""
-    if medio is None:
-        return "sin pago"
-    if medio is MedioPago.EFECTIVO:
-        return "en efectivo"
-    if medio is MedioPago.TARJETA:
-        return "con tarjeta"
-    return f"por {NOMBRE_DEL_MEDIO[medio]}"
-
-
 @dataclass(frozen=True)
 class Cuadre:
     """Lo que debería haber en una caja: la base más lo que entró en efectivo. Lo que entró
@@ -329,10 +305,3 @@ class Cuadre:
     @property
     def efectivo_esperado(self) -> int:
         return self.base + self.por_medio(MedioPago.EFECTIVO)
-
-
-def sumar_por_medio(cobros: Iterable[tuple[MedioPago, int]]) -> dict[MedioPago, int]:
-    totales: dict[MedioPago, int] = {}
-    for medio, valor in cobros:
-        totales[medio] = totales.get(medio, 0) + valor
-    return totales

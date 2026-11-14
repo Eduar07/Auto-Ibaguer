@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.parqueadero import casos_de_uso as casos
 from app.parqueadero.estados import EstadoParqueo
-from app.parqueadero.tablas import CajaParqueadero, Mensualidad, PagoMensualidad, Parqueo
+from app.parqueadero.tablas import Caja, Mensualidad, PagoMensualidad, Parqueo
 from pruebas.fabricas import minutos
 from pruebas.navegador import HTMX, aviso, error, eventos
 
@@ -81,7 +81,7 @@ def test_cada_cobro_de_la_caja_abierta_se_puede_corregir(
     assert f'hx-get="/parqueadero/mensualidades/pagos/{mes}/corregir"' in pagina
     assert "Después del cierre también se puede, hasta 30 días" in pagina
     assert 'id="caja-abierta"' in pagina
-    caja = sesion.scalars(select(CajaParqueadero)).one()
+    caja = sesion.scalars(select(Caja)).one()
     assert f'hx-get="/parqueadero/caja/{caja.id}/corregir"' in pagina  # la base
 
 
@@ -220,7 +220,7 @@ def test_si_la_caja_se_cerro_mientras_tanto_se_corrige_despues_del_cierre(
     adentro: TestClient, sesion: Session, caja_con_cobros
 ):
     ticket = parqueo(sesion, "ABC123").id
-    caja = sesion.scalars(select(CajaParqueadero)).one()
+    caja = sesion.scalars(select(Caja)).one()
     casos.cerrar_caja(sesion, caja.id, efectivo_contado=53000)  # desde otro celular
     sesion.commit()
 
@@ -230,14 +230,14 @@ def test_si_la_caja_se_cerro_mientras_tanto_se_corrige_despues_del_cierre(
     assert respuesta.headers["HX-Retarget"] == "#caja-abierta"
     assert "Abrir caja" in respuesta.text  # la caja del día se pinta como está: cerrada
     sesion.expire_all()
-    assert sesion.get(CajaParqueadero, caja.id).diferencia == 3000  # contaron un cobro que no era
+    assert sesion.get(Caja, caja.id).diferencia == 3000  # contaron un cobro que no era
 
 
 def test_pasados_30_dias_del_cierre_el_dialogo_se_cierra_y_avisa(
     adentro: TestClient, sesion: Session, caja_con_cobros, reloj: dict
 ):
     ticket = parqueo(sesion, "ABC123").id
-    caja = sesion.scalars(select(CajaParqueadero)).one()
+    caja = sesion.scalars(select(Caja)).one()
     casos.cerrar_caja(sesion, caja.id, efectivo_contado=53000, ahora=reloj["ahora"])
     sesion.commit()
     reloj["ahora"] += minutos(31 * 24 * 60)
@@ -295,7 +295,7 @@ def test_el_cierre_su_ticket_y_el_balance_muestran_las_correcciones(
         medio_pago="nequi",
         motivo="Pagó <b>por</b> Nequi",
     )
-    caja = sesion.scalars(select(CajaParqueadero)).one()
+    caja = sesion.scalars(select(Caja)).one()
     adentro.post(
         "/parqueadero/caja/cerrar",
         data={"caja_id": caja.id, "efectivo_contado": "50.000"},

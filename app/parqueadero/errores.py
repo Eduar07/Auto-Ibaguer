@@ -1,5 +1,12 @@
 """Lo que las reglas del parqueadero no permiten. El mensaje se le muestra tal cual a la persona."""
 
+from app.caja.errores import (  # noqa: F401  (las de la caja son comunes a los dos negocios)
+    CajaNoCorregible,
+    CajaYaAbierta,
+    CobroNoCorregible,
+    SinCajaAbierta,
+    ValorInvalido,
+)
 from app.errores import ReglaDelNegocio
 
 
@@ -13,28 +20,6 @@ class YaEstaAdentro(ReglaDelNegocio):
 
 class NoEstaAdentro(ReglaDelNegocio):
     """Se pidió la salida de un vehículo que ya salió, se anuló o no existe."""
-
-
-class SinCajaAbierta(ReglaDelNegocio):
-    """Todo cobro entra a una caja: sin caja abierta, la plata no tendría dónde contarse."""
-
-
-class CajaYaAbierta(ReglaDelNegocio):
-    pass
-
-
-class CobroNoCorregible(ReglaDelNegocio):
-    """Un cobro que ya no se puede corregir: ya se deshizo o se anuló, no entró a ninguna caja,
-    o su caja se cerró hace demasiado."""
-
-
-class CajaNoCorregible(ReglaDelNegocio):
-    """Una caja que no se puede corregir así: el conteo de una abierta (todavía no se contó) o
-    una que se cerró hace demasiado."""
-
-
-class ValorInvalido(ReglaDelNegocio):
-    """Un valor o un motivo que no cuadra: negativo, sin motivo, un pago que no alcanza."""
 
 
 class MensualidadInvalida(ReglaDelNegocio):

@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
+from app.caja.reglas import VALOR_MAXIMO_DE_UN_COBRO, sin_ceros_de_mas
 from app.formato import pesos
 from app.turnos.errores import PrecioInvalido
 from app.turnos.estados import Actor, EstadoTurno, TipoAviso
@@ -206,6 +207,7 @@ def motivo_del_cobro(precio_menu: int, precio_cobrado: int, motivo: str | None) 
     """
     if precio_cobrado < 0:
         raise PrecioInvalido("El precio cobrado no puede ser negativo.")
+    sin_ceros_de_mas(precio_cobrado, VALOR_MAXIMO_DE_UN_COBRO, PrecioInvalido)
     limpio = (motivo or "").strip() or None
     if precio_cobrado != precio_menu and limpio is None:
         raise PrecioInvalido(

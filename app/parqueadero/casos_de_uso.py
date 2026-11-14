@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app import formato, tiempo
 from app.caja import casos_de_uso as cajas
 from app.caja.estados import Negocio
+from app.caja.reglas import VALOR_MAXIMO_DE_UN_COBRO, sin_ceros_de_mas
 from app.clientes.errores import NombreInvalido, TelefonoInvalido
 from app.clientes.reglas import nombre_bonito, normalizar_telefono
 from app.parqueadero import reglas
@@ -405,7 +406,7 @@ def _datos_del_titular(titular: str, telefono: str) -> tuple[str, str | None]:
 def _valor_mensual(valor: int | None) -> int:
     if valor is None or valor <= 0:
         raise MensualidadInvalida("Escribe el valor de la mensualidad.")
-    return valor
+    return sin_ceros_de_mas(valor, VALOR_MAXIMO_DE_UN_COBRO, MensualidadInvalida)
 
 
 def crear_mensualidad(
@@ -557,6 +558,7 @@ def pagar_mensualidad(
     reglas.revisar_periodo(desde, hasta)
     if valor is None or valor <= 0:
         raise ValorInvalido("Escribe el valor que pagó.")
+    sin_ceros_de_mas(valor, VALOR_MAXIMO_DE_UN_COBRO)
     mensualidad = _bloquear_mensualidad(sesion, mensualidad_id)
     if not mensualidad.activa:
         raise MensualidadInvalida("Esa mensualidad está dada de baja: no recibe pagos.")
@@ -649,6 +651,7 @@ def corregir_salida(
     caja = _caja_del_cobro(sesion, parqueo.caja_id, ahora)
     if valor_cobrado < 0:
         raise ValorInvalido("El valor no puede ser negativo.")
+    sin_ceros_de_mas(valor_cobrado, VALOR_MAXIMO_DE_UN_COBRO)
     medio = MedioPago(medio_pago) if medio_pago and valor_cobrado > 0 else None
     if valor_cobrado > 0 and medio is None:
         raise ValorInvalido("Elige el medio de pago.")
@@ -776,6 +779,7 @@ def corregir_pago(
     caja = _caja_del_cobro(sesion, pago.caja_id, ahora)
     if valor <= 0:
         raise ValorInvalido("Escribe lo que pagó. Para quitar el pago, anúlalo.")
+    sin_ceros_de_mas(valor, VALOR_MAXIMO_DE_UN_COBRO)
     if not medio_pago:
         raise ValorInvalido("Elige el medio de pago.")
     medio = MedioPago(medio_pago)

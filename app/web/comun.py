@@ -7,6 +7,7 @@
 
 import hashlib
 import json
+import logging
 import re
 import time
 from datetime import date, datetime
@@ -21,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 from sqlalchemy.orm import Session
 
-from app import formato, tiempo
+from app import formato, numeros, tiempo
 from app.catalogo.parametros import leer_parametros
 from app.comentarios.consultas import por_atender as comentarios_por_atender
 from app.config import obtener_entorno
@@ -30,6 +31,8 @@ from app.turnos.estados import NOMBRE_DEL_ESTADO, EstadoTurno, MedioPago
 from app.web import sesiones
 from app.web.negocios import LAVADERO, de_la_seccion
 from app.web.tablas import Administrador
+
+logger = logging.getLogger(__name__)
 
 SesionBD = Annotated[Session, Depends(obtener_sesion)]
 
@@ -280,18 +283,29 @@ def con_eventos(
     return respuesta
 
 
-# Un número de un formulario con más cifras que esto no lo escribió nadie de verdad (y
-# Python no convierte textos de miles de cifras): se toma como "no es un número".
-CIFRAS_MAXIMAS = 18
-
-
 def entero(texto: str) -> int | None:
-    """ "12" -> 12; vacío, "abc" o "²" -> None. `isdecimal` y no `isdigit`: "²" es un dígito
-    para Python, pero int("²") falla."""
-    return int(texto) if texto.isdecimal() and len(texto) <= CIFRAS_MAXIMAS else None
+    """ "12" -> 12; vacío, "abc", "²" o de más de 9 cifras -> None (app.numeros)."""
+    return numeros.entero(texto)
 
 
 def leer_pesos(texto: str) -> int | None:
-    """ "$40.000" o "40000" -> 40000; vacío -> None (se cobra el precio del menú)."""
-    digitos = re.sub(r"\D", "", texto)
-    return int(digitos) if digitos else None
+    """ "$40.000" o "40000" -> 40000; vacío -> None (se cobra el precio del menú). Con más
+    cifras de las que existen, uno que ninguna regla acepta (app.numeros)."""
+    return numeros.pesos(texto)
+
+
+def responder_dato_imposible(request: Request, error: Exception) -> Response:
+    """Un valor que no cabe en la base de datos (por ejemplo, un número de 20 cifras en la
+    dirección de una caja): es un error de quien lo escribió, no del servidor. Se explica en vez
+    de "El servidor tuvo un problema". Al registro va qué pasó y dónde, nunca los datos."""
+    causa = type(getattr(error, "orig", None) or error).__name__
+    logger.warning(
+        "Un valor que no cabe en la base de datos: %s %s (%s)",
+        request.method,
+        request.url.path,
+        causa,
+    )
+    mensaje = "Ese valor no es posible: revisa lo que escribiste."
+    if request.headers.get("hx-request"):
+        return sin_cambios(error=mensaje)
+    return HTMLResponse(mensaje, status_code=400)

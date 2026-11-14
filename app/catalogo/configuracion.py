@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import tiempo
+from app import numeros, tiempo
 from app.catalogo.datos_iniciales import CONFIGURACION_INICIAL
 from app.catalogo.tablas import Configuracion, Servicio, ServicioPrecio, TipoVehiculo
 from app.clientes.errores import TelefonoInvalido
@@ -53,10 +53,10 @@ def _hora(texto: str) -> time | None:
 
 
 def _numero_entre(texto: str, minimo: int, maximo: int) -> int | None:
-    texto = texto.strip()
-    if not texto.isdigit() or not minimo <= int(texto) <= maximo:
+    numero = numeros.entero(texto.strip())
+    if numero is None or not minimo <= numero <= maximo:
         return None
-    return int(texto)
+    return numero
 
 
 def validar_parametros(formulario: Mapping[str, Any]) -> dict[str, Any]:

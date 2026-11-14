@@ -79,8 +79,10 @@ def test_cada_cobro_de_la_caja_abierta_se_puede_corregir(
     salida, mes = parqueo(sesion, "ABC123").id, pago(sesion).id
     assert f'hx-get="/parqueadero/{salida}/corregir"' in pagina
     assert f'hx-get="/parqueadero/mensualidades/pagos/{mes}/corregir"' in pagina
-    assert "mientras esta caja siga abierta" in pagina
+    assert "Después del cierre también se puede, hasta 30 días" in pagina
     assert 'id="caja-abierta"' in pagina
+    caja = sesion.scalars(select(CajaParqueadero)).one()
+    assert f'hx-get="/parqueadero/caja/{caja.id}/corregir"' in pagina  # la base
 
 
 def test_el_dialogo_de_una_salida(adentro: TestClient, sesion: Session, caja_con_cobros):
@@ -130,7 +132,7 @@ def test_cambiar_el_medio_de_pago(adentro: TestClient, sesion: Session, caja_con
     assert "cerrar-dialogo" in eventos(respuesta)
     assert respuesta.headers["HX-Retarget"] == "#caja-abierta"
     # La caja vuelve pintada, con la corrección a la vista.
-    assert "Cobros corregidos" in respuesta.text and "Pagó por Nequi" in respuesta.text
+    assert "Correcciones" in respuesta.text and "Pagó por Nequi" in respuesta.text
     assert "Se corrigió el cobro" in respuesta.text and "Efectivo −$3.000" in respuesta.text
     sesion.expire_all()
     assert parqueo(sesion, "ABC123").medio_pago.value == "nequi"
@@ -214,7 +216,7 @@ def test_corregir_el_valor_de_un_mes(adentro: TestClient, sesion: Session, caja_
 # --- Cuando ya no se puede ----------------------------------------------------------------
 
 
-def test_si_la_caja_se_cerro_el_dialogo_se_cierra_y_avisa(
+def test_si_la_caja_se_cerro_mientras_tanto_se_corrige_despues_del_cierre(
     adentro: TestClient, sesion: Session, caja_con_cobros
 ):
     ticket = parqueo(sesion, "ABC123").id
@@ -224,10 +226,26 @@ def test_si_la_caja_se_cerro_el_dialogo_se_cierra_y_avisa(
 
     respuesta = corregir(adentro, f"/parqueadero/{ticket}/deshacer-salida", motivo="Era otro carro")
 
-    assert "caja que ya se cerró" in error(respuesta)
-    assert "cerrar-dialogo" in eventos(respuesta)
+    assert "volvió a quedar adentro" in aviso(respuesta)
     assert respuesta.headers["HX-Retarget"] == "#caja-abierta"
-    assert "Abrir caja" in respuesta.text  # la caja se pinta como está: cerrada
+    assert "Abrir caja" in respuesta.text  # la caja del día se pinta como está: cerrada
+    sesion.expire_all()
+    assert sesion.get(CajaParqueadero, caja.id).diferencia == 3000  # contaron un cobro que no era
+
+
+def test_pasados_30_dias_del_cierre_el_dialogo_se_cierra_y_avisa(
+    adentro: TestClient, sesion: Session, caja_con_cobros, reloj: dict
+):
+    ticket = parqueo(sesion, "ABC123").id
+    caja = sesion.scalars(select(CajaParqueadero)).one()
+    casos.cerrar_caja(sesion, caja.id, efectivo_contado=53000, ahora=reloj["ahora"])
+    sesion.commit()
+    reloj["ahora"] += minutos(31 * 24 * 60)
+
+    respuesta = corregir(adentro, f"/parqueadero/{ticket}/deshacer-salida", motivo="Era otro carro")
+
+    assert "se cerró hace más de 30 días" in error(respuesta)
+    assert "cerrar-dialogo" in eventos(respuesta)
 
 
 def test_un_pago_que_ya_se_anulo(adentro: TestClient, sesion: Session, caja_con_cobros):
@@ -288,10 +306,11 @@ def test_el_cierre_su_ticket_y_el_balance_muestran_las_correcciones(
     papel = adentro.get(f"/parqueadero/caja/{caja.id}/ticket").text
     balance = adentro.get("/parqueadero/balance").text
 
-    assert "Cobros corregidos" in cierre and "Corregir</button>" not in cierre
+    # Recién cerrada, se puede seguir corrigiendo (hasta 30 días después del cierre).
+    assert "Correcciones" in cierre and "Corregir</button>" in cierre
     # Lo que escribió alguien se muestra como texto, nunca como HTML.
     assert "Pagó &lt;b&gt;por&lt;/b&gt; Nequi" in cierre and "<b>por</b>" not in cierre
-    assert "Cobros corregidos" in papel
+    assert "Correcciones" in papel
     assert "Se corrigió el cobro: $3.000 en efectivo → $3.000 por Nequi" in papel
-    assert "Cobros corregidos después de cobrar (1)" in balance
+    assert "Correcciones en las cajas del día (1)" in balance
     assert "- ABC123: se corrigió el cobro ($3.000 en efectivo → $3.000 por Nequi)" in balance

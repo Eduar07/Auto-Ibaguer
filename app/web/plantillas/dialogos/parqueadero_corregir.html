@@ -9,7 +9,13 @@
   </div>
   <div class="dialogo__cuerpo">
     {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-    <div class="nota nota--suelta">{{ iconos.icono("info", 20) }}<span>Queda anotado con el motivo y tu usuario: sale en el cierre de la caja, en el Balance y en el reporte a los jefes.</span></div>
+    <div class="nota nota--suelta">{{ iconos.icono("info", 20) }}<span>
+      {%- if caja_cerrada -%}
+      Este cobro es de una caja que ya se cerró: la corrección cambia su diferencia y queda anotada como hecha después del cierre, con el motivo y tu usuario. Es para un cobro que quedó mal escrito; si hay que devolverle plata a alguien hoy, sale de la caja de hoy.
+      {%- else -%}
+      Queda anotado con el motivo y tu usuario: sale en el cierre de la caja, en el Balance y en el reporte a los jefes.
+      {%- endif -%}
+    </span></div>
 
     <form class="seccion-correccion" hx-post="{{ cobro.para_corregir }}" hx-target="#dialogo-contenido"
           hx-disabled-elt="#dialogo-contenido button" autocomplete="off">

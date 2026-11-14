@@ -2,7 +2,8 @@
 salida del carro que no era y anular un mes cobrado por error.
 
 Lo que tiene que cumplirse siempre:
-- solo se corrige lo que se cobró con la caja que sigue abierta;
+- se corrige en la caja del cobro: la abierta, o la cerrada hasta 30 días después (eso, con
+  la caja ya cerrada, está en test_correcciones_de_cajas_cerradas.py);
 - cada corrección queda anotada (cómo estaba, cómo quedó, el motivo y quién);
 - la caja, el balance y el reporte cuentan lo que quedó, y muestran la corrección;
 - un doble clic no corrige dos veces, y una caja que se cierra al mismo tiempo que se cobra
@@ -260,39 +261,45 @@ def test_los_dias_que_ya_traia_no_son_un_cobro(sesion: Session):
         casos.anular_pago(sesion, pago.id, motivo="Error")
 
 
-# --- Solo con la caja del cobro abierta ----------------------------------------------------
+# --- En la caja del cobro, hasta 30 días después de cerrada ----------------------------------
 
 
-def test_con_la_caja_cerrada_no_se_corrige_nada(sesion: Session):
+def test_pasados_30_dias_del_cierre_no_se_corrige_nada(sesion: Session):
     caja = con_caja(sesion, base=0)
     parqueo = cobrado(sesion)
     pago = mes_cobrado(sesion)
     casos.cerrar_caja(sesion, caja.id, efectivo_contado=3000, ahora=DESPUES)
+    tarde = DESPUES + timedelta(days=30, minutes=1)
 
     for corregir in (
         lambda: casos.corregir_salida(
-            sesion, parqueo.id, valor_cobrado=1000, medio_pago=EFECTIVO, motivo="Tarde"
+            sesion, parqueo.id, valor_cobrado=1000, medio_pago=EFECTIVO, motivo="Tarde", ahora=tarde
         ),
-        lambda: casos.deshacer_salida(sesion, parqueo.id, motivo="Tarde"),
+        lambda: casos.deshacer_salida(sesion, parqueo.id, motivo="Tarde", ahora=tarde),
         lambda: casos.corregir_pago(
-            sesion, pago.id, valor=100000, medio_pago=NEQUI, motivo="Tarde"
+            sesion, pago.id, valor=100000, medio_pago=NEQUI, motivo="Tarde", ahora=tarde
         ),
-        lambda: casos.anular_pago(sesion, pago.id, motivo="Tarde"),
+        lambda: casos.anular_pago(sesion, pago.id, motivo="Tarde", ahora=tarde),
     ):
-        with pytest.raises(CobroNoCorregible, match="caja que ya se cerró"):
+        with pytest.raises(CobroNoCorregible, match="se cerró hace más de 30 días"):
             corregir()
     assert correcciones(sesion) == []
     assert (parqueo.valor_cobrado, sesion.get(PagoMensualidad, pago.id).valor) == (3000, 120000)
 
 
-def test_lo_de_una_caja_anterior_no_se_corrige_en_la_de_hoy(sesion: Session):
+def test_lo_de_una_caja_anterior_se_corrige_en_esa_caja_no_en_la_de_hoy(sesion: Session):
     ayer = con_caja(sesion, base=0)
     parqueo = cobrado(sesion)
     casos.cerrar_caja(sesion, ayer.id, efectivo_contado=3000, ahora=DESPUES)
-    casos.abrir_caja(sesion, base=0, ahora=DESPUES + timedelta(hours=12))
+    hoy = casos.abrir_caja(sesion, base=0, ahora=DESPUES + timedelta(hours=12))
 
-    with pytest.raises(CobroNoCorregible, match="Si hay que devolver plata, sácala de la caja"):
-        casos.deshacer_salida(sesion, parqueo.id, motivo="Era otro")
+    correccion = casos.deshacer_salida(
+        sesion, parqueo.id, motivo="Era otro", ahora=DESPUES + timedelta(hours=13)
+    )
+
+    assert (correccion.caja_id, correccion.despues_del_cierre) == (ayer.id, True)
+    assert ayer.diferencia == 3000  # se contaron $3.000 de un cobro que no debió pasar
+    assert casos.cuadre_de_caja(sesion, hoy).efectivo_esperado == 0  # la de hoy, igual
 
 
 # --- Lo que se ve después ---------------------------------------------------------------
@@ -328,7 +335,7 @@ def test_la_caja_el_balance_y_el_reporte_muestran_cada_correccion(sesion: Sessio
 
     texto = reporte.texto(reporte.armar(sesion, HOY, LUNES_8AM + minutos(610)), negrilla=False)
     lineas = texto.splitlines()
-    assert "Cobros corregidos: 3" in lineas
+    assert "Correcciones: 3" in lineas
     assert (
         "- NEQ111: se corrigió el cobro ($3.000 en efectivo → $3.000 por Nequi). "
         "Motivo: Pagó por Nequi. Por —." in lineas
@@ -513,7 +520,10 @@ def test_cobrar_mientras_se_cierra_la_caja_espera_y_no_cobra(base: Engine):
         assert sesion.get(Parqueo, parqueo_id).estado is EstadoParqueo.ADENTRO
 
 
-def test_corregir_mientras_se_cierra_la_caja_no_corrige(base: Engine):
+def test_corregir_mientras_se_cierra_la_caja_espera_y_corrige_despues_del_cierre(base: Engine):
+    """La corrección espera a que termine el cierre y después se hace en la caja ya cerrada:
+    queda marcada como de después del cierre y lo que debía haber en el cajón se pone al día
+    (sin el candado, el cierre podía contar el cobro que ya no existía, o al revés)."""
     with Session(base) as sesion, sesion.begin():
         caja_id = con_caja(sesion, base=0).id
         parqueo_id = cobrado(sesion).id
@@ -521,16 +531,20 @@ def test_corregir_mientras_se_cierra_la_caja_no_corrige(base: Engine):
     with Session(base) as cierra:
         casos.cerrar_caja(cierra, caja_id, efectivo_contado=3000)
         hilo, correccion = en_otro_hilo(
-            base, lambda s: casos.deshacer_salida(s, parqueo_id, motivo="Era otro")
+            base, lambda s: casos.deshacer_salida(s, parqueo_id, motivo="Era otro").id
         )
         esperar_a_que_alguien_espere(base)
         cierra.commit()
     hilo.join(timeout=10)
 
-    assert len(correccion) == 1 and isinstance(correccion[0], CobroNoCorregible)
+    assert len(correccion) == 1 and isinstance(correccion[0], int), correccion
     with Session(base) as sesion:
-        assert sesion.get(Parqueo, parqueo_id).estado is EstadoParqueo.SALIO
-        assert correcciones(sesion) == []
+        assert sesion.get(Parqueo, parqueo_id).estado is EstadoParqueo.ADENTRO
+        (hecha,) = correcciones(sesion)
+        assert hecha.despues_del_cierre
+        caja = sesion.get(CajaParqueadero, caja_id)
+        assert caja.efectivo_esperado == casos.cuadre_de_caja(sesion, caja).efectivo_esperado == 0
+        assert caja.diferencia == 3000
 
 
 def test_una_correccion_nunca_toca_otra_caja(sesion: Session):

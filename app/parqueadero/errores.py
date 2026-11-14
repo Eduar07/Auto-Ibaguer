@@ -24,7 +24,13 @@ class CajaYaAbierta(ReglaDelNegocio):
 
 
 class CobroNoCorregible(ReglaDelNegocio):
-    """Un cobro se corrige solo mientras su caja sigue abierta: la cerrada ya se contó."""
+    """Un cobro que ya no se puede corregir: ya se deshizo o se anuló, no entró a ninguna caja,
+    o su caja se cerró hace demasiado."""
+
+
+class CajaNoCorregible(ReglaDelNegocio):
+    """Una caja que no se puede corregir así: el conteo de una abierta (todavía no se contó) o
+    una que se cerró hace demasiado."""
 
 
 class ValorInvalido(ReglaDelNegocio):

@@ -35,6 +35,10 @@ DIAS_PARA_COBRAR_ANTES = 3
 # Un día del cobro por días: las 24 horas del día y la noche, como lo define el decreto.
 HORAS_DEL_DIA = 24
 
+# Una caja cerrada todavía se puede corregir (un cobro, la base o el conteo) hasta estos días
+# después del cierre. Después, sus cuentas ya se entregaron y no se cambian.
+DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA = 30
+
 # Una placa limpia: letras y números, con al menos una de cada una. Cabe la de carro
 # (ABC123), la de moto (ABC12D), la de moto vieja (ABC12) y las especiales (R12345).
 _PLACA = re.compile(r"(?=.*[A-Z])(?=.*\d)[A-Z0-9]{4,7}")
@@ -231,6 +235,14 @@ def cubierta_hasta(periodos: Iterable[tuple[date, date]], dia: date) -> date | N
         elif desde <= hasta + timedelta(days=1):
             hasta = max(hasta, fin)
     return hasta
+
+
+def caja_corregible(cerrada_en: datetime | None, ahora: datetime) -> bool:
+    """¿Esa caja todavía se puede corregir? La abierta, siempre; la cerrada, hasta 30 días
+    después del cierre."""
+    return cerrada_en is None or ahora - cerrada_en <= timedelta(
+        days=DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA
+    )
 
 
 def se_puede_cobrar(al_dia_hasta: date | None, hoy: date) -> bool:

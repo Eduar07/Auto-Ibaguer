@@ -47,7 +47,7 @@
             <td>{{ r.cuadre.total|pesos }}</td>
             <td>{{ r.caja.efectivo_esperado|pesos }}</td>
             <td>{{ r.caja.efectivo_contado|pesos }}</td>
-            <td class="{{ 'diferencia--cuadra' if d == 0 else ('diferencia--sobra' if d > 0 else 'diferencia--falta') }}">{{ "Cuadró" if d == 0 else (("+" if d > 0 else "−") ~ (d|abs)|pesos) }}</td>
+            <td><span class="{{ 'diferencia--cuadra' if d == 0 else ('diferencia--sobra' if d > 0 else 'diferencia--falta') }}">{{ "Cuadró" if d == 0 else (("+" if d > 0 else "−") ~ (d|abs)|pesos) }}</span>{% if r.corregida_despues_del_cierre %} <span class="insignia insignia--ambar">Corregida</span>{% endif %}</td>
             <td><a href="/parqueadero/caja/{{ r.caja.id }}">Ver</a></td>
           </tr>
           {% endfor %}

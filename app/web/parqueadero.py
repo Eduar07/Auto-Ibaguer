@@ -10,6 +10,7 @@ son páginas aparte, con el tamaño del papel de la impresora térmica (58 u 80 
 
 import csv
 import io
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
@@ -29,7 +30,7 @@ from app.parqueadero import consultas, reglas, reporte
 from app.parqueadero.balance import TIPOS_DE_PERIODO, total_recogido
 from app.parqueadero.balance import balance as calcular_balance
 from app.parqueadero.balance import periodo as periodo_de
-from app.parqueadero.errores import CobroNoCorregible, ValorInvalido
+from app.parqueadero.errores import CajaNoCorregible, CobroNoCorregible, ValorInvalido
 from app.parqueadero.estados import NOMBRE_DEL_TIPO, EstadoParqueo, TipoParqueo
 from app.parqueadero.tablas import (
     CajaParqueadero,
@@ -48,6 +49,7 @@ from app.web.comun import (
     html,
     leer_pesos,
     pagina,
+    pagina_actual,
     plantillas,
     sin_cambios,
     verificar_origen,
@@ -449,15 +451,28 @@ def cerrar_caja(
     )
 
 
+def _contexto_de_una_caja(sesion: Session, caja: CajaParqueadero) -> dict[str, Any]:
+    cerrada_en = caja.cerrada_en
+    return {
+        "resumen": consultas.resumen_de_caja(sesion, caja),
+        "movimientos": consultas.movimientos_de_caja(sesion, caja.id),
+        "medios": MEDIOS,
+        "se_puede_corregir": reglas.caja_corregible(cerrada_en, tiempo.ahora()),
+        "corregible_hasta": (
+            tiempo.hora_local(cerrada_en).date()
+            + timedelta(days=reglas.DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA)
+            if cerrada_en
+            else None
+        ),
+    }
+
+
 @router.get("/caja/{caja_id}", response_class=HTMLResponse)
 def pagina_de_una_caja(
     request: Request, sesion: SesionBD, _: Admin, caja_id: int, imprimir: int = 0
 ) -> Response:
     caja = _caja_o_404(sesion, caja_id)
-    contexto = {
-        "resumen": consultas.resumen_de_caja(sesion, caja),
-        "movimientos": consultas.movimientos_de_caja(sesion, caja.id),
-        "medios": MEDIOS,
+    contexto = _contexto_de_una_caja(sesion, caja) | {
         "imprimir_al_abrir": f"/parqueadero/caja/{caja.id}/ticket" if imprimir else None,
     }
     return pagina(request, sesion, "parqueadero_una_caja.html", contexto, seccion="parqueadero")
@@ -468,6 +483,116 @@ def ticket_de_caja(request: Request, sesion: SesionBD, _: Admin, caja_id: int) -
     caja = _caja_o_404(sesion, caja_id)
     contexto = {"resumen": consultas.resumen_de_caja(sesion, caja), "medios": MEDIOS}
     return _ticket(request, sesion, "tickets/caja.html", contexto)
+
+
+# --- Corregir la caja misma: el conteo (ya cerrada) o la base ---------------------------------
+
+
+def _dialogo_corregir_caja(
+    request: Request,
+    sesion: Session,
+    caja: CajaParqueadero,
+    *,
+    formulario: dict[str, Any] | None = None,
+    accion: str = "",
+    error: str | None = None,
+) -> Response:
+    contexto = {
+        "resumen": consultas.resumen_de_caja(sesion, caja),
+        "formulario": formulario
+        or {"efectivo_contado": caja.efectivo_contado, "base": caja.base, "motivo": ""},
+        "accion": accion,
+        "error": error,
+    }
+    return html(request, "dialogos/parqueadero_corregir_caja.html", contexto)
+
+
+@router.get("/caja/{caja_id}/corregir", response_class=HTMLResponse)
+def dialogo_corregir_caja(request: Request, sesion: SesionBD, _: Admin, caja_id: int) -> Response:
+    caja = _caja_o_404(sesion, caja_id)
+    if not reglas.caja_corregible(caja.cerrada_en, tiempo.ahora()):
+        return sin_cambios(
+            error=f"La caja {caja.id} se cerró hace más de "
+            f"{reglas.DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA} días: ya no se corrige."
+        )
+    return _dialogo_corregir_caja(request, sesion, caja)
+
+
+def _no_se_corrigio_la_caja(
+    request: Request,
+    sesion: Session,
+    caja_id: int,
+    error: ReglaDelNegocio,
+    formulario: dict[str, Any],
+    accion: str,
+) -> Response:
+    """Si la caja ya no se puede corregir así, el diálogo se cierra y se avisa; si no, vuelve
+    con el error y lo que se escribió."""
+    if isinstance(error, CajaNoCorregible):
+        return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, error=str(error))
+    caja = _caja_o_404(sesion, caja_id)
+    completo = {"efectivo_contado": caja.efectivo_contado, "base": caja.base} | formulario
+    return _dialogo_corregir_caja(
+        request, sesion, caja, formulario=completo, accion=accion, error=str(error)
+    )
+
+
+@router.post("/caja/{caja_id}/corregir-conteo", response_class=HTMLResponse)
+def corregir_conteo(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    caja_id: int,
+    efectivo_contado: Annotated[str, Form()] = "",
+    motivo: Annotated[str, Form()] = "",
+) -> Response:
+    contado = leer_pesos(efectivo_contado)
+    try:
+        if contado is None:
+            raise ValorInvalido("Escribe cuánto efectivo se contó.")
+        correccion = casos.corregir_conteo(
+            sesion,
+            caja_id,
+            efectivo_contado=contado,
+            motivo=motivo,
+            administrador_id=administrador.id,
+        )
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        formulario = {"efectivo_contado": contado, "motivo": motivo}
+        return _no_se_corrigio_la_caja(request, sesion, caja_id, error, formulario, "conteo")
+    aviso = (
+        f"Listo: el conteo de la caja {caja_id} quedó en {formato.pesos(correccion.valor_despues)}."
+    )
+    return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, aviso=aviso)
+
+
+@router.post("/caja/{caja_id}/corregir-base", response_class=HTMLResponse)
+def corregir_base(
+    request: Request,
+    sesion: SesionBD,
+    administrador: Admin,
+    caja_id: int,
+    base: Annotated[str, Form()] = "",
+    motivo: Annotated[str, Form()] = "",
+) -> Response:
+    valor = leer_pesos(base)
+    try:
+        if valor is None:
+            raise ValorInvalido("Escribe la base con que se abrió la caja (0 si no hubo).")
+        correccion = casos.corregir_base(
+            sesion, caja_id, base=valor, motivo=motivo, administrador_id=administrador.id
+        )
+        sesion.commit()
+    except ReglaDelNegocio as error:
+        sesion.rollback()
+        formulario = {"base": valor, "motivo": motivo}
+        return _no_se_corrigio_la_caja(request, sesion, caja_id, error, formulario, "base")
+    aviso = (
+        f"Listo: la base de la caja {caja_id} quedó en {formato.pesos(correccion.valor_despues)}."
+    )
+    return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, aviso=aviso)
 
 
 @router.get("/exportar")
@@ -936,6 +1061,7 @@ class _CobroParaCorregir:
     valor: int
     medio: MedioPago | None
     tarifa: int | None  # lo que daba la tarifa (solo en una salida)
+    caja_id: int | None
     para_corregir: str
     para_deshacer: str
     nombre_deshacer: str
@@ -961,6 +1087,7 @@ def _cobro_de_la_salida(parqueo: Parqueo) -> _CobroParaCorregir:
         valor=valor,
         medio=parqueo.medio_pago,
         tarifa=parqueo.valor_calculado,
+        caja_id=parqueo.caja_id,
         para_corregir=f"/parqueadero/{parqueo.id}/corregir",
         para_deshacer=f"/parqueadero/{parqueo.id}/deshacer-salida",
         nombre_deshacer="Deshacer la salida",
@@ -983,6 +1110,7 @@ def _cobro_del_pago(pago: PagoMensualidad, mensualidad: Mensualidad) -> _CobroPa
         valor=pago.valor,
         medio=pago.medio_pago,
         tarifa=None,
+        caja_id=pago.caja_id,
         para_corregir=f"/parqueadero/mensualidades/pagos/{pago.id}/corregir",
         para_deshacer=f"/parqueadero/mensualidades/pagos/{pago.id}/anular",
         nombre_deshacer="Anular el pago",
@@ -996,14 +1124,17 @@ def _cobro_del_pago(pago: PagoMensualidad, mensualidad: Mensualidad) -> _CobroPa
 
 def _dialogo_corregir(
     request: Request,
+    sesion: Session,
     cobro: _CobroParaCorregir,
     *,
     formulario: dict[str, Any] | None = None,
     accion: str = "",
     error: str | None = None,
 ) -> Response:
+    caja = sesion.get(CajaParqueadero, cobro.caja_id) if cobro.caja_id else None
     contexto = {
         "cobro": cobro,
+        "caja_cerrada": caja is not None and caja.cerrada_en is not None,
         "medios": MEDIOS,
         "formulario": formulario
         or {"valor": cobro.valor, "medio_pago": cobro.medio.value if cobro.medio else ""},
@@ -1025,6 +1156,18 @@ def _caja_abierta(request: Request, sesion: Session, **eventos: Any) -> Response
     return _con_retarget(con_eventos(respuesta, **eventos), "#caja-abierta")
 
 
+def _caja_de_la_pantalla(request: Request, sesion: Session, **eventos: Any) -> Response:
+    """Después de corregir, la caja de la pantalla donde se corrigió, otra vez pintada: la de
+    una caja (/parqueadero/caja/12, abierta o cerrada) o, si no, la caja del día. Dónde está
+    la pantalla lo dice htmx en cada pedido."""
+    numero = re.fullmatch(r"/parqueadero/caja/(\d+)", pagina_actual(request))
+    caja = sesion.get(CajaParqueadero, int(numero.group(1))) if numero else None
+    if caja is None:
+        return _caja_abierta(request, sesion, **eventos)
+    respuesta = html(request, "_parqueadero_una_caja.html", _contexto_de_una_caja(sesion, caja))
+    return _con_retarget(con_eventos(respuesta, **eventos), "#una-caja")
+
+
 def _no_se_corrigio(
     request: Request,
     sesion: Session,
@@ -1033,12 +1176,13 @@ def _no_se_corrigio(
     formulario: dict[str, Any],
     accion: str,
 ) -> Response:
-    """Si la caja se cerró o el cobro ya no existe, el diálogo no sirve: se cierra, la caja se
-    pinta como está y se avisa. Si no, el diálogo vuelve con el error y lo que se escribió."""
+    """Si el cobro ya no se puede corregir (ya se deshizo, o su caja se cerró hace más de 30
+    días), el diálogo no sirve: se cierra, la caja se pinta como está y se avisa. Si no, el
+    diálogo vuelve con el error y lo que se escribió."""
     if isinstance(error, CobroNoCorregible):
-        return _caja_abierta(request, sesion, cerrar_dialogo=True, error=str(error))
+        return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, error=str(error))
     return _dialogo_corregir(
-        request, cobro(), formulario=formulario, accion=accion, error=str(error)
+        request, sesion, cobro(), formulario=formulario, accion=accion, error=str(error)
     )
 
 
@@ -1073,7 +1217,7 @@ def dialogo_corregir_salida(
         return _caja_abierta(
             request, sesion, error=f"La salida de {parqueo.placa} ya no está cobrada."
         )
-    return _dialogo_corregir(request, _cobro_de_la_salida(parqueo))
+    return _dialogo_corregir(request, sesion, _cobro_de_la_salida(parqueo))
 
 
 @router.post("/{parqueo_id}/corregir", response_class=HTMLResponse)
@@ -1106,7 +1250,7 @@ def corregir_salida(
             request, sesion, error, lambda: _cobro_de_la_salida(parqueo), formulario, "corregir"
         )
     aviso = f"Listo: el cobro de {correccion.placa} quedó en {_como_quedo(correccion)}."
-    return _caja_abierta(request, sesion, cerrar_dialogo=True, aviso=aviso)
+    return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, aviso=aviso)
 
 
 @router.post("/{parqueo_id}/deshacer-salida", response_class=HTMLResponse)
@@ -1136,7 +1280,7 @@ def deshacer_salida(
         f"{correccion.placa} volvió a quedar adentro (ticket {correccion.parqueo_id})."
         + _salen(correccion)
     )
-    return _caja_abierta(request, sesion, cerrar_dialogo=True, aviso=aviso)
+    return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, aviso=aviso)
 
 
 def _pago_para_corregir(sesion: Session, pago_id: int) -> tuple[PagoMensualidad, Mensualidad]:
@@ -1150,8 +1294,10 @@ def _pago_para_corregir(sesion: Session, pago_id: int) -> tuple[PagoMensualidad,
 def dialogo_corregir_pago(request: Request, sesion: SesionBD, _: Admin, pago_id: int) -> Response:
     if sesion.get(PagoMensualidad, pago_id) is None:
         # Ya se anuló (por ejemplo, desde otro celular): la caja se pinta como está.
-        return _caja_abierta(request, sesion, error="Ese pago ya no existe: ya se anuló.")
-    return _dialogo_corregir(request, _cobro_del_pago(*_pago_para_corregir(sesion, pago_id)))
+        return _caja_de_la_pantalla(request, sesion, error="Ese pago ya no existe: ya se anuló.")
+    return _dialogo_corregir(
+        request, sesion, _cobro_del_pago(*_pago_para_corregir(sesion, pago_id))
+    )
 
 
 def _pago_o_caja(
@@ -1165,7 +1311,7 @@ def _pago_o_caja(
     """El error de corregir o anular un pago. Si el pago ya no está, no hay diálogo que
     volver a mostrar: se pinta la caja con el aviso."""
     if sesion.get(PagoMensualidad, pago_id) is None:
-        return _caja_abierta(request, sesion, cerrar_dialogo=True, error=str(error))
+        return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, error=str(error))
     cobro = _cobro_del_pago(*_pago_para_corregir(sesion, pago_id))
     if accion == "deshacer":
         formulario = {
@@ -1204,7 +1350,7 @@ def corregir_pago(
         f"Listo: el pago de la mensualidad de {correccion.placa} quedó en "
         f"{_como_quedo(correccion)}."
     )
-    return _caja_abierta(request, sesion, cerrar_dialogo=True, aviso=aviso)
+    return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, aviso=aviso)
 
 
 @router.post("/mensualidades/pagos/{pago_id}/anular", response_class=HTMLResponse)
@@ -1227,7 +1373,7 @@ def anular_pago(
         f"Se anuló el pago de la mensualidad de {correccion.placa}: esos días vuelven a "
         "deberse." + _salen(correccion)
     )
-    return _caja_abierta(request, sesion, cerrar_dialogo=True, aviso=aviso)
+    return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, aviso=aviso)
 
 
 # --- Tarifas y ticket ---------------------------------------------------------------------
@@ -1390,3 +1536,4 @@ def cobro_de(parqueo: Parqueo) -> reglas.Cobro:
 
 
 plantillas.env.globals["cobro_de"] = cobro_de
+plantillas.env.globals["dias_para_corregir"] = reglas.DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA

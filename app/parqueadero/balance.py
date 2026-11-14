@@ -13,7 +13,12 @@ from sqlalchemy import String, func, literal, select
 from sqlalchemy.orm import Session
 
 from app import formato, tiempo
-from app.parqueadero.consultas import FilaCorreccion, ResumenDeCaja, resumenes_de_cajas
+from app.parqueadero.consultas import (
+    Correccion,
+    ResumenDeCaja,
+    correcciones_a_cajas_de_antes,
+    resumenes_de_cajas,
+)
 from app.parqueadero.estados import EstadoParqueo, TipoParqueo
 from app.parqueadero.tablas import CajaParqueadero, PagoMensualidad, Parqueo
 from app.turnos.estados import MedioPago
@@ -146,6 +151,9 @@ class Balance:
     total_anuladas: int
     cajas: list[ResumenDeCaja]
     dias: list[DiaDelBalance] = field(default_factory=list)
+    # Las que se hicieron en el periodo a cajas de antes (ya cerradas): cambiaron días que ya
+    # se habían revisado. Las de las cajas del periodo están en `correcciones`.
+    correcciones_de_antes: list[Correccion] = field(default_factory=list)
 
     @property
     def total_salidas(self) -> int:
@@ -192,8 +200,9 @@ class Balance:
         return max((dia.total for dia in self.dias), default=0)
 
     @property
-    def correcciones(self) -> list[FilaCorreccion]:
-        """Los cobros corregidos en las cajas del periodo, de la primera a la última."""
+    def correcciones(self) -> list[Correccion]:
+        """Lo que se corrigió en las cajas del periodo (cobros, bases y conteos), aunque se
+        haya corregido después, de la primera caja a la última."""
         return [fila for resumen in self.cajas for fila in resumen.correcciones]
 
 
@@ -345,6 +354,7 @@ def balance(sesion: Session, p: Periodo) -> Balance:
         total_anuladas=total_anuladas or 0,
         cajas=resumenes_de_cajas(sesion, cajas),
         dias=[DiaDelBalance(dia, **valores) for dia, valores in por_dia.items()],
+        correcciones_de_antes=correcciones_a_cajas_de_antes(sesion, inicio, fin),
     )
 
 

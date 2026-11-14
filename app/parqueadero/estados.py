@@ -1,5 +1,5 @@
 """Las listas cerradas del parqueadero: tipos de vehículo, en qué va cada parqueo y qué
-clase de corrección se le hizo a un cobro."""
+se corrigió (un cobro o un dato de la caja)."""
 
 from enum import StrEnum
 
@@ -26,3 +26,10 @@ class TipoCorreccion(StrEnum):
     CORREGIDO = "corregido"  # cambió el valor o el medio de pago
     SALIDA_DESHECHA = "salida_deshecha"  # el vehículo volvió a quedar adentro
     PAGO_ANULADO = "pago_anulado"  # el pago de la mensualidad se quitó: esos días se deben
+
+
+class DatoDeCaja(StrEnum):
+    """Lo que se puede corregir de la caja misma, aparte de sus cobros."""
+
+    BASE = "base"  # la plata para vueltos con que se abrió
+    CONTEO = "conteo"  # el efectivo que se contó al cerrar

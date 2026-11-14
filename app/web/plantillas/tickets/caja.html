@@ -29,15 +29,18 @@
   <dt>Contado</dt><dd>{{ c.efectivo_contado|pesos }}</dd>
   {% set d = c.diferencia %}
   <dt>Diferencia</dt><dd>{{ "Cuadró" if d == 0 else (("Sobró " if d > 0 else "Faltó ") ~ (d|abs)|pesos) }}</dd>
+  {% if resumen.corregida_despues_del_cierre %}{% set a = resumen.diferencia_al_cerrar %}
+  <dt>Al cerrar</dt><dd>{{ "Cuadró" if a == 0 else (("Sobró " if a > 0 else "Faltó ") ~ (a|abs)|pesos) }}</dd>
+  {% endif %}
   {% if c.nota_cierre %}<dt>Nota</dt><dd>{{ c.nota_cierre }}</dd>{% endif %}
   {% endif %}
 </dl>
 {% if resumen.correcciones %}
 <dl class="ticket__datos ticket__datos--separado">
-  <dt>Cobros corregidos</dt><dd>{{ resumen.correcciones|length }}</dd>
+  <dt>Correcciones</dt><dd>{{ resumen.correcciones|length }}</dd>
   {% for f in resumen.correcciones %}
-  <dt class="ticket__sub">{{ f.correccion.placa }} {{ f.correccion.fecha_hora|hora }}</dt>
-  <dd class="ticket__sub">{{ f.que_paso }}: {{ f.antes }}{% if f.despues %} → {{ f.despues }}{% endif %}</dd>
+  <dt class="ticket__sub">{{ f.placa or "Caja" }} {{ f.momento|hora }}</dt>
+  <dd class="ticket__sub">{{ f.que_paso }}: {{ f.antes }}{% if f.despues %} → {{ f.despues }}{% endif %}{% if f.despues_del_cierre %} (después del cierre){% endif %}</dd>
   {% endfor %}
 </dl>
 {% endif %}

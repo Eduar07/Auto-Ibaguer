@@ -77,7 +77,7 @@
           <tr><th scope="row">Descuentos</th><td>{% if b.descuentos %}{{ b.descuentos|pesos }} en {{ veces(b.salidas_con_descuento, "salida", "salidas") }}{% else %}—{% endif %}</td></tr>
           {% if b.recargos %}<tr><th scope="row">Cobrado por encima de la tarifa</th><td>{{ b.recargos|pesos }}</td></tr>{% endif %}
           <tr><th scope="row">Entradas anuladas</th><td>{{ b.total_anuladas or "—" }}</td></tr>
-          <tr><th scope="row">Cobros corregidos</th><td>{% if b.correcciones %}<span class="diferencia--falta">{{ b.correcciones|length }}</span>{% else %}—{% endif %}</td></tr>
+          <tr><th scope="row">Correcciones</th><td>{% if b.correcciones %}<span class="diferencia--falta">{{ b.correcciones|length }}</span>{% endif %}{% if b.correcciones_de_antes %}{% if b.correcciones %} · {% endif %}<span class="diferencia--falta">{{ b.correcciones_de_antes|length }} a cajas de días anteriores</span>{% endif %}{% if not b.correcciones and not b.correcciones_de_antes %}—{% endif %}</td></tr>
           <tr><th scope="row">Cajas cerradas{% if b.cajas_cerradas %} ({{ b.cajas_cerradas|length }}){% endif %}</th>
             <td>{% if not b.cajas_cerradas %}—{% elif b.cajas_cerradas|length == 1 %}{{ dif(b.diferencia_de_cajas) }}{% else %}
               {#- Los sobrantes y los faltantes van aparte: uno de un día no tapa el otro. -#}
@@ -129,7 +129,7 @@
           {% for r in b.cajas %}
           <tr>
             <td>{{ cuando(r.caja.abierta_en) }}<span class="suave"> · {{ r.abrio }}</span></td>
-            <td>{% if r.caja.cerrada_en %}{{ dif(r.caja.diferencia) }}{% else %}<span class="insignia insignia--verde">Sigue abierta</span>{% endif %}</td>
+            <td>{% if r.caja.cerrada_en %}{{ dif(r.caja.diferencia) }}{% if r.corregida_despues_del_cierre %} <span class="insignia insignia--ambar">Corregida</span>{% endif %}{% else %}<span class="insignia insignia--verde">Sigue abierta</span>{% endif %}</td>
             <td>{{ r.cuadre.total|pesos }}</td>
             <td>{{ (r.caja.efectivo_esperado if r.caja.cerrada_en else r.cuadre.efectivo_esperado)|pesos }}</td>
             <td>{{ r.caja.efectivo_contado|pesos if r.caja.cerrada_en else "—" }}</td>
@@ -146,16 +146,28 @@
     {% endif %}
   </section>
 
-  {% if b.ajustes or b.anuladas or b.correcciones %}
+  {% macro linea_de_correccion(f) -%}
+  {% if f.placa %}<span class="placa-texto">{{ f.placa }}</span> · {% endif %}{{ cuando(f.momento) }} · {{ f.que_paso }}: <span class="tachado">{{ f.antes }}</span>{% if f.despues %} → <strong>{{ f.despues }}</strong>{% endif %}{% if f.despues_del_cierre %} · <span class="insignia insignia--ambar">Después del cierre</span>{% endif %} · {{ f.motivo }} · {{ f.quien }}
+  {%- endmacro %}
+  {% if b.ajustes or b.anuladas or b.correcciones or b.correcciones_de_antes %}
   <section class="panel" aria-labelledby="t-revisar">
     <h2 id="t-revisar">Para revisar</h2>
     {% if b.correcciones %}
     <div>
-      <span class="etiqueta">Cobros corregidos después de cobrar ({{ b.correcciones|length }})</span>
+      <span class="etiqueta">Correcciones en las cajas {{ nombre_del_periodo }} ({{ b.correcciones|length }})</span>
       <ul class="lista-simple">
         {% for f in b.correcciones %}
-        {% set c = f.correccion %}
-        <li><span class="placa-texto">{{ c.placa }}</span> · {{ cuando(c.fecha_hora) }} · {{ f.que_paso }}: <span class="tachado">{{ f.antes }}</span>{% if f.despues %} → <strong>{{ f.despues }}</strong>{% endif %} · {{ c.motivo }} · {{ f.quien }}</li>
+        <li>{{ linea_de_correccion(f) }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if b.correcciones_de_antes %}
+    <div>
+      <span class="etiqueta">Correcciones a cajas de días anteriores ({{ b.correcciones_de_antes|length }})</span>
+      <ul class="lista-simple">
+        {% for f in b.correcciones_de_antes %}
+        <li><a href="{{ enlace('dia', f.dia_de_la_caja) }}">Caja del {{ f.dia_de_la_caja|fecha }}</a> · {{ linea_de_correccion(f) }}</li>
         {% endfor %}
       </ul>
     </div>

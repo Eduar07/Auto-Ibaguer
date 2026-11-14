@@ -1,0 +1,40 @@
+{#- Una caja, abierta o cerrada, con su cuadre, sus cobros y sus correcciones. Mientras se pueda
+    corregir (la abierta, o la cerrada hasta 30 días después del cierre), cada cobro trae su
+    botón y la caja el de corregir el conteo o la base. Se vuelve a pintar sola después de
+    corregir. -#}
+{% import "_iconos.html" as iconos %}
+{% from "_parqueadero_resumen_caja.html" import resumen_de_caja, movimientos_de_caja, correcciones_de_caja %}
+{% set c = resumen.caja %}
+<section class="panel" aria-labelledby="t-caja">
+  <div class="panel__cabeza">
+    <h2 id="t-caja">{{ "Cierre de caja" if c.cerrada_en else "Caja abierta" }}</h2>
+    <span class="insignias">
+      {% if resumen.corregida_despues_del_cierre %}<span class="insignia insignia--ambar">Corregida después del cierre</span>{% endif %}
+      <span class="insignia {{ 'insignia--gris' if c.cerrada_en else 'insignia--verde' }}">{{ "Cerrada" if c.cerrada_en else "Abierta" }}</span>
+    </span>
+  </div>
+  {{ resumen_de_caja(resumen) }}
+  {% if c.nota_cierre %}<p class="suave">Nota del cierre: {{ c.nota_cierre }}</p>{% endif %}
+  <div class="botones">
+    <button type="button" class="boton boton--borde" data-imprimir="/parqueadero/caja/{{ c.id }}/ticket">{{ iconos.icono("imprimir", 18) }}Imprimir resumen</button>
+    {% if se_puede_corregir %}
+    <button type="button" class="boton boton--borde" hx-get="/parqueadero/caja/{{ c.id }}/corregir" hx-target="#dialogo-contenido">{{ "Corregir el conteo o la base" if c.cerrada_en else "Corregir la base" }}</button>
+    {% endif %}
+    <a class="boton-texto" href="/parqueadero/caja">{{ iconos.icono("volver", 18, 2.2) }}Volver a la caja</a>
+  </div>
+  {% if c.cerrada_en %}
+  <p class="ayuda">
+    {%- if se_puede_corregir -%}
+    ¿Algo de este cierre quedó mal: un cobro, el conteo o la base? Se corrige aquí hasta el {{ corregible_hasta|fecha }}, con el motivo. La diferencia se pone al día y la corrección sale en el Balance y en el reporte a los jefes.
+    {%- else -%}
+    Esta caja se cerró hace más de {{ dias_para_corregir }} días: sus cuentas ya se entregaron y no se corrigen.
+    {%- endif -%}
+  </p>
+  {% endif %}
+</section>
+
+<section class="lista" aria-labelledby="t-movimientos">
+  <div class="lista__cabeza"><h3 id="t-movimientos">Cobros de esta caja</h3></div>
+  {{ movimientos_de_caja(movimientos, corregir=se_puede_corregir) }}
+</section>
+{% if resumen.correcciones %}{{ correcciones_de_caja(resumen.correcciones) }}{% endif %}

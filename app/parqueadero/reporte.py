@@ -162,6 +162,12 @@ def texto(reporte: ReporteDelDia, *, negrilla: bool = True) -> str:
         lineas.append("No se abrió caja este día.")
     for resumen in b.cajas:
         lineas += _lineas_de_la_caja(resumen, reporte.dia)
+    if b.correcciones_de_antes:
+        lineas += [
+            "",
+            fuerte(f"Correcciones a cajas de días anteriores: {len(b.correcciones_de_antes)}"),
+        ]
+        lineas += _lineas_de_correcciones_de_antes(b)
     adentro = f"{sum(reporte.adentro.values())} ({_motos_y_carros(reporte.adentro)})"
     lineas += [
         "",
@@ -206,14 +212,30 @@ def _lineas_de_la_caja(resumen: ResumenDeCaja, dia: date) -> list[str]:
             f"Contaron {pesos(caja.efectivo_contado or 0)}",
             _diferencia(caja.diferencia or 0),
         ]
+        if resumen.corregida_despues_del_cierre:
+            al_cerrar = _diferencia(resumen.diferencia_al_cerrar or 0)
+            lineas.append(
+                f"Se corrigió después del cierre. Al cerrar: {al_cerrar[0].lower()}{al_cerrar[1:]}"
+            )
         if caja.nota_cierre:
             lineas.append(f"Nota: {caja.nota_cierre}")
     if resumen.correcciones:
         # Lo que se corrigió después de cobrar: es lo primero que un jefe debe revisar.
-        lineas.append(f"Cobros corregidos: {len(resumen.correcciones)}")
+        lineas.append(f"Correcciones: {len(resumen.correcciones)}")
         lineas += [f"- {fila.en_una_linea}" for fila in resumen.correcciones[:DETALLE_EN_EL_TEXTO]]
         lineas += _y_mas(len(resumen.correcciones) - DETALLE_EN_EL_TEXTO)
     return lineas
+
+
+def _lineas_de_correcciones_de_antes(b: Balance) -> list[str]:
+    """Lo que se corrigió este día en cajas de días anteriores, con el día de cada caja."""
+    lineas = [
+        f"- Caja del {formato.dia_y_mes(fila.dia_de_la_caja)}: {fila.en_una_linea}"
+        if fila.dia_de_la_caja
+        else f"- {fila.en_una_linea}"
+        for fila in b.correcciones_de_antes[:DETALLE_EN_EL_TEXTO]
+    ]
+    return lineas + _y_mas(len(b.correcciones_de_antes) - DETALLE_EN_EL_TEXTO)
 
 
 def _diferencia(diferencia: int) -> str:

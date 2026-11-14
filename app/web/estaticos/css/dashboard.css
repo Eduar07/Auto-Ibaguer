@@ -140,6 +140,7 @@ code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-si
 .insignia--verde { background: var(--verde-claro); color: var(--verde); }
 .insignia--gris { background: var(--gris-claro); color: var(--tinta-gris); }
 .insignia--ambar { background: var(--naranja-claro); color: var(--naranja-texto); }
+.insignias { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .insignia--llamado { background: var(--naranja); color: #fff; }
 .insignia--vencido { background: var(--rojo); color: #fff; }
 .insignia--llego { background: var(--azul); color: #fff; }

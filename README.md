@@ -80,7 +80,7 @@ Es la sección **Parqueadero** del dashboard (en el celular, **Parqueo** en la b
 | Pantalla | Qué se hace ahí |
 |---|---|
 | **Entradas y salidas** | Registrar la entrada (carro o moto, la placa y, si quieres, el estado o lo que deja: sale en el ticket) e imprimir el ticket. Cobrar la salida escribiendo la placa o el número del ticket, o con **Cobrar** en la lista de los que están adentro, que dice cuánto va cada uno. **Anular** una entrada mal hecha: pide el motivo y no cuenta en la caja. |
-| **Caja** | Abrirla con la base para vueltos, ver lo que ha entrado por cada medio de pago y cerrarla contando el efectivo: dice si cuadró, sobró o faltó, e imprime el resumen para firmar. Cada cobro de la caja abierta se puede **corregir**. Abajo, los cierres anteriores y el archivo para Excel. |
+| **Caja** | Abrirla con la base para vueltos, ver lo que ha entrado por cada medio de pago y cerrarla contando el efectivo: dice si cuadró, sobró o faltó, e imprime el resumen para firmar. Cada cobro se puede **corregir**, y también la base; en una caja cerrada, hasta 30 días después, además el efectivo contado. Abajo, los cierres anteriores y el archivo para Excel. |
 | **Mensualidades** | Crear la del cliente (placa, nombre, celular opcional y el valor que acuerdes), cobrar cada mes e imprimir el recibo. Dice quién está al día, a quién se le vence en 3 días o menos y quién debe. |
 | **Balance** | Lo que se recogió por día, semana o mes, por medio de pago, con lo que hay que revisar (descuentos, anuladas, cajas que no cuadraron). En el del día, el reporte para los jefes: por WhatsApp, impreso o por correo. |
 | **Tarifas y ticket** | El valor de la hora de carro y de moto, los minutos de gracia, la fracción de los primeros 15 minutos (opcional), el cobro por días (opcional, con una tabla de cuánto salen 1, 2, 3, 4, 7 y 15 días para responder en el mostrador) y lo que sale impreso: nombre, NIT (en el ticket sale "NIT 900.123.456-7"), dirección, teléfono, el texto del final del ticket y el ancho del papel. También los correos de los jefes para el reporte diario. |
@@ -132,7 +132,7 @@ Lo normal es cerrarla al final de cada día y abrir una nueva al otro día, para
 
 Si alguien está cobrando justo cuando otro cierra la caja, el sistema hace esperar a uno de los dos: o el cierre cuenta ese cobro, o el cobro pide abrir caja. Nunca queda un cobro en una caja ya contada.
 
-### Corregir un cobro
+### Corregir un cobro o una caja
 
 En **Caja > Cobros de esta caja**, cada cobro tiene **Corregir**:
 
@@ -140,11 +140,16 @@ En **Caja > Cobros de esta caja**, cada cobro tiene **Corregir**:
 - **Deshacer la salida**: se le dio salida al carro que no era. Vuelve a la lista de adentro con su ticket, su hora de entrada y su tarifa, y lo cobrado sale de la caja. Si esa placa ya volvió a entrar, no se puede: ahí se cambia el valor.
 - **Anular el pago** de una mensualidad: un mes cobrado dos veces o a la mensualidad equivocada. Esos días vuelven a deberse y la plata sale de la caja.
 
+Y la caja misma: **Corregir la base** (en la caja abierta) o **Corregir el conteo o la base** (en una cerrada), para cuando se escribió mal la base con que se abrió o el efectivo que se contó al cerrar.
+
 Las reglas:
 
-- **Solo mientras la caja de ese cobro sigue abierta.** Es como corregir una venta antes de cerrar la registradora: la caja cerrada ya se contó y se firmó, y sus números no se mueven. Si después del cierre hay que devolver plata, sale de la caja de hoy y se escribe en la nota del cierre.
-- **Siempre con motivo.** Queda anotado cómo estaba el cobro, cómo quedó, el motivo, quién lo hizo y a qué hora (tabla `correccion_cobro`, que solo crece: nada se borra de ahí).
-- **Se ve en todas partes**: en la caja, en su cierre y en el ticket del cierre, en el Balance (**Para revisar**) y en el reporte a los jefes. Si alguien cobra en efectivo y después "anula" para quedarse con la plata, los jefes lo ven con nombre y hora.
+- **En la caja de ese cobro: abierta, o cerrada hasta 30 días después del cierre.** Una caja cerrada se corrige desde **Caja > Cierres anteriores > Ver**. Como en contabilidad, no se borra nada: se hace un ajuste con su motivo. Lo que debía haber en el cajón se pone al día y la diferencia del cierre cambia con la corrección. Después de 30 días, esas cuentas ya se entregaron y no se corrigen (el plazo es `DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA`, en `app/parqueadero/reglas.py`).
+- **Corregir no es devolver.** Es para un cobro o un conteo que quedó mal escrito. Si hoy hay que devolverle plata a alguien, sale de la caja de hoy y se escribe en la nota del cierre.
+- **La caja no se reabre.** Si se cerró antes de tiempo, se abre otra el mismo día: el Balance suma las dos.
+- **Siempre con motivo.** Queda anotado cómo estaba, cómo quedó, el motivo, quién lo hizo y a qué hora (tablas `correccion_cobro` y `correccion_de_caja`, que solo crecen: nada se borra de ahí). Lo que se corrigió con la caja ya cerrada queda marcado **Después del cierre**, y la caja dice cómo había quedado al cerrar ("Al cerrar: faltaron $3.000").
+- **Se ve en todas partes**: en la caja, en su cierre y en el ticket del cierre, en **Cierres anteriores** (con la marca **Corregida**), en el Balance (**Para revisar**) y en el reporte a los jefes. El reporte del día en que se corrigió trae aparte **Correcciones a cajas de días anteriores**: si alguien cambia un día que ya revisaron, lo ven con nombre y hora.
+- Hoy cualquier usuario del sistema puede corregir (todos son administradores). Por eso cada corrección lleva el usuario y sale en el reporte.
 - Los días que un mensualista ya traía pagados no son un cobro: no se corrigen aquí.
 
 ### Mensualidades
@@ -671,8 +676,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 ## Cambiar una tabla
 
 1. Cambia el modelo en el `tablas.py` del módulo.
-2. Crea la migración con el siguiente número (la última es la 0010):
-   `uv run alembic revision --autogenerate --rev-id 0011 -m "que cambio"`
+2. Crea la migración con el siguiente número (la última es la 0011):
+   `uv run alembic revision --autogenerate --rev-id 0012 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
 4. Aplícala: `uv run auto-ibaguer preparar-base`
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.

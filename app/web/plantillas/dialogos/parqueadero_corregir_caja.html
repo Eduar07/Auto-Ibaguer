@@ -1,0 +1,54 @@
+{#- Corregir la caja misma: el efectivo que se contó al cerrar (si ya se cerró) o la base con
+    que se abrió. Siempre con motivo; la diferencia se pone al día sola. -#}
+{% import "_iconos.html" as iconos %}
+{% set c = resumen.caja %}
+<div class="dialogo__caja">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Corregir la caja {{ c.id }}</h2>
+    <p>Abrió {{ resumen.abrio }} {{ cuando_paso(c.abierta_en) }}{% if c.cerrada_en %} · cerró {{ resumen.cerro }} {{ cuando_paso(c.cerrada_en) }}{% endif %}</p>
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <div class="nota nota--suelta">{{ iconos.icono("info", 20) }}<span>Queda anotado con el motivo y tu usuario{% if c.cerrada_en %}, como corrección después del cierre{% endif %}: sale en la caja, en el Balance y en el reporte a los jefes.</span></div>
+
+    {% if c.cerrada_en %}
+    <form class="seccion-correccion" data-formulario="cierre-caja" data-esperado="{{ c.efectivo_esperado }}"
+          hx-post="/parqueadero/caja/{{ c.id }}/corregir-conteo" hx-target="#dialogo-contenido"
+          hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+      <h3>El efectivo que se contó</h3>
+      <p class="suave">Debía haber {{ c.efectivo_esperado|pesos }} en el cajón: la base y lo cobrado en efectivo.</p>
+      <div class="campo campo--corto">
+        <label for="conteo-correccion">Efectivo contado</label>
+        <input id="conteo-correccion" name="efectivo_contado" inputmode="numeric" class="monto" required maxlength="12" value="{{ formulario.efectivo_contado|miles }}">
+        <span class="ayuda" data-diferencia>Escribe lo que se contó y aquí ves si cuadra.</span>
+      </div>
+      <div class="campo">
+        <label for="motivo-conteo">¿Por qué se corrige?</label>
+        <input id="motivo-conteo" name="motivo" required maxlength="200" value="{{ formulario.motivo if accion == 'conteo' else '' }}"
+               placeholder="Se escribió $150.000 y eran $105.000">
+      </div>
+      <button type="submit" class="boton boton--grande">Guardar el conteo</button>
+    </form>
+    {% endif %}
+
+    <form class="seccion-correccion" hx-post="/parqueadero/caja/{{ c.id }}/corregir-base" hx-target="#dialogo-contenido"
+          hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+      <h3>La base para vueltos</h3>
+      <p class="suave">La plata con que se abrió la caja. {{ "Cambia lo que debía haber en el cajón y, con eso, la diferencia." if c.cerrada_en else "El cierre la cuenta en lo que debe haber en el cajón." }}</p>
+      <div class="campo campo--corto">
+        <label for="base-correccion">Base</label>
+        <input id="base-correccion" name="base" inputmode="numeric" class="monto" required maxlength="12" value="{{ formulario.base|miles }}">
+      </div>
+      <div class="campo">
+        <label for="motivo-base">¿Por qué se corrige?</label>
+        <input id="motivo-base" name="motivo" required maxlength="200" value="{{ formulario.motivo if accion == 'base' else '' }}"
+               placeholder="Se abrió con $5.000, no con $50.000">
+      </div>
+      <button type="submit" class="boton boton--grande">Guardar la base</button>
+    </form>
+  </div>
+  <div class="dialogo__pie">
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</div>

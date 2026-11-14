@@ -327,6 +327,7 @@ def test_el_aviso_de_un_llamado_anterior_no_sale(sesion: Session):
     assert sirve(sesion, paso_al_final, ahora)
 
 
+@pytest.mark.usefixtures("caja_del_lavadero")
 def test_el_aviso_de_vehiculo_listo_sirve_hasta_que_se_cobra(sesion: Session):
     turno = turno_listo(sesion)
     listo = aviso_de(sesion, turno, TipoAviso.VEHICULO_LISTO)

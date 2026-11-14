@@ -37,6 +37,7 @@ def test_completar_placa_y_servicio_al_recibir(sesion: Session):
     assert ultimo.detalle == "Placa: ABC123; Servicio: por definir → Encerado"
 
 
+@pytest.mark.usefixtures("caja_del_lavadero")
 def test_corregir_automovil_por_camioneta_cambia_el_precio(sesion: Session):
     nuevo = en_el_local(sesion, placa="ABC123", servicio_id=servicio(sesion).id)
     turno = nuevo.turno.id

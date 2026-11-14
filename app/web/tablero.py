@@ -12,10 +12,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import tiempo
+from app.caja.tablas import Caja
 from app.catalogo.parametros import Parametros, leer_parametros
 from app.catalogo.tablas import Fila, Servicio, ServicioPrecio, TipoVehiculo
 from app.clientes.tablas import Cliente, Vehiculo
 from app.formato import hora_con_articulo
+from app.turnos import caja as caja_del_lavadero
 from app.turnos import consultas, datos, reglas
 from app.turnos.estados import ESTADOS_ACTIVOS, Actor, EstadoTurno, OrigenTurno
 from app.turnos.tablas import Pago, Turno, TurnoHistorial
@@ -116,6 +118,8 @@ class Tablero:
     cobros_hoy: int
     actividad: list[Movimiento]
     bot_activo: bool
+    # La caja abierta del lavadero: sin ella no se cobra (el tablero lo avisa).
+    caja: Caja | None = None
 
     @property
     def en_lavado(self) -> int:
@@ -345,4 +349,5 @@ def armar_tablero(
         cobros_hoy=int(cobros),
         actividad=_actividad(sesion, ahora, movimientos),
         bot_activo=parametros.bot_activo,
+        caja=caja_del_lavadero.caja_abierta(sesion),
     )

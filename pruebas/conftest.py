@@ -7,7 +7,7 @@ desarrollo no se tocan.
 
 import smtplib
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,6 +22,7 @@ from app.config import obtener_entorno
 from app.db.sesion import obtener_sesion
 from app.integraciones import gemini
 from app.main import app
+from app.turnos import caja as caja_lavadero
 from app.web import entrar, sesiones
 from app.web.administradores import guardar_administrador
 from app.web.tablas import Administrador
@@ -131,3 +132,10 @@ def correo_configurado(monkeypatch: pytest.MonkeyPatch) -> list:
     enviados: list = []
     monkeypatch.setattr(smtplib, "SMTP_SSL", ServidorFalso(enviados))
     return enviados
+
+
+@pytest.fixture
+def caja_del_lavadero(sesion: Session):
+    """La caja del lavadero abierta (con $0 de base) desde el día anterior al de las pruebas:
+    sin caja abierta no se cobra un turno."""
+    return caja_lavadero.abrir_caja(sesion, base=0, ahora=LUNES_8AM - timedelta(days=1, hours=2))

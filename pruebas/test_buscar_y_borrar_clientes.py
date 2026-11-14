@@ -93,6 +93,7 @@ def test_un_turno_cancelado_no_cuenta_como_visita(sesion: Session):
 # --- Ficha ----------------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("caja_del_lavadero")
 def test_la_ficha_suma_visitas_lo_pagado_y_lo_que_pide_casi_siempre(sesion: Session):
     vehiculo = cliente_con_vehiculo(sesion, nombre="Felipe", placa="JKL221")
     cobrado(sesion, vehiculo, nombre_servicio="Encerado")
@@ -159,6 +160,7 @@ def test_no_se_borran_los_datos_de_quien_tiene_un_turno_en_la_fila(sesion: Sessi
         clientes.borrar_datos(sesion, nuevo.turno.cliente_id)
 
 
+@pytest.mark.usefixtures("caja_del_lavadero")
 def test_borrar_datos_quita_lo_personal_y_deja_la_contabilidad(sesion: Session):
     vehiculo = cliente_con_vehiculo(
         sesion, nombre="Felipe Osorio", placa="JKL221", telefono="3214564410"

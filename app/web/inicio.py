@@ -21,6 +21,7 @@ from app.parqueadero import balance
 from app.parqueadero.casos_de_uso import caja_abierta
 from app.parqueadero.estados import EstadoParqueo
 from app.parqueadero.tablas import Caja, Parqueo
+from app.turnos import caja as caja_del_lavadero
 from app.turnos.estados import ESTADOS_ACTIVOS, ESTADOS_EN_ESPERA, EstadoTurno
 from app.turnos.tablas import Pago, Turno
 from app.web.comun import Admin, SesionBD, pagina, verificar_origen
@@ -39,6 +40,8 @@ class HoyEnElLavadero:
     cobros: int
     bot_activo: bool
     comentarios_pendientes: int
+    caja: Caja | None = None
+    caja_de_otro_dia: bool = False  # alguien la dejó abierta desde un día anterior
 
 
 @dataclass(frozen=True)
@@ -50,7 +53,13 @@ class HoyEnElParqueadero:
     caja_de_otro_dia: bool  # alguien la dejó abierta desde un día anterior
 
 
+def _de_otro_dia(caja: Caja | None, ahora: datetime) -> bool:
+    hoy = tiempo.hora_local(ahora).date()
+    return caja is not None and tiempo.hora_local(caja.abierta_en).date() < hoy
+
+
 def hoy_en_el_lavadero(sesion: Session, ahora: datetime) -> HoyEnElLavadero:
+    caja = caja_del_lavadero.caja_abierta(sesion)
     por_estado: dict[str, int] = {
         estado: cuantos
         for estado, cuantos in sesion.execute(
@@ -73,6 +82,8 @@ def hoy_en_el_lavadero(sesion: Session, ahora: datetime) -> HoyEnElLavadero:
         cobros=int(cobros),
         bot_activo=leer_parametros(sesion).bot_activo,
         comentarios_pendientes=comentarios_por_atender(sesion),
+        caja=caja,
+        caja_de_otro_dia=_de_otro_dia(caja, ahora),
     )
 
 
@@ -96,7 +107,7 @@ def hoy_en_el_parqueadero(sesion: Session, ahora: datetime) -> HoyEnElParqueader
         salidas=int(salidas),
         recogido=balance.total_recogido(sesion, dia),
         caja=caja,
-        caja_de_otro_dia=caja is not None and tiempo.hora_local(caja.abierta_en).date() < hoy,
+        caja_de_otro_dia=_de_otro_dia(caja, ahora),
     )
 
 

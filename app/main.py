@@ -22,6 +22,7 @@ from app.db.sesion import obtener_sesion
 from app.integraciones import whatsapp
 from app.reloj import proceso as reloj
 from app.web import (
+    caja_del_lavadero,
     clientes,
     comentarios,
     comun,
@@ -80,10 +81,15 @@ app.mount(
     StaticFiles(directory=Path(__file__).parent / "web" / "estaticos"),
     name="estaticos",
 )
+# Las pantallas de la caja del parqueadero van antes que las demás del parqueadero: sus rutas
+# fijas (/parqueadero/caja/cerrar) no deben confundirse con las de un vehículo.
+app.include_router(parqueadero.router_de_la_caja)
+app.include_router(caja_del_lavadero.router_de_la_caja)
 for modulo in (
     entrar,
     inicio,
     fila,
+    caja_del_lavadero,
     clientes,
     comentarios,
     parqueadero,

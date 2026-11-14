@@ -12,32 +12,30 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app import formato, tiempo
-from app.caja import consultas as cajas
-from app.caja.consultas import (  # noqa: F401  (los filtros de cierres son comunes)
+from app.caja import consultas as de_la_caja
+from app.caja.consultas import (  # noqa: F401  (las correcciones se muestran igual en las dos cajas)  # noqa: F401  (los filtros de cierres son comunes)
     CIERRES_POR_PAGINA,
     RESULTADOS,
     Cierres,
+    Correccion,
+    FilaCorreccion,
+    FilaCorreccionDeCaja,
     FiltroDeCierres,
 )
 from app.parqueadero import casos_de_uso as casos
 from app.parqueadero import reglas
 from app.parqueadero.estados import (
     NOMBRE_DEL_TIPO,
-    DatoDeCaja,
     EstadoParqueo,
-    TipoCorreccion,
     TipoParqueo,
 )
 from app.parqueadero.tablas import (
     Caja,
-    CorreccionCobro,
-    CorreccionDeCaja,
     Mensualidad,
     PagoMensualidad,
     Parqueo,
 )
 from app.turnos.estados import MedioPago
-from app.web.tablas import Administrador
 
 
 @dataclass(frozen=True)
@@ -167,150 +165,8 @@ def movimientos_de_caja(sesion: Session, caja_id: int) -> list[MovimientoDeCaja]
     return sorted(lineas, key=lambda linea: linea.momento, reverse=True)
 
 
-def _despues_del_cierre(texto: str, despues_del_cierre: bool) -> str:
-    return f"{texto}, después del cierre" if despues_del_cierre else texto
-
-
 @dataclass(frozen=True)
-class FilaCorreccion:
-    """Una corrección de un cobro, lista para mostrar: qué cambió y quién lo hizo.
-
-    Tiene lo mismo que FilaCorreccionDeCaja (momento, qué pasó, antes, después, motivo...):
-    las listas de correcciones muestran las dos sin preguntar cuál es cuál."""
-
-    correccion: CorreccionCobro
-    quien: str
-    # Solo en las listas de correcciones hechas a cajas de otros días: de qué día era la caja.
-    dia_de_la_caja: date | None = None
-
-    @property
-    def momento(self) -> datetime:
-        return self.correccion.fecha_hora
-
-    @property
-    def placa(self) -> str | None:
-        return self.correccion.placa
-
-    @property
-    def detalle(self) -> str:
-        return self.correccion.detalle
-
-    @property
-    def motivo(self) -> str:
-        return self.correccion.motivo
-
-    @property
-    def despues_del_cierre(self) -> bool:
-        return self.correccion.despues_del_cierre
-
-    @property
-    def que_paso(self) -> str:
-        """ "Se deshizo la salida", "Se anuló el pago" o "Se corrigió el cobro" """
-        return {
-            TipoCorreccion.SALIDA_DESHECHA: "Se deshizo la salida",
-            TipoCorreccion.PAGO_ANULADO: "Se anuló el pago",
-            TipoCorreccion.CORREGIDO: "Se corrigió el cobro",
-        }[self.correccion.tipo]
-
-    @property
-    def antes(self) -> str:
-        c = self.correccion
-        return f"{formato.pesos(c.valor_antes)} {reglas.como_se_pago(c.medio_antes)}"
-
-    @property
-    def despues(self) -> str | None:
-        """Cómo quedó, si quedó un cobro (deshecho o anulado no queda nada)."""
-        c = self.correccion
-        if c.tipo is not TipoCorreccion.CORREGIDO:
-            return None
-        return f"{formato.pesos(c.valor_despues)} {reglas.como_se_pago(c.medio_despues)}"
-
-    @property
-    def cambio_en_efectivo(self) -> int:
-        """Cuánto cambió el efectivo que debe haber en el cajón: negativo si salió plata."""
-        return self.correccion.cambio_en_efectivo
-
-    @property
-    def efecto(self) -> tuple[str, int] | None:
-        """Lo que cambió en el cajón, para mostrarlo al lado: ("Efectivo", -6000)."""
-        return ("Efectivo", self.cambio_en_efectivo) if self.cambio_en_efectivo else None
-
-    @property
-    def en_una_linea(self) -> str:
-        """Para el reporte y el ticket: "ABC123: se deshizo la salida ($6.000 en efectivo).
-        Motivo: era otro carro. Por eduar." """
-        c = self.correccion
-        cambio = f"{self.antes} → {self.despues}" if self.despues else self.antes
-        que_paso = _despues_del_cierre(f"{self.que_paso.lower()} ({cambio})", c.despues_del_cierre)
-        return f"{c.placa}: {que_paso}. Motivo: {c.motivo}. Por {self.quien}."
-
-
-@dataclass(frozen=True)
-class FilaCorreccionDeCaja:
-    """Una corrección de la base o del efectivo contado de una caja, lista para mostrar."""
-
-    correccion: CorreccionDeCaja
-    quien: str
-    dia_de_la_caja: date | None = None
-
-    placa = None  # no es de un vehículo
-
-    @property
-    def momento(self) -> datetime:
-        return self.correccion.fecha_hora
-
-    @property
-    def motivo(self) -> str:
-        return self.correccion.motivo
-
-    @property
-    def despues_del_cierre(self) -> bool:
-        return self.correccion.despues_del_cierre
-
-    @property
-    def es_del_conteo(self) -> bool:
-        return self.correccion.dato is DatoDeCaja.CONTEO
-
-    @property
-    def que_paso(self) -> str:
-        return "Se corrigió el efectivo contado" if self.es_del_conteo else "Se corrigió la base"
-
-    @property
-    def detalle(self) -> str:
-        return "Lo que se contó al cerrar" if self.es_del_conteo else "La plata para vueltos"
-
-    @property
-    def antes(self) -> str:
-        return formato.pesos(self.correccion.valor_antes)
-
-    @property
-    def despues(self) -> str:
-        return formato.pesos(self.correccion.valor_despues)
-
-    @property
-    def cambio_en_efectivo(self) -> int:
-        return self.correccion.cambio_en_efectivo
-
-    @property
-    def efecto(self) -> tuple[str, int]:
-        c = self.correccion
-        return ("Contado" if self.es_del_conteo else "Base", c.valor_despues - c.valor_antes)
-
-    @property
-    def en_una_linea(self) -> str:
-        """ "Se corrigió el efectivo contado ($150.000 → $105.000), después del cierre.
-        Motivo: se escribió mal. Por eduar." """
-        que_paso = _despues_del_cierre(
-            f"{self.que_paso} ({self.antes} → {self.despues})", self.despues_del_cierre
-        )
-        return f"{que_paso}. Motivo: {self.motivo}. Por {self.quien}."
-
-
-Correccion = FilaCorreccion | FilaCorreccionDeCaja
-
-
-@dataclass(frozen=True)
-class ResumenDeCaja:
+class ResumenDeCaja(de_la_caja.DatosDelCierre):
     caja: Caja
     cuadre: reglas.Cuadre
     salidas: int  # vehículos que salieron con esta caja abierta (cobrados o mensualistas)
@@ -320,33 +176,31 @@ class ResumenDeCaja:
     # De cobros y de la caja misma (base o conteo), de la primera a la última.
     correcciones: list[Correccion] = field(default_factory=list)
 
-    @property
-    def corregida_despues_del_cierre(self) -> bool:
-        return any(fila.despues_del_cierre for fila in self.correcciones)
+    # Cómo se muestra en la pantalla de la caja (la misma para los dos negocios).
+    columnas = ("Salidas", "Mensualidades")
 
     @property
-    def conteo_corregido(self) -> bool:
-        return any(
-            isinstance(fila, FilaCorreccionDeCaja) and fila.es_del_conteo
-            for fila in self.correcciones
-        )
+    def cifras(self) -> list[tuple[int, str]]:
+        """Las cuentas de al lado del total: cuántas salidas y cuántas mensualidades."""
+        cifras = [(self.salidas, "salida" if self.salidas == 1 else "salidas")]
+        if self.mensualidades:
+            nombre = "mensualidad" if self.mensualidades == 1 else "mensualidades"
+            cifras.append((self.mensualidades, nombre))
+        return cifras
 
     @property
-    def diferencia_al_cerrar(self) -> int | None:
-        """Lo que sobró o faltó al cerrar, antes de las correcciones de después: la caja
-        guarda los números ya corregidos, y las correcciones dicen cuánto cambió cada uno."""
-        caja = self.caja
-        if caja.cerrada_en is None:
-            return None
-        despues = [fila for fila in self.correcciones if fila.despues_del_cierre]
-        esperado = (caja.efectivo_esperado or 0) - sum(f.cambio_en_efectivo for f in despues)
-        conteos = [
-            fila.correccion
-            for fila in despues
-            if isinstance(fila, FilaCorreccionDeCaja) and fila.es_del_conteo
+    def lineas(self) -> list[tuple[MedioPago, tuple[int, ...], int]]:
+        """Lo que entró por cada medio de pago: (medio, (salidas, mensualidades), total), solo
+        los medios por los que entró algo."""
+        return [
+            (
+                medio,
+                (self.cuadre.parqueos.get(medio, 0), self.cuadre.mensualidades.get(medio, 0)),
+                total,
+            )
+            for medio in MedioPago
+            if (total := self.cuadre.por_medio(medio))
         ]
-        contado = conteos[0].valor_antes if conteos else (caja.efectivo_contado or 0)
-        return contado - esperado
 
 
 def resumen_de_caja(sesion: Session, caja: Caja) -> ResumenDeCaja:
@@ -391,18 +245,7 @@ def resumenes_de_cajas(sesion: Session, cajas: Sequence[Caja]) -> list[ResumenDe
             .group_by(PagoMensualidad.caja_id)
         ).all()
     )
-    de_cobros = sesion.scalars(
-        select(CorreccionCobro).where(CorreccionCobro.caja_id.in_(ids))
-    ).all()
-    de_cajas = sesion.scalars(
-        select(CorreccionDeCaja).where(CorreccionDeCaja.caja_id.in_(ids))
-    ).all()
-    quienes = {caja.abierta_por for caja in cajas} | {caja.cerrada_por for caja in cajas}
-    quienes |= {c.administrador_id for c in [*de_cobros, *de_cajas]}
-    nombres = _nombres(sesion, quienes)
-    por_caja: dict[int, list[Correccion]] = defaultdict(list)
-    for fila in _filas_de_correcciones(de_cobros, de_cajas, nombres):
-        por_caja[fila.correccion.caja_id].append(fila)
+    por_caja, nombres = de_la_caja.correcciones_de_las_cajas(sesion, cajas)
     return [
         ResumenDeCaja(
             caja=caja,
@@ -419,77 +262,6 @@ def resumenes_de_cajas(sesion: Session, cajas: Sequence[Caja]) -> list[ResumenDe
         )
         for caja in cajas
     ]
-
-
-def _nombres(sesion: Session, ids: set[int | None]) -> dict[int, str]:
-    """El usuario de cada administrador, en una consulta para todos."""
-    ids = ids - {None}
-    if not ids:
-        return {}
-    return dict(
-        sesion.execute(
-            select(Administrador.id, Administrador.usuario).where(Administrador.id.in_(ids))
-        ).all()
-    )
-
-
-def _filas_de_correcciones(
-    de_cobros: Sequence[CorreccionCobro],
-    de_cajas: Sequence[CorreccionDeCaja],
-    nombres: dict[int, str],
-    dias: dict[int, date] | None = None,
-) -> list[Correccion]:
-    """Las dos clases de correcciones en una sola lista, de la primera a la última."""
-    dias = dias or {}
-    filas: list[Correccion] = [
-        FilaCorreccion(c, nombres.get(c.administrador_id, "—"), dias.get(c.caja_id))
-        for c in de_cobros
-    ]
-    filas += [
-        FilaCorreccionDeCaja(c, nombres.get(c.administrador_id, "—"), dias.get(c.caja_id))
-        for c in de_cajas
-    ]
-    return sorted(filas, key=lambda fila: (fila.momento, fila.correccion.id))
-
-
-def correcciones_a_cajas_de_antes(
-    sesion: Session, inicio: datetime, fin: datetime
-) -> list[Correccion]:
-    """Las correcciones hechas entre `inicio` y `fin` a cajas que ya estaban cerradas y se
-    abrieron antes de `inicio`: alguien cambió un día que los jefes ya habían revisado, y el
-    reporte de hoy se lo cuenta."""
-    cajas_de_antes = (
-        select(Caja.id, Caja.abierta_en)
-        .where(Caja.negocio == casos.NEGOCIO, Caja.abierta_en < inicio)
-        .subquery()
-    )
-    de_cobros = sesion.execute(
-        select(CorreccionCobro, cajas_de_antes.c.abierta_en)
-        .join(cajas_de_antes, cajas_de_antes.c.id == CorreccionCobro.caja_id)
-        .where(
-            CorreccionCobro.despues_del_cierre,
-            CorreccionCobro.fecha_hora >= inicio,
-            CorreccionCobro.fecha_hora < fin,
-        )
-    ).all()
-    de_cajas = sesion.execute(
-        select(CorreccionDeCaja, cajas_de_antes.c.abierta_en)
-        .join(cajas_de_antes, cajas_de_antes.c.id == CorreccionDeCaja.caja_id)
-        .where(
-            CorreccionDeCaja.despues_del_cierre,
-            CorreccionDeCaja.fecha_hora >= inicio,
-            CorreccionDeCaja.fecha_hora < fin,
-        )
-    ).all()
-    dias = {
-        correccion.caja_id: tiempo.hora_local(abierta_en).date()
-        for correccion, abierta_en in [*de_cobros, *de_cajas]
-    }
-    correcciones = [correccion for correccion, _ in [*de_cobros, *de_cajas]]
-    nombres = _nombres(sesion, {c.administrador_id for c in correcciones})
-    return _filas_de_correcciones(
-        [c for c, _ in de_cobros], [c for c, _ in de_cajas], nombres, dias
-    )
 
 
 # --- Los cierres anteriores, con filtros (app.caja.consultas) -------------------------------
@@ -514,7 +286,7 @@ def _lo_que_entro(sesion: Session, ids: Select) -> int:
 
 def cierres(sesion: Session, filtro: FiltroDeCierres, pagina: int = 1) -> Cierres[ResumenDeCaja]:
     """Los cierres del parqueadero que cumplen el filtro, de a 30 por página."""
-    return cajas.cierres(
+    return de_la_caja.cierres(
         sesion,
         casos.NEGOCIO,
         filtro,
@@ -526,12 +298,12 @@ def cierres(sesion: Session, filtro: FiltroDeCierres, pagina: int = 1) -> Cierre
 
 def todos_los_cierres(sesion: Session, filtro: FiltroDeCierres) -> list[ResumenDeCaja]:
     """Todos los que cumplen el filtro (para el archivo de Excel), del más viejo al más nuevo."""
-    return cajas.todos_los_cierres(sesion, casos.NEGOCIO, filtro, resumir=resumenes_de_cajas)
+    return de_la_caja.todos_los_cierres(sesion, casos.NEGOCIO, filtro, resumir=resumenes_de_cajas)
 
 
 def quienes_cerraron(sesion: Session) -> list[tuple[int, str]]:
     """Los administradores que han cerrado alguna caja del parqueadero."""
-    return cajas.quienes_cerraron(sesion, casos.NEGOCIO)
+    return de_la_caja.quienes_cerraron(sesion, casos.NEGOCIO)
 
 
 # --- Mensualidades ----------------------------------------------------------------------
@@ -686,3 +458,11 @@ def lineas_para_excel(sesion: Session, desde: date, hasta: date) -> Iterator[tup
         )
     for _, linea in sorted(lineas, key=lambda par: par[0]):
         yield linea
+
+
+def correcciones_a_cajas_de_antes(
+    sesion: Session, inicio: datetime, fin: datetime
+) -> list[Correccion]:
+    """Las correcciones hechas entre `inicio` y `fin` a cajas del parqueadero que ya estaban
+    cerradas y se abrieron antes de `inicio` (para el reporte de hoy)."""
+    return de_la_caja.correcciones_a_cajas_de_antes(sesion, casos.NEGOCIO, inicio, fin)

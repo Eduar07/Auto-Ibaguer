@@ -14,7 +14,7 @@
 
     {% if c.cerrada_en %}
     <form class="seccion-correccion" data-formulario="cierre-caja" data-esperado="{{ c.efectivo_esperado }}"
-          hx-post="/parqueadero/caja/{{ c.id }}/corregir-conteo" hx-target="#dialogo-contenido"
+          hx-post="{{ rutas.caja }}/{{ c.id }}/corregir-conteo" hx-target="#dialogo-contenido"
           hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
       <h3>El efectivo que se contó</h3>
       <p class="suave">Debía haber {{ c.efectivo_esperado|pesos }} en el cajón: la base y lo cobrado en efectivo.</p>
@@ -32,7 +32,7 @@
     </form>
     {% endif %}
 
-    <form class="seccion-correccion" hx-post="/parqueadero/caja/{{ c.id }}/corregir-base" hx-target="#dialogo-contenido"
+    <form class="seccion-correccion" hx-post="{{ rutas.caja }}/{{ c.id }}/corregir-base" hx-target="#dialogo-contenido"
           hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
       <h3>La base para vueltos</h3>
       <p class="suave">La plata con que se abrió la caja. {{ "Cambia lo que debía haber en el cajón y, con eso, la diferencia." if c.cerrada_en else "El cierre la cuenta en lo que debe haber en el cajón." }}</p>

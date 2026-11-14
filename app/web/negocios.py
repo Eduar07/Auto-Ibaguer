@@ -36,9 +36,12 @@ LAVADERO = Negocio(
     clave="lavadero",
     nombre="Lavadero",
     icono="gota",
-    descripcion="La fila en vivo, los cobros de los turnos, los clientes y sus comentarios.",
+    descripcion=(
+        "La fila en vivo, la caja con el cobro de cada turno, los clientes y sus comentarios."
+    ),
     secciones=(
         Seccion("fila", "/fila", "Fila en vivo", "Fila", "fila"),
+        Seccion("caja", "/caja", "Caja", "Caja", "caja"),
         Seccion("clientes", "/clientes", "Clientes", "Clientes", "cliente"),
         Seccion("comentarios", "/comentarios", "Comentarios", "Comentarios", "actividad"),
         Seccion("configuracion", "/configuracion", "Configuración", "Ajustes", "ajustes"),

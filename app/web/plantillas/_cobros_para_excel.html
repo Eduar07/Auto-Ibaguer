@@ -1,0 +1,12 @@
+{#- El archivo para Excel con cada cobro entre dos días. `que_se_cobra` dice qué entra a la caja
+    de este negocio ("salidas y mensualidades", "cada turno cobrado"). -#}
+  <section class="panel" aria-labelledby="t-excel">
+    <h2 id="t-excel">Llevar las cuentas en Excel</h2>
+    <p class="suave">Descarga cada cobro ({{ que_se_cobra }}) entre dos días, en un archivo que Excel abre directo.</p>
+    <form class="exportar" method="get" action="{{ rutas.exportar }}">
+      <div class="campo"><label for="exportar-desde">Desde</label><input id="exportar-desde" name="desde" type="date" value="{{ exportar_desde.isoformat() }}" required></div>
+      <div class="campo"><label for="exportar-hasta">Hasta</label><input id="exportar-hasta" name="hasta" type="date" value="{{ exportar_hasta.isoformat() }}" required></div>
+      <button type="submit" class="boton boton--borde">Descargar para Excel</button>
+    </form>
+  </section>
+

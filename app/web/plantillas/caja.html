@@ -1,0 +1,29 @@
+{% extends "pagina.html" %}
+{#- La caja del lavadero: abrirla, lo que ha entrado (cada turno cobrado), cerrarla contando el
+    efectivo, el archivo para Excel y los cierres anteriores. Las partes son las mismas de la
+    caja del parqueadero. -#}
+{% import "_iconos.html" as iconos %}
+
+{% block titulo %}Caja del lavadero · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla parqueadero">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Caja del lavadero</h1>
+      <p>Aparte de la plata del parqueadero. Se abre con la base para vueltos, cada turno cobrado entra a ella y se cierra contando el efectivo.</p>
+    </div>
+  </div>
+
+  {% if caja_de_otro_dia %}
+  <div class="error">Esta caja viene de un día anterior. Ciérrala contando el cajón y abre la de hoy: así cada día cuadra aparte.</div>
+  {% endif %}
+  <div id="caja-abierta" class="contenedor-invisible">
+    {% include "_caja_abierta.html" %}
+  </div>
+
+  {% include "_cobros_para_excel.html" %}
+
+  {% include "_cierres_anteriores.html" %}
+</main>
+{% endblock %}

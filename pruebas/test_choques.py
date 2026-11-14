@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy import Engine, func, select, text
 from sqlalchemy.orm import Session
 
+from app.turnos import caja as caja_lavadero
 from app.turnos import casos_de_uso as casos
 from app.turnos.errores import CambioNoPermitido, PuestoNoDisponible, YaTieneTurnoActivo
 from app.turnos.estados import MedioPago, OrigenTurno
@@ -106,6 +107,7 @@ def test_dos_vehiculos_al_mismo_puesto_solo_entra_uno(base: Engine):
 
 def test_cobrar_dos_veces_al_mismo_tiempo_deja_un_solo_pago(base: Engine):
     turno = preparar(base, turno_listo)
+    preparar(base, lambda s: caja_lavadero.abrir_caja(s, base=0, ahora=LUNES_8AM))
 
     def cobrar(s: Session) -> int:
         return casos.cobrar(s, turno, medio_pago=MedioPago.EFECTIVO, ahora=LUNES_8AM).id

@@ -1,5 +1,6 @@
-{#- Corregir un cobro de la caja abierta: otro valor u otro medio de pago, o deshacerlo del todo
-    (la salida del carro que no era, un mes cobrado dos veces). Siempre con motivo. -#}
+{#- Corregir un cobro de la caja de cualquier negocio: otro valor u otro medio de pago, o
+    deshacerlo del todo (la salida del carro que no era, un mes cobrado dos veces, el turno que
+    no era). Siempre con motivo. Lo que dice del cobro lo pone cada negocio en `cobro`. -#}
 {% import "_iconos.html" as iconos %}
 <div class="dialogo__caja">
   <div class="dialogo__cabeza">
@@ -34,7 +35,7 @@
       <div class="campo campo--corto">
         <label for="valor-correccion">Valor que se cobró</label>
         <input id="valor-correccion" name="valor" inputmode="numeric" class="monto" required maxlength="12" value="{{ formulario.valor|miles }}">
-        {% if cobro.tarifa is not none %}<span class="ayuda">La tarifa daba {{ cobro.tarifa|pesos }}.</span>{% endif %}
+        {% if cobro.tarifa is not none %}<span class="ayuda">{{ cobro.de_referencia }} daba {{ cobro.tarifa|pesos }}.</span>{% endif %}
       </div>
       <div class="campo">
         <label for="motivo-correccion">¿Por qué se corrige?</label>

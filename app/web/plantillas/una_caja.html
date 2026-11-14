@@ -5,17 +5,17 @@
 {% block titulo %}Caja {{ c.id }} · Auto Ibaguer{% endblock %}
 
 {% block contenido %}
-<main class="principal pantalla parqueadero">
+<main class="principal pantalla parqueadero caja">
   <div class="titular titular--siempre">
     <div>
-      <h1>Caja {{ c.id }} del parqueadero</h1>
+      <h1>Caja {{ c.id }} del {{ negocio.nombre|lower }}</h1>
       <p>Abrió {{ resumen.abrio }} {{ cuando_paso(c.abierta_en) }}{% if c.cerrada_en %} · cerró {{ resumen.cerro }} {{ cuando_paso(c.cerrada_en) }}{% endif %}</p>
     </div>
   </div>
   {% if imprimir_al_abrir %}<span hidden data-imprimir-al-abrir="{{ imprimir_al_abrir }}"></span>{% endif %}
 
   <div id="una-caja" class="contenedor-invisible">
-    {% include "_parqueadero_una_caja.html" %}
+    {% include "_una_caja.html" %}
   </div>
 </main>
 {% endblock %}

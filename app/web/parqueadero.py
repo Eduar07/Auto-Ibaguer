@@ -8,16 +8,13 @@ lo carga en un marco escondido y abre la ventana de impresión (dashboard.js). L
 son páginas aparte, con el tamaño del papel de la impresora térmica (58 u 80 mm).
 """
 
-import csv
-import io
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Annotated, Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
@@ -37,7 +34,7 @@ from app.parqueadero.balance import (
 )
 from app.parqueadero.balance import balance as calcular_balance
 from app.parqueadero.balance import periodo as periodo_de
-from app.parqueadero.errores import CajaNoCorregible, CobroNoCorregible, ValorInvalido
+from app.parqueadero.errores import CobroNoCorregible, ValorInvalido
 from app.parqueadero.estados import NOMBRE_DEL_TIPO, EstadoParqueo, TipoParqueo
 from app.parqueadero.tablas import (
     Caja,
@@ -48,6 +45,14 @@ from app.parqueadero.tablas import (
 )
 from app.parqueadero.tarifas import ANCHOS_DE_TICKET, guardar_ajustes, leer_ajustes
 from app.turnos.estados import MedioPago
+from app.web.caja import (
+    CajaDeUnNegocio,
+    CobroParaCorregir,
+    RutasDeCaja,
+    caja_abierta_pintada,
+    caja_de_la_pantalla,
+    rutas_de_caja,
+)
 from app.web.comun import (
     Admin,
     SesionBD,
@@ -56,7 +61,6 @@ from app.web.comun import (
     html,
     leer_pesos,
     pagina,
-    pagina_actual,
     plantillas,
     sin_cambios,
     verificar_origen,
@@ -65,13 +69,6 @@ from app.web.comun import (
 router = APIRouter(prefix="/parqueadero", dependencies=[Depends(verificar_origen)])
 
 
-def _fecha_y_hora(momento: datetime) -> str:
-    """ "12/11/2026 8:05 a.m.", en Bogotá: corto, para el ticket."""
-    local = tiempo.hora_local(momento)
-    return f"{local:%d/%m/%Y} {formato.hora(local)}"
-
-
-plantillas.env.filters["fecha_y_hora"] = _fecha_y_hora
 plantillas.env.filters["dia_corto"] = formato.dia_corto
 plantillas.env.globals.update(
     TipoParqueo=TipoParqueo, nombre_del_tipo=NOMBRE_DEL_TIPO, como_se_pago=reglas.como_se_pago
@@ -353,184 +350,7 @@ def ticket_de_salida(request: Request, sesion: SesionBD, _: Admin, parqueo_id: i
     return _ticket(request, sesion, "tickets/salida.html", {"parqueo": parqueo})
 
 
-# --- Caja --------------------------------------------------------------------------------
-
-
-def _filtro_de_cierres(
-    desde: str | None, hasta: str | None, resultado: str, quien: str | None
-) -> consultas.FiltroDeCierres:
-    """Lo que llega en la dirección, limpio: una fecha que no es fecha o un resultado que no
-    existe se ignoran, y si las fechas vienen al revés se voltean."""
-    inicio, fin = _fecha(desde), _fecha(hasta)
-    if inicio and fin and fin < inicio:
-        inicio, fin = fin, inicio
-    return consultas.FiltroDeCierres(
-        desde=inicio,
-        hasta=fin,
-        resultado=resultado if resultado in consultas.RESULTADOS else "todos",
-        quien=int(quien) if quien and quien.isdigit() else None,
-    )
-
-
-def _consulta_de_cierres(filtro: consultas.FiltroDeCierres, **mas: Any) -> str:
-    """El filtro escrito en la dirección (sin lo que está vacío), para los enlaces."""
-    datos = {
-        "desde": filtro.desde.isoformat() if filtro.desde else None,
-        "hasta": filtro.hasta.isoformat() if filtro.hasta else None,
-        "resultado": filtro.resultado if filtro.resultado != "todos" else None,
-        "quien": filtro.quien,
-    } | mas
-    return urlencode({clave: valor for clave, valor in datos.items() if valor})
-
-
-def _contexto_caja(
-    sesion: Session,
-    caja: Caja | None,
-    filtro: consultas.FiltroDeCierres | None = None,
-    pagina_de_cierres: int = 1,
-) -> dict[str, Any]:
-    hoy = _hoy()
-    filtro = filtro or consultas.FiltroDeCierres()
-    cierres = consultas.cierres(sesion, filtro, pagina_de_cierres)
-    return {
-        "caja": caja,
-        "caja_de_otro_dia": _caja_de_otro_dia(caja),
-        "resumen": consultas.resumen_de_caja(sesion, caja) if caja else None,
-        "movimientos": consultas.movimientos_de_caja(sesion, caja.id) if caja else [],
-        "cierres": cierres,
-        "filtro": filtro,
-        "resultados": consultas.RESULTADOS,
-        "quienes": consultas.quienes_cerraron(sesion),
-        "pagina_anterior": (
-            "/parqueadero/caja?" + _consulta_de_cierres(filtro, pagina=cierres.pagina - 1)
-            if cierres.pagina > 1
-            else None
-        ),
-        "pagina_siguiente": (
-            "/parqueadero/caja?" + _consulta_de_cierres(filtro, pagina=cierres.pagina + 1)
-            if cierres.pagina < cierres.paginas
-            else None
-        ),
-        "exportar_cierres": "/parqueadero/exportar-cierres?" + _consulta_de_cierres(filtro),
-        "medios": MEDIOS,
-        "exportar_desde": hoy.replace(day=1),
-        "exportar_hasta": hoy,
-    }
-
-
-@router.get("/caja", response_class=HTMLResponse)
-def pagina_caja(
-    request: Request,
-    sesion: SesionBD,
-    _: Admin,
-    desde: str | None = None,
-    hasta: str | None = None,
-    resultado: str = "todos",
-    quien: str | None = None,
-    pagina_de_cierres: Annotated[int, Query(alias="pagina")] = 1,
-) -> Response:
-    """La caja abierta (o abrirla) y, abajo, los cierres anteriores con sus filtros: desde y
-    hasta qué día, cómo cerró y quién la cerró."""
-    filtro = _filtro_de_cierres(desde, hasta, resultado, quien)
-    contexto = _contexto_caja(sesion, casos.caja_abierta(sesion), filtro, pagina_de_cierres)
-    return pagina(request, sesion, "parqueadero_caja.html", contexto, seccion="parqueadero/caja")
-
-
-@router.get("/exportar-cierres")
-def exportar_cierres(
-    sesion: SesionBD,
-    _: Admin,
-    desde: str | None = None,
-    hasta: str | None = None,
-    resultado: str = "todos",
-    quien: str | None = None,
-) -> Response:
-    """Los cierres que se están viendo (con su filtro, todas las páginas), uno por fila, para
-    Excel: cuánto entró por cada medio, lo que debía haber, lo que se contó y la diferencia."""
-    filtro = _filtro_de_cierres(desde, hasta, resultado, quien)
-    salida = io.StringIO()
-    escritor = csv.writer(salida, delimiter=";")
-    escritor.writerow(
-        [
-            "Caja",
-            "Abrió",
-            "Abrió por",
-            "Cerró",
-            "Cerró por",
-            "Base",
-            *(medio.value.capitalize() for medio in MedioPago),
-            "Entró en total",
-            "Efectivo esperado",
-            "Contado",
-            "Diferencia",
-            "Corregida después del cierre",
-            "Nota del cierre",
-        ]
-    )
-    for r in consultas.todos_los_cierres(sesion, filtro):
-        c = r.caja
-        escritor.writerow(
-            [
-                c.id,
-                _fecha_y_hora(c.abierta_en),
-                r.abrio,
-                _fecha_y_hora(c.cerrada_en) if c.cerrada_en else "",
-                r.cerro or "",
-                c.base,
-                *(r.cuadre.por_medio(medio) for medio in MedioPago),
-                r.cuadre.total,
-                c.efectivo_esperado,
-                c.efectivo_contado,
-                c.diferencia,
-                "Sí" if r.corregida_despues_del_cierre else "No",
-                c.nota_cierre or "",
-            ]
-        )
-    nombre = "cierres-de-caja.csv"
-    if filtro.desde or filtro.hasta:
-        nombre = (
-            f"cierres-{(filtro.desde or filtro.hasta).isoformat()}"
-            f"-a-{(filtro.hasta or filtro.desde).isoformat()}.csv"
-        )
-    return Response(
-        content="\ufeff" + salida.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
-    )
-
-
-@router.post("/caja/abrir", response_class=HTMLResponse)
-def abrir_caja(
-    sesion: SesionBD,
-    administrador: Admin,
-    base: Annotated[str, Form()] = "",
-    nota: Annotated[str, Form()] = "",
-) -> Response:
-    try:
-        casos.abrir_caja(
-            sesion, base=leer_pesos(base) or 0, nota=nota, administrador_id=administrador.id
-        )
-        sesion.commit()
-    except ReglaDelNegocio as error:
-        sesion.rollback()
-        return sin_cambios(error=str(error))
-    return Response(status_code=200, headers={"HX-Refresh": "true"})
-
-
-def _caja_o_404(sesion: Session, caja_id: int) -> Caja:
-    caja = casos.caja_del_parqueadero(sesion, caja_id)
-    if caja is None:
-        raise HTTPException(status_code=404, detail="Esa caja no existe.")
-    return caja
-
-
-@router.get("/caja/cerrar", response_class=HTMLResponse)
-def dialogo_cerrar_caja(request: Request, sesion: SesionBD, _: Admin) -> Response:
-    caja = casos.caja_abierta(sesion)
-    if caja is None:
-        return sin_cambios(error="No hay una caja abierta.")
-    contexto = {"resumen": consultas.resumen_de_caja(sesion, caja), "contado": None, "nota": ""}
-    return html(request, "dialogos/parqueadero_cerrar_caja.html", contexto)
+# --- Caja (app/web/caja.py: las mismas pantallas que la del lavadero) ----------------------
 
 
 def obtener_abrir_sesion() -> AbrirSesion:
@@ -539,217 +359,40 @@ def obtener_abrir_sesion() -> AbrirSesion:
     return abrir_sesion
 
 
-@router.post("/caja/cerrar", response_class=HTMLResponse)
-def cerrar_caja(
-    request: Request,
-    sesion: SesionBD,
-    administrador: Admin,
-    tareas: BackgroundTasks,
-    abrir: Annotated[AbrirSesion, Depends(obtener_abrir_sesion)],
-    caja_id: Annotated[int, Form()],
-    efectivo_contado: Annotated[str, Form()] = "",
-    nota: Annotated[str, Form()] = "",
-) -> Response:
-    contado = leer_pesos(efectivo_contado)
-    try:
-        if contado is None:
-            raise ReglaDelNegocio("Escribe cuánto efectivo contaste en el cajón.")
-        caja = casos.cerrar_caja(
-            sesion, caja_id, efectivo_contado=contado, nota=nota, administrador_id=administrador.id
-        )
-        # El reporte es del día en que se abrió la caja: si se cierra pasada la medianoche,
-        # sigue siendo el de ese día (y no uno de hoy casi vacío).
-        dia_de_la_caja = tiempo.hora_local(caja.abierta_en).date()
-        sesion.commit()
-    except ReglaDelNegocio as error:
-        sesion.rollback()
-        caja = casos.caja_del_parqueadero(sesion, caja_id)
-        if caja is None or not caja.abierta:
-            return sin_cambios(cerrar_dialogo=True, error=str(error))
-        contexto = {
-            "resumen": consultas.resumen_de_caja(sesion, caja),
-            "contado": contado,
-            "nota": nota,
-            "error": str(error),
-        }
-        return html(request, "dialogos/parqueadero_cerrar_caja.html", contexto)
-    # Después de contestar: el reporte del día a los jefes, si hay correo configurado.
+def _al_cerrar(tareas: BackgroundTasks, abrir: AbrirSesion, dia_de_la_caja: date) -> None:
+    """Después de contestar el cierre: el reporte de ese día a los jefes, si hay correo."""
     tareas.add_task(reporte.enviar_al_cerrar, abrir, dia_de_la_caja)
-    # La página del cierre se abre e imprime el resumen sola.
-    return Response(
-        status_code=200, headers={"HX-Redirect": f"/parqueadero/caja/{caja_id}?imprimir=1"}
-    )
 
 
-def _contexto_de_una_caja(sesion: Session, caja: Caja) -> dict[str, Any]:
-    cerrada_en = caja.cerrada_en
-    return {
-        "resumen": consultas.resumen_de_caja(sesion, caja),
-        "movimientos": consultas.movimientos_de_caja(sesion, caja.id),
-        "medios": MEDIOS,
-        "se_puede_corregir": reglas.caja_corregible(cerrada_en, tiempo.ahora()),
-        "corregible_hasta": (
-            tiempo.hora_local(cerrada_en).date()
-            + timedelta(days=reglas.DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA)
-            if cerrada_en
-            else None
-        ),
-    }
-
-
-@router.get("/caja/{caja_id}", response_class=HTMLResponse)
-def pagina_de_una_caja(
-    request: Request, sesion: SesionBD, _: Admin, caja_id: int, imprimir: int = 0
-) -> Response:
-    caja = _caja_o_404(sesion, caja_id)
-    contexto = _contexto_de_una_caja(sesion, caja) | {
-        "imprimir_al_abrir": f"/parqueadero/caja/{caja.id}/ticket" if imprimir else None,
-    }
-    return pagina(
-        request, sesion, "parqueadero_una_caja.html", contexto, seccion="parqueadero/caja"
-    )
-
-
-@router.get("/caja/{caja_id}/ticket", response_class=HTMLResponse)
-def ticket_de_caja(request: Request, sesion: SesionBD, _: Admin, caja_id: int) -> Response:
-    caja = _caja_o_404(sesion, caja_id)
-    contexto = {"resumen": consultas.resumen_de_caja(sesion, caja), "medios": MEDIOS}
-    return _ticket(request, sesion, "tickets/caja.html", contexto)
-
-
-# --- Corregir la caja misma: el conteo (ya cerrada) o la base ---------------------------------
-
-
-def _dialogo_corregir_caja(
-    request: Request,
-    sesion: Session,
-    caja: Caja,
-    *,
-    formulario: dict[str, Any] | None = None,
-    accion: str = "",
-    error: str | None = None,
-) -> Response:
-    contexto = {
-        "resumen": consultas.resumen_de_caja(sesion, caja),
-        "formulario": formulario
-        or {"efectivo_contado": caja.efectivo_contado, "base": caja.base, "motivo": ""},
-        "accion": accion,
-        "error": error,
-    }
-    return html(request, "dialogos/parqueadero_corregir_caja.html", contexto)
-
-
-@router.get("/caja/{caja_id}/corregir", response_class=HTMLResponse)
-def dialogo_corregir_caja(request: Request, sesion: SesionBD, _: Admin, caja_id: int) -> Response:
-    caja = _caja_o_404(sesion, caja_id)
-    if not reglas.caja_corregible(caja.cerrada_en, tiempo.ahora()):
-        return sin_cambios(
-            error=f"La caja {caja.id} se cerró hace más de "
-            f"{reglas.DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA} días: ya no se corrige."
-        )
-    return _dialogo_corregir_caja(request, sesion, caja)
-
-
-def _no_se_corrigio_la_caja(
-    request: Request,
-    sesion: Session,
-    caja_id: int,
-    error: ReglaDelNegocio,
-    formulario: dict[str, Any],
-    accion: str,
-) -> Response:
-    """Si la caja ya no se puede corregir así, el diálogo se cierra y se avisa; si no, vuelve
-    con el error y lo que se escribió."""
-    if isinstance(error, CajaNoCorregible):
-        return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, error=str(error))
-    caja = _caja_o_404(sesion, caja_id)
-    completo = {"efectivo_contado": caja.efectivo_contado, "base": caja.base} | formulario
-    return _dialogo_corregir_caja(
-        request, sesion, caja, formulario=completo, accion=accion, error=str(error)
-    )
-
-
-@router.post("/caja/{caja_id}/corregir-conteo", response_class=HTMLResponse)
-def corregir_conteo(
-    request: Request,
-    sesion: SesionBD,
-    administrador: Admin,
-    caja_id: int,
-    efectivo_contado: Annotated[str, Form()] = "",
-    motivo: Annotated[str, Form()] = "",
-) -> Response:
-    contado = leer_pesos(efectivo_contado)
-    try:
-        if contado is None:
-            raise ValorInvalido("Escribe cuánto efectivo se contó.")
-        correccion = casos.corregir_conteo(
-            sesion,
-            caja_id,
-            efectivo_contado=contado,
-            motivo=motivo,
-            administrador_id=administrador.id,
-        )
-        sesion.commit()
-    except ReglaDelNegocio as error:
-        sesion.rollback()
-        formulario = {"efectivo_contado": contado, "motivo": motivo}
-        return _no_se_corrigio_la_caja(request, sesion, caja_id, error, formulario, "conteo")
-    aviso = (
-        f"Listo: el conteo de la caja {caja_id} quedó en {formato.pesos(correccion.valor_despues)}."
-    )
-    return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, aviso=aviso)
-
-
-@router.post("/caja/{caja_id}/corregir-base", response_class=HTMLResponse)
-def corregir_base(
-    request: Request,
-    sesion: SesionBD,
-    administrador: Admin,
-    caja_id: int,
-    base: Annotated[str, Form()] = "",
-    motivo: Annotated[str, Form()] = "",
-) -> Response:
-    valor = leer_pesos(base)
-    try:
-        if valor is None:
-            raise ValorInvalido("Escribe la base con que se abrió la caja (0 si no hubo).")
-        correccion = casos.corregir_base(
-            sesion, caja_id, base=valor, motivo=motivo, administrador_id=administrador.id
-        )
-        sesion.commit()
-    except ReglaDelNegocio as error:
-        sesion.rollback()
-        formulario = {"base": valor, "motivo": motivo}
-        return _no_se_corrigio_la_caja(request, sesion, caja_id, error, formulario, "base")
-    aviso = (
-        f"Listo: la base de la caja {caja_id} quedó en {formato.pesos(correccion.valor_despues)}."
-    )
-    return _caja_de_la_pantalla(request, sesion, cerrar_dialogo=True, aviso=aviso)
-
-
-@router.get("/exportar")
-def exportar(
-    sesion: SesionBD, _: Admin, desde: date | None = None, hasta: date | None = None
-) -> Response:
-    """Un archivo para Excel con cada cobro (salidas y mensualidades) entre dos días.
-
-    Va separado por punto y coma y con la marca UTF-8 al comienzo: así Excel en español lo
-    abre con las columnas y las tildes bien, sin pasos extra.
-    """
-    hasta = hasta or _hoy()
-    desde = desde or hasta.replace(day=1)
-    if hasta < desde:
-        desde, hasta = hasta, desde
-    salida = io.StringIO()
-    escritor = csv.writer(salida, delimiter=";")
-    for linea in consultas.lineas_para_excel(sesion, desde, hasta):
-        escritor.writerow(linea)
-    nombre = f"parqueadero-{desde.isoformat()}-a-{hasta.isoformat()}.csv"
-    return Response(
-        content="﻿" + salida.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
-    )
+CAJA = CajaDeUnNegocio(
+    negocio=casos.NEGOCIO,
+    prefijo="/parqueadero",
+    rutas=RutasDeCaja(
+        caja="/parqueadero/caja",
+        exportar="/parqueadero/exportar",
+        exportar_cierres="/parqueadero/exportar-cierres",
+    ),
+    seccion="parqueadero/caja",
+    plantilla="parqueadero_caja.html",
+    que_se_cobra="salidas y mensualidades",
+    nombre_del_archivo="parqueadero",
+    caja_abierta=casos.caja_abierta,
+    caja_por_numero=casos.caja_del_parqueadero,
+    abrir=casos.abrir_caja,
+    cerrar=casos.cerrar_caja,
+    corregir_base=casos.corregir_base,
+    corregir_conteo=casos.corregir_conteo,
+    resumen=consultas.resumen_de_caja,
+    movimientos=consultas.movimientos_de_caja,
+    cierres=consultas.cierres,
+    todos_los_cierres=consultas.todos_los_cierres,
+    quienes_cerraron=consultas.quienes_cerraron,
+    lineas_para_excel=consultas.lineas_para_excel,
+    ajustes_del_ticket=leer_ajustes,
+    obtener_abrir_sesion=obtener_abrir_sesion,
+    al_cerrar=_al_cerrar,
+)
+router_de_la_caja = rutas_de_caja(CAJA)
 
 
 # --- Balance y reporte del día --------------------------------------------------------------
@@ -1269,21 +912,7 @@ def ticket_de_mensualidad(request: Request, sesion: SesionBD, _: Admin, pago_id:
 # (y el porqué de cada una) están en app.parqueadero.casos_de_uso, en "Correcciones".
 
 
-@dataclass(frozen=True)
-class _CobroParaCorregir:
-    """Lo que el diálogo de corrección dice del cobro y a dónde manda cada formulario."""
-
-    placa: str
-    titulo: str
-    valor: int
-    medio: MedioPago | None
-    tarifa: int | None  # lo que daba la tarifa (solo en una salida)
-    caja_id: int | None
-    para_corregir: str
-    para_deshacer: str
-    nombre_deshacer: str
-    explicacion_deshacer: str
-    ejemplo_deshacer: str
+_CobroParaCorregir = CobroParaCorregir
 
 
 def _sale_de_la_caja(valor: int, medio: MedioPago | None) -> str:
@@ -1358,31 +987,15 @@ def _dialogo_corregir(
         "accion": accion,
         "error": error,
     }
-    return html(request, "dialogos/parqueadero_corregir.html", contexto)
+    return html(request, "dialogos/corregir_cobro.html", contexto)
 
 
 def _caja_abierta(request: Request, sesion: Session, **eventos: Any) -> Response:
-    """La caja abierta otra vez pintada (su cuadre, sus cobros y sus correcciones)."""
-    caja = casos.caja_abierta(sesion)
-    contexto = {
-        "caja": caja,
-        "resumen": consultas.resumen_de_caja(sesion, caja) if caja else None,
-        "movimientos": consultas.movimientos_de_caja(sesion, caja.id) if caja else [],
-    }
-    respuesta = html(request, "_parqueadero_caja_abierta.html", contexto)
-    return _con_retarget(con_eventos(respuesta, **eventos), "#caja-abierta")
+    return caja_abierta_pintada(CAJA, request, sesion, **eventos)
 
 
 def _caja_de_la_pantalla(request: Request, sesion: Session, **eventos: Any) -> Response:
-    """Después de corregir, la caja de la pantalla donde se corrigió, otra vez pintada: la de
-    una caja (/parqueadero/caja/12, abierta o cerrada) o, si no, la caja del día. Dónde está
-    la pantalla lo dice htmx en cada pedido."""
-    numero = re.fullmatch(r"/parqueadero/caja/(\d+)", pagina_actual(request))
-    caja = casos.caja_del_parqueadero(sesion, int(numero.group(1))) if numero else None
-    if caja is None:
-        return _caja_abierta(request, sesion, **eventos)
-    respuesta = html(request, "_parqueadero_una_caja.html", _contexto_de_una_caja(sesion, caja))
-    return _con_retarget(con_eventos(respuesta, **eventos), "#una-caja")
+    return caja_de_la_pantalla(CAJA, request, sesion, **eventos)
 
 
 def _no_se_corrigio(
@@ -1735,18 +1348,6 @@ def guardar_tarifas(
     guardados = _valores_de_ajustes(leer_ajustes(sesion))
     aviso = "Tarifas guardadas. Los vehículos que ya están adentro pagan la de cuando entraron."
     return con_eventos(_formulario_tarifas(request, sesion, guardados), aviso=aviso)
-
-
-def lineas_del_cuadre(cuadre: reglas.Cuadre) -> list[tuple[MedioPago, int, int]]:
-    """Por cada medio de pago que se usó: lo de salidas y lo de mensualidades."""
-    return [
-        (medio, cuadre.parqueos.get(medio, 0), cuadre.mensualidades.get(medio, 0))
-        for medio in MedioPago
-        if cuadre.por_medio(medio)
-    ]
-
-
-plantillas.env.globals["lineas_del_cuadre"] = lineas_del_cuadre
 
 
 def cobro_de(parqueo: Parqueo) -> reglas.Cobro:

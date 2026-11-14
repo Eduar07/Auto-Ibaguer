@@ -229,12 +229,19 @@
       {% else %}
       <p class="suave">Nada por cobrar.</p>
       {% endfor %}
+      {% if tablero.por_cobrar and not tablero.caja %}
+      <div class="nota nota--suelta">{{ iconos.icono("info", 20) }}<span>La caja está cerrada: para cobrar, primero <a href="/caja">abre la caja</a>.</span></div>
+      {% endif %}
     </section>
 
     <section class="panel" aria-labelledby="titulo-caja">
-      <h2 id="titulo-caja">Caja de hoy</h2>
+      <div class="panel__cabeza">
+        <h2 id="titulo-caja">Caja de hoy</h2>
+        <span class="insignia {{ 'insignia--verde' if tablero.caja else 'insignia--gris' }}">{{ "Abierta" if tablero.caja else "Cerrada" }}</span>
+      </div>
       <span class="caja__total">{{ tablero.cobrado_hoy|pesos }}</span>
       <span class="suave">{{ tablero.cobros_hoy }} vehículo{{ "s" if tablero.cobros_hoy != 1 }} cobrado{{ "s" if tablero.cobros_hoy != 1 }}</span>
+      <a class="boton-texto" href="/caja">{{ "Ver la caja" if tablero.caja else "Abrir la caja" }}{{ iconos.icono("adelante", 18, 2.2) }}</a>
     </section>
 
     <section class="panel" aria-labelledby="titulo-actividad">

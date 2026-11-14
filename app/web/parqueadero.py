@@ -127,7 +127,7 @@ def pagina_parqueadero(request: Request, sesion: SesionBD, _: Admin) -> Response
         "por_cobrar": _por_cobrar(sesion),
         "ajustes": leer_ajustes(sesion),
     }
-    return pagina(request, sesion, "parqueadero.html", contexto, seccion="parqueadero")
+    return pagina(request, sesion, "parqueadero.html", contexto, seccion="parqueadero/entradas")
 
 
 @router.get("/adentro", response_class=HTMLResponse)
@@ -433,7 +433,7 @@ def pagina_caja(
     hasta qué día, cómo cerró y quién la cerró."""
     filtro = _filtro_de_cierres(desde, hasta, resultado, quien)
     contexto = _contexto_caja(sesion, casos.caja_abierta(sesion), filtro, pagina_de_cierres)
-    return pagina(request, sesion, "parqueadero_caja.html", contexto, seccion="parqueadero")
+    return pagina(request, sesion, "parqueadero_caja.html", contexto, seccion="parqueadero/caja")
 
 
 @router.get("/exportar-cierres")
@@ -605,7 +605,9 @@ def pagina_de_una_caja(
     contexto = _contexto_de_una_caja(sesion, caja) | {
         "imprimir_al_abrir": f"/parqueadero/caja/{caja.id}/ticket" if imprimir else None,
     }
-    return pagina(request, sesion, "parqueadero_una_caja.html", contexto, seccion="parqueadero")
+    return pagina(
+        request, sesion, "parqueadero_una_caja.html", contexto, seccion="parqueadero/caja"
+    )
 
 
 @router.get("/caja/{caja_id}/ticket", response_class=HTMLResponse)
@@ -864,7 +866,9 @@ def pagina_balance(
             "destinos": leer_ajustes(sesion).destinos_del_reporte,
             "ver_el_mes": ir(periodo_de("mes", p.desde)),
         }
-    return pagina(request, sesion, "parqueadero_balance.html", contexto, seccion="parqueadero")
+    return pagina(
+        request, sesion, "parqueadero_balance.html", contexto, seccion="parqueadero/balance"
+    )
 
 
 @router.get("/balance/ticket", response_class=HTMLResponse)
@@ -909,7 +913,7 @@ def pagina_mensualidades(request: Request, sesion: SesionBD, _: Admin) -> Respon
         sesion,
         "parqueadero_mensualidades.html",
         _contexto_mensualidades(sesion),
-        seccion="parqueadero",
+        seccion="parqueadero/mensualidades",
     )
 
 
@@ -1669,7 +1673,9 @@ def _formulario_tarifas(
 @router.get("/tarifas", response_class=HTMLResponse)
 def pagina_tarifas(request: Request, sesion: SesionBD, _: Admin) -> Response:
     contexto = _contexto_tarifas(sesion, _valores_de_ajustes(leer_ajustes(sesion)))
-    return pagina(request, sesion, "parqueadero_tarifas.html", contexto, seccion="parqueadero")
+    return pagina(
+        request, sesion, "parqueadero_tarifas.html", contexto, seccion="parqueadero/tarifas"
+    )
 
 
 @router.post("/tarifas", response_class=HTMLResponse)

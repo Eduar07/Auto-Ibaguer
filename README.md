@@ -55,11 +55,20 @@ uv run auto-ibaguer crear-admin --usuario eduar
 uv run fastapi dev app/main.py
 ```
 
-Abre <http://localhost:8000> en el navegador y entra con el usuario del paso 5.
+Abre <http://localhost:8000> en el navegador, entra con el usuario del paso 5 y escoge el negocio: **Lavadero** o **Parqueadero**.
 
 Para revisar solo el servidor, <http://localhost:8000/salud> debe decir `{"estado":"ok","base_de_datos":"ok","reloj":"ok"}` (sin la parte del reloj si lo apagaste con `RELOJ_ACTIVO=false`). En <http://localhost:8000/docs> FastAPI muestra todas las rutas.
 
 ## El dashboard
+
+Al entrar con el usuario y la contraseña salen solo dos opciones, **Lavadero** y **Parqueadero**, cada una con lo de hoy para decidir de un vistazo:
+
+- **Lavadero**: cuántos esperan, cuántos se están lavando, cuántos faltan por cobrar, lo cobrado hoy, si el bot está activo y los comentarios por atender.
+- **Parqueadero**: cuántos vehículos hay adentro, cuántos salieron hoy, lo recogido hoy (salidas y mensualidades) y si la caja está abierta. Si quedó abierta desde otro día, lo dice en naranja.
+
+Escoges uno y quedas en ese negocio: el menú de arriba (en el celular, la barra de abajo) muestra solo sus secciones, y lo del lavadero (el bot, **Nuevo turno** y los comentarios) no sale en el parqueadero. Para cambiar de negocio, toca su nombre arriba a la izquierda (debajo de "Auto Ibaguer", con las dos flechas).
+
+Las secciones del **Lavadero**:
 
 | Pantalla | Qué se hace ahí |
 |---|---|
@@ -75,7 +84,7 @@ En el celular se ve una fila a la vez (pestañas **Carros** y **Motos**) y las s
 
 ## El parqueadero
 
-Es la sección **Parqueadero** del dashboard (en el celular, **Parqueo** en la barra de abajo). Tiene su propia caja: la plata del parqueadero no se mezcla con la del lavadero. No cuenta puestos libres: eso se ve en el patio.
+Es el otro negocio del dashboard: se escoge al entrar, o tocando el nombre del negocio arriba a la izquierda. Tiene su propia caja: la plata del parqueadero no se mezcla con la del lavadero. No cuenta puestos libres: eso se ve en el patio.
 
 | Pantalla | Qué se hace ahí |
 |---|---|
@@ -668,7 +677,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Archivo | Qué tiene |
 |---|---|
 | `comun.py` | Lo que comparten las pantallas: plantillas, la sesión del administrador y las respuestas. |
-| `entrar.py`, `fila.py`, `clientes.py`, `comentarios.py`, `configuracion.py`, `textos_del_bot.py`, `mensajes.py`, `probar_bot.py`, `parqueadero.py` | Las rutas de cada pantalla. Llaman a los casos de uso; no tienen reglas propias. |
+| `entrar.py`, `inicio.py`, `fila.py`, `clientes.py`, `comentarios.py`, `configuracion.py`, `textos_del_bot.py`, `mensajes.py`, `probar_bot.py`, `parqueadero.py` | Las rutas de cada pantalla (`inicio.py` es la de escoger el negocio, con lo de hoy de cada uno). Llaman a los casos de uso; no tienen reglas propias. |
+| `negocios.py` | Los dos negocios, el lavadero y el parqueadero, y las secciones de cada uno: el menú de arriba y la barra de abajo del celular salen de ahí. |
 | `webhook.py` | La dirección a la que Meta avisa cada mensaje de WhatsApp. No pide la sesión del administrador: la protege la firma de Meta. |
 | `tablero.py` | Arma lo que muestra la fila en vivo. Solo lee. |
 | `en_vivo.py` | Le avisa al navegador cuando una fila cambia (PostgreSQL `LISTEN/NOTIFY` y Server-Sent Events). |
@@ -686,6 +696,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 | Servicios, precios y puestos | Pantalla **Configuración**. Un precio nuevo apaga el viejo y crea otro en `servicio_precio`; así los cobros pasados no cambian. De la duración estimada de cada servicio dependen la espera de la fila y la alerta de lavado demorado. |
 | Lo que dice el bot | **Configuración > Textos del bot** para los 58 que más leen los clientes, y **Configuración > Datos personales** para el aviso de datos. Cada texto cambiado es una fila `texto_bot.<nombre>` en la tabla `configuracion`. Los botones y los demás textos, en `app/bot/textos.py`. |
 | Tarifas del parqueadero, lo que sale en el ticket y a quién le llega el reporte diario | Pantalla **Parqueadero > Tarifas y ticket** (filas `parqueadero.<nombre>` en la tabla `configuracion`). Cómo se ve el ticket impreso, en `app/web/estaticos/css/ticket.css`. Lo que dice el reporte, en `app/parqueadero/reporte.py`. |
+| Las secciones de cada negocio (el menú) | `app/web/negocios.py`. Cada pantalla dice de qué negocio y de qué sección es (`seccion="parqueadero/caja"`). |
 | Colores, letras y tamaños del dashboard | `app/web/estaticos/css/dashboard.css`. Los colores del diseño están al comienzo, con nombre. |
 | Conexión a la base, claves de Meta y Gemini, el correo del reporte, reloj encendido o apagado | Archivo `.env`, que nunca se sube a GitHub. `.env.example` solo trae los nombres. En la nube, en Render: el servidor > **Environment**. |
 | El servidor y la base de la nube (plan, región, versión de PostgreSQL) | `render.yaml`. Render aplica los cambios al unirlos a `main`. |

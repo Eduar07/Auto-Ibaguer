@@ -138,7 +138,9 @@ def _tipos_de_vehiculo(sesion: Session, fila_id: int | None = None) -> list[Tipo
 
 @router.get("/fila", response_class=HTMLResponse)
 def pagina_fila(request: Request, sesion: SesionBD, _: Admin) -> Response:
-    return pagina(request, sesion, "fila.html", {"tablero": armar_tablero(sesion)}, seccion="fila")
+    return pagina(
+        request, sesion, "fila.html", {"tablero": armar_tablero(sesion)}, seccion="lavadero/fila"
+    )
 
 
 @router.get("/fila/tablero", response_class=HTMLResponse)

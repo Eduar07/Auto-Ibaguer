@@ -1,7 +1,8 @@
 """Entrar al dashboard y salir.
 
 La contraseña se verifica con Argon2 y la sesión queda en una cookie firmada
-(app.web.sesiones). Quien falla 5 veces seguidas queda bloqueado 15 minutos.
+(app.web.sesiones). Quien falla 5 veces seguidas queda bloqueado 15 minutos. Al entrar se
+llega a /inicio, donde se escoge el negocio: el lavadero o el parqueadero.
 """
 
 import time
@@ -40,14 +41,14 @@ def _clave_cifrada_de_relleno() -> str:
 
 
 @router.get("/", include_in_schema=False)
-def inicio() -> RedirectResponse:
-    return RedirectResponse("/fila", status_code=303)
+def raiz() -> RedirectResponse:
+    return RedirectResponse("/inicio", status_code=303)
 
 
 @router.get("/entrar", response_class=HTMLResponse)
 def pagina_entrar(request: Request, sesion: SesionBD) -> Response:
     if administrador_de_la_cookie(request, sesion) is not None:
-        return RedirectResponse("/fila", status_code=303)
+        return RedirectResponse("/inicio", status_code=303)
     return html(request, "entrar.html")
 
 
@@ -80,7 +81,7 @@ def entrar(
             status=401,
         )
     LIMITE_DE_INTENTOS.registrar_exito(usuario)
-    respuesta = RedirectResponse("/fila", status_code=303)
+    respuesta = RedirectResponse("/inicio", status_code=303)
     poner_cookie(respuesta, valor_de_cookie(administrador))
     return respuesta
 

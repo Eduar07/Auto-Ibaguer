@@ -93,7 +93,9 @@ def pagina_textos(request: Request, sesion: SesionBD, _: Admin) -> Response:
         for grupo in GRUPOS
     ]
     contexto = {"grupos": grupos, "DATOS": DATOS}
-    return pagina(request, sesion, "textos_del_bot.html", contexto, seccion="configuracion")
+    return pagina(
+        request, sesion, "textos_del_bot.html", contexto, seccion="lavadero/configuracion"
+    )
 
 
 Escrito = Annotated[str, Form(max_length=MAXIMO_ESCRITO)]

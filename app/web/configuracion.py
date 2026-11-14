@@ -183,7 +183,7 @@ def pagina_configuracion(request: Request, sesion: SesionBD, _: Admin) -> Respon
         "gemini": gemini.estado(leer_parametros(sesion)),
         "largo_de_la_ficha": configuracion.LARGO_DE_LA_FICHA,
     }
-    return pagina(request, sesion, "configuracion.html", contexto, seccion="configuracion")
+    return pagina(request, sesion, "configuracion.html", contexto, seccion="lavadero/configuracion")
 
 
 @router.post("/configuracion", response_class=HTMLResponse)

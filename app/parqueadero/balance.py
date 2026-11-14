@@ -20,10 +20,14 @@ from app.parqueadero.consultas import (
     resumenes_de_cajas,
 )
 from app.parqueadero.estados import EstadoParqueo, TipoParqueo
-from app.parqueadero.tablas import CajaParqueadero, PagoMensualidad, Parqueo
+from app.parqueadero.tablas import CajaParqueadero, Mensualidad, PagoMensualidad, Parqueo
 from app.turnos.estados import MedioPago
 
 TIPOS_DE_PERIODO = ("dia", "semana", "mes")
+
+# Un rango a escoger llega hasta unos tres meses: así la gráfica día por día se sigue leyendo
+# en el celular y el día de la semana tiene varias muestras de cada uno.
+DIAS_MAXIMOS_DEL_RANGO = 92
 
 # Cuántos ajustes y anulaciones se muestran con su detalle (el total siempre cuenta todos).
 DETALLE_MAXIMO = 50
@@ -34,7 +38,7 @@ DETALLE_MAXIMO = 50
 
 @dataclass(frozen=True)
 class Periodo:
-    tipo: str  # "dia", "semana" (de lunes a domingo) o "mes"
+    tipo: str  # "dia", "semana" (de lunes a domingo), "mes" o "rango" (los días que se escojan)
     desde: date
     hasta: date  # incluido
 
@@ -42,10 +46,26 @@ class Periodo:
     def dias(self) -> list[date]:
         return [self.desde + timedelta(days=n) for n in range((self.hasta - self.desde).days + 1)]
 
+    @property
+    def cuantos_dias(self) -> int:
+        return (self.hasta - self.desde).days + 1
+
     def anterior(self) -> "Periodo":
+        if self.tipo == "rango":  # los mismos días, justo antes
+            return Periodo(
+                "rango",
+                self.desde - timedelta(days=self.cuantos_dias),
+                self.desde - timedelta(days=1),
+            )
         return periodo(self.tipo, self.desde - timedelta(days=1))
 
     def siguiente(self) -> "Periodo":
+        if self.tipo == "rango":
+            return Periodo(
+                "rango",
+                self.hasta + timedelta(days=1),
+                self.hasta + timedelta(days=self.cuantos_dias),
+            )
         return periodo(self.tipo, self.hasta + timedelta(days=1))
 
     def contiene(self, dia: date) -> bool:
@@ -59,11 +79,15 @@ class Periodo:
             return f"{formato.MESES[self.desde.month - 1].capitalize()} de {self.desde.year}"
         if self.tipo == "semana":
             return f"Semana {_del_al(self.desde, self.hasta)}"
+        if self.tipo == "rango":
+            return f"Del {_del_al(self.desde, self.hasta)[4:]}"
         return f"{formato.fecha_larga(self.desde)} de {self.desde.year}"
 
     def nombre_del_anterior(self, hoy: date) -> str:
         """Con qué se compara: "Ayer (todo el día)" si es el de hoy (que va por la mitad), o
         "El día anterior" si ya pasó."""
+        if self.tipo == "rango":
+            return f"Los {self.cuantos_dias} días anteriores"
         if self.contiene(hoy):
             return {
                 "dia": "Ayer (todo el día)",
@@ -96,12 +120,20 @@ def periodo(tipo: str, dia: date) -> Periodo:
     return Periodo("dia", dia, dia)
 
 
+def rango(desde: date, hasta: date) -> Periodo:
+    """Los días que se escojan, hasta 92: si vienen al revés se voltean, y si son más, se
+    cuentan los 92 que terminan en `hasta` (lo más reciente es lo que se quiere ver)."""
+    if hasta < desde:
+        desde, hasta = hasta, desde
+    desde = max(desde, hasta - timedelta(days=DIAS_MAXIMOS_DEL_RANGO - 1))
+    return Periodo("rango", desde, hasta)
+
+
 # --- Lo que muestra -----------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class DiaDelBalance:
-    dia: date
+class CifrasDelDia:
     entradas: int = 0
     salidas: int = 0
     cobrado_salidas: int = 0
@@ -110,6 +142,18 @@ class DiaDelBalance:
     @property
     def total(self) -> int:
         return self.cobrado_salidas + self.cobrado_mensualidades
+
+
+@dataclass(frozen=True)
+class DiaDelBalance(CifrasDelDia):
+    """Las cifras de un día (de todos los vehículos) y, aparte, las de carros y las de motos."""
+
+    dia: date = date.min
+    por_tipo: dict[TipoParqueo, CifrasDelDia] = field(default_factory=dict)
+
+    def de(self, tipo: TipoParqueo | None) -> CifrasDelDia:
+        """Las de un tipo, o las de todos si no se dice cuál."""
+        return self if tipo is None else self.por_tipo.get(tipo, CifrasDelDia())
 
 
 @dataclass(frozen=True)
@@ -223,11 +267,23 @@ def _dia_de(columna: Any) -> Any:
     return func.date(func.timezone(zona, columna))
 
 
+_CIFRAS = ("entradas", "salidas", "cobrado_salidas", "cobrado_mensualidades")
+
+
+def _dia_del_balance(dia: date, por_tipo: dict[TipoParqueo, dict[str, int]]) -> DiaDelBalance:
+    totales = {cifra: sum(valores[cifra] for valores in por_tipo.values()) for cifra in _CIFRAS}
+    return DiaDelBalance(
+        dia=dia,
+        por_tipo={tipo: CifrasDelDia(**valores) for tipo, valores in por_tipo.items()},
+        **totales,
+    )
+
+
 def balance(sesion: Session, p: Periodo) -> Balance:
     inicio, fin = limites(p)
-    por_dia: dict[date, dict[str, int]] = {
-        dia: {"entradas": 0, "salidas": 0, "cobrado_salidas": 0, "cobrado_mensualidades": 0}
-        for dia in p.dias
+    # Cada cifra de cada día, por tipo de vehículo; el total del día es la suma de los tipos.
+    por_dia: dict[date, dict[TipoParqueo, dict[str, int]]] = {
+        dia: {tipo: dict.fromkeys(_CIFRAS, 0) for tipo in TipoParqueo} for dia in p.dias
     }
     por_medio = {medio: 0 for medio in MedioPago}
 
@@ -257,8 +313,8 @@ def balance(sesion: Session, p: Periodo) -> Balance:
         if medio is not None:
             por_medio[medio] += int(cobrado)
         if dia in por_dia:
-            por_dia[dia]["salidas"] += cuantas
-            por_dia[dia]["cobrado_salidas"] += int(cobrado)
+            por_dia[dia][tipo]["salidas"] += cuantas
+            por_dia[dia][tipo]["cobrado_salidas"] += int(cobrado)
 
     entradas = {tipo: 0 for tipo in TipoParqueo}
     for tipo, dia, cuantas in sesion.execute(
@@ -272,29 +328,31 @@ def balance(sesion: Session, p: Periodo) -> Balance:
     ):
         entradas[tipo] += cuantas
         if dia in por_dia:
-            por_dia[dia]["entradas"] += cuantas
+            por_dia[dia][tipo]["entradas"] += cuantas
 
     pagos = 0
     cobrado_mensualidades = 0
-    for medio, dia, cuantos, cobrado in sesion.execute(
+    for medio, tipo, dia, cuantos, cobrado in sesion.execute(
         select(
             PagoMensualidad.medio_pago,
+            Mensualidad.tipo,
             _dia_de(PagoMensualidad.fecha_hora),
             func.count(),
             func.sum(PagoMensualidad.valor),
         )
+        .join(Mensualidad, Mensualidad.id == PagoMensualidad.mensualidad_id)
         .where(
             PagoMensualidad.caja_id.is_not(None),
             PagoMensualidad.fecha_hora >= inicio,
             PagoMensualidad.fecha_hora < fin,
         )
-        .group_by(PagoMensualidad.medio_pago, _dia_de(PagoMensualidad.fecha_hora))
+        .group_by(PagoMensualidad.medio_pago, Mensualidad.tipo, _dia_de(PagoMensualidad.fecha_hora))
     ):
         pagos += cuantos
         cobrado_mensualidades += int(cobrado)
         por_medio[medio] += int(cobrado)
         if dia in por_dia:
-            por_dia[dia]["cobrado_mensualidades"] += int(cobrado)
+            por_dia[dia][tipo]["cobrado_mensualidades"] += int(cobrado)
 
     ajustes = [
         Ajuste(
@@ -353,7 +411,7 @@ def balance(sesion: Session, p: Periodo) -> Balance:
         anuladas=anuladas,
         total_anuladas=total_anuladas or 0,
         cajas=resumenes_de_cajas(sesion, cajas),
-        dias=[DiaDelBalance(dia, **valores) for dia, valores in por_dia.items()],
+        dias=[_dia_del_balance(dia, por_tipo) for dia, por_tipo in por_dia.items()],
         correcciones_de_antes=correcciones_a_cajas_de_antes(sesion, inicio, fin),
     )
 

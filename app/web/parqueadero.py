@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
@@ -26,8 +27,14 @@ from app.db.sesion import AbrirSesion, abrir_sesion
 from app.errores import ReglaDelNegocio
 from app.integraciones.correo import CorreoNoEnviado
 from app.parqueadero import casos_de_uso as casos
-from app.parqueadero import consultas, reglas, reporte
-from app.parqueadero.balance import TIPOS_DE_PERIODO, total_recogido
+from app.parqueadero import consultas, graficas, reglas, reporte
+from app.parqueadero.balance import (
+    DIAS_MAXIMOS_DEL_RANGO,
+    TIPOS_DE_PERIODO,
+    Periodo,
+    rango,
+    total_recogido,
+)
 from app.parqueadero.balance import balance as calcular_balance
 from app.parqueadero.balance import periodo as periodo_de
 from app.parqueadero.errores import CajaNoCorregible, CobroNoCorregible, ValorInvalido
@@ -623,20 +630,69 @@ def exportar(
 # --- Balance y reporte del día --------------------------------------------------------------
 
 
+def _enlace_balance(
+    p: Periodo, ver: str = "plata", tipo: str = "todos", fecha: date | None = None
+) -> str:
+    """La dirección del Balance de un periodo, con lo que se está viendo en las gráficas. Con
+    `fecha`, la semana o el mes van con ese día (al cambiar de día a mes, se queda en él)."""
+    consulta = {"periodo": p.tipo}
+    if p.tipo == "rango":
+        consulta |= {"desde": p.desde.isoformat(), "hasta": p.hasta.isoformat()}
+    else:
+        consulta["fecha"] = (fecha or p.desde).isoformat()
+    if ver != "plata":
+        consulta["ver"] = ver
+    if tipo != "todos":
+        consulta["tipo"] = tipo
+    return f"/parqueadero/balance?{urlencode(consulta)}"
+
+
+def _ultimos(dias: int, hoy: date) -> Periodo:
+    return rango(hoy - timedelta(days=dias - 1), hoy)
+
+
 @router.get("/balance", response_class=HTMLResponse)
 def pagina_balance(
     request: Request,
     sesion: SesionBD,
     _: Admin,
     periodo: str = "dia",
-    fecha: date | None = None,
+    fecha: str | None = None,
+    desde: str | None = None,
+    hasta: str | None = None,
+    ver: str = "plata",
+    tipo: str = "todos",
 ) -> Response:
-    """Lo que entró y lo que pasó en un día, una semana o un mes. El del día es también el
-    reporte para los jefes: se imprime, se manda por WhatsApp o por correo."""
+    """Lo que entró y lo que pasó en un día, una semana, un mes o los días que se escojan
+    (hasta 92). El del día es también el reporte para los jefes: se imprime, se manda por
+    WhatsApp o por correo. La semana, el mes y el rango traen las gráficas, que se pueden ver
+    en plata o en vehículos, de todos o solo de carros o de motos."""
     hoy = _hoy()
+    ver = ver if ver in graficas.QUE_SE_VE else "plata"
+    tipo = tipo if tipo in graficas.DE_QUIEN else "todos"
     # Del futuro no hay nada que ver: una fecha que no ha llegado muestra hoy.
-    p = periodo_de(periodo if periodo in TIPOS_DE_PERIODO else "dia", min(fecha or hoy, hoy))
+    if periodo == "rango":
+        p = rango(
+            min(_fecha(desde) or hoy - timedelta(days=29), hoy), min(_fecha(hasta) or hoy, hoy)
+        )
+    else:
+        tipo_de_periodo = periodo if periodo in TIPOS_DE_PERIODO else "dia"
+        p = periodo_de(tipo_de_periodo, min(_fecha(fecha) or hoy, hoy))
     b = calcular_balance(sesion, p)
+
+    def ir(otro: Periodo) -> str:
+        return _enlace_balance(otro, ver, tipo)
+
+    referencia = hoy if p.contiene(hoy) else p.desde
+    pestanas = [
+        (
+            nombre,
+            _enlace_balance(periodo_de(clave, referencia), ver, tipo, referencia),
+            clave == p.tipo,
+        )
+        for clave, nombre in (("dia", "Día"), ("semana", "Semana"), ("mes", "Mes"))
+    ]
+    pestanas.append(("Rango", ir(p if p.tipo == "rango" else _ultimos(30, hoy)), p.tipo == "rango"))
     contexto: dict[str, Any] = {
         "b": b,
         "p": p,
@@ -644,7 +700,38 @@ def pagina_balance(
         "anterior": total_recogido(sesion, p.anterior()),
         "nombre_del_anterior": p.nombre_del_anterior(hoy),
         "nombre_del_medio": reporte.NOMBRE_DEL_MEDIO,
+        "pestanas": pestanas,
+        "ir_anterior": ir(p.anterior()),
+        "ir_siguiente": ir(p.siguiente()) if p.hasta < hoy else None,
+        "ir_a_hoy": (
+            ir(_ultimos(p.cuantos_dias, hoy) if p.tipo == "rango" else periodo_de(p.tipo, hoy))
+            if not p.contiene(hoy)
+            else None
+        ),
+        "ultimos_30": _enlace_balance(_ultimos(30, hoy), ver, tipo),
+        "ultimos_90": _enlace_balance(_ultimos(90, hoy), ver, tipo),
+        "dias_maximos": DIAS_MAXIMOS_DEL_RANGO,
+        "ver": ver,
+        "tipo": tipo,
+        "vehiculo": None,
     }
+    if p.tipo != "dia":
+        vehiculo = None if tipo == "todos" else TipoParqueo(tipo)
+        contexto |= {
+            "vehiculo": vehiculo,
+            "opciones_ver": [
+                (nombre, _enlace_balance(p, clave, tipo), clave == ver)
+                for clave, nombre in graficas.QUE_SE_VE.items()
+            ],
+            "opciones_tipo": [
+                (nombre, _enlace_balance(p, ver, clave), clave == tipo)
+                for clave, nombre in graficas.DE_QUIEN.items()
+            ],
+            "dia_a_dia": graficas.dia_por_dia(
+                b, hoy, ver, vehiculo, lambda dia: ir(periodo_de("dia", dia))
+            ),
+            "por_dia_de_la_semana": graficas.por_dia_de_la_semana(b, hoy, ver, vehiculo),
+        }
     if p.tipo == "dia":
         informe = reporte.armar(sesion, p.desde, balance_del_dia=b)
         contexto |= {
@@ -652,6 +739,7 @@ def pagina_balance(
             "texto_del_reporte": reporte.texto(informe, negrilla=False),
             "correo_configurado": obtener_entorno().correo_configurado,
             "destinos": leer_ajustes(sesion).destinos_del_reporte,
+            "ver_el_mes": ir(periodo_de("mes", p.desde)),
         }
     return pagina(request, sesion, "parqueadero_balance.html", contexto, seccion="parqueadero")
 
@@ -957,9 +1045,11 @@ def dialogo_pagar(
     return html(request, "dialogos/parqueadero_pagar_mensualidad.html", contexto)
 
 
-def _fecha(texto: str) -> date | None:
+def _fecha(texto: str | None) -> date | None:
+    """Una fecha escrita como 2026-11-13; si viene vacía o no es una fecha, como si no
+    viniera."""
     try:
-        return date.fromisoformat(texto)
+        return date.fromisoformat(texto) if texto else None
     except ValueError:
         return None
 

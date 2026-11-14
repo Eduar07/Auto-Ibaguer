@@ -82,7 +82,7 @@ Es la sección **Parqueadero** del dashboard (en el celular, **Parqueo** en la b
 | **Entradas y salidas** | Registrar la entrada (carro o moto, la placa y, si quieres, el estado o lo que deja: sale en el ticket) e imprimir el ticket. Cobrar la salida escribiendo la placa o el número del ticket, o con **Cobrar** en la lista de los que están adentro, que dice cuánto va cada uno. **Anular** una entrada mal hecha: pide el motivo y no cuenta en la caja. |
 | **Caja** | Abrirla con la base para vueltos, ver lo que ha entrado por cada medio de pago y cerrarla contando el efectivo: dice si cuadró, sobró o faltó, e imprime el resumen para firmar. Cada cobro se puede **corregir**, y también la base; en una caja cerrada, hasta 30 días después, además el efectivo contado. Abajo, los cierres anteriores y el archivo para Excel. |
 | **Mensualidades** | Crear la del cliente (placa, nombre, celular opcional y el valor que acuerdes), cobrar cada mes e imprimir el recibo. Dice quién está al día, a quién se le vence en 3 días o menos y quién debe. |
-| **Balance** | Lo que se recogió por día, semana o mes, por medio de pago, con lo que hay que revisar (descuentos, anuladas, cajas que no cuadraron). En el del día, el reporte para los jefes: por WhatsApp, impreso o por correo. |
+| **Balance** | Lo que se recogió por día, semana, mes o los días que escojas, por medio de pago, con lo que hay que revisar (descuentos, anuladas, cajas que no cuadraron, correcciones). La semana, el mes y el rango traen **gráficas de barras** día por día y por día de la semana, con filtros. En el del día, el reporte para los jefes: por WhatsApp, impreso o por correo. |
 | **Tarifas y ticket** | El valor de la hora de carro y de moto, los minutos de gracia, la fracción de los primeros 15 minutos (opcional), el cobro por días (opcional, con una tabla de cuánto salen 1, 2, 3, 4, 7 y 15 días para responder en el mostrador) y lo que sale impreso: nombre, NIT (en el ticket sale "NIT 900.123.456-7"), dirección, teléfono, el texto del final del ticket y el ancho del papel. También los correos de los jefes para el reporte diario. |
 
 ### Cómo cobra
@@ -197,20 +197,32 @@ Cualquier ticket se puede reimprimir: el botón de la impresora en la lista de l
 
 ### Las cuentas en Excel
 
-En **Caja > Llevar las cuentas en Excel** eliges desde y hasta qué día y descargas un archivo con cada cobro (salidas y mensualidades): fecha, hora, placa, tipo, tiempo, medio de pago, valor, ajuste y caja. Excel lo abre directo con doble clic, con tildes y columnas en su sitio. Desde **Balance** se descarga el día, la semana o el mes que estás mirando.
+En **Caja > Llevar las cuentas en Excel** eliges desde y hasta qué día y descargas un archivo con cada cobro (salidas y mensualidades): fecha, hora, placa, tipo, tiempo, medio de pago, valor, ajuste y caja. Excel lo abre directo con doble clic, con tildes y columnas en su sitio. Desde **Balance** se descarga el día, la semana, el mes o el rango que estás mirando.
 
-### El balance: día, semana y mes
+### El balance: día, semana, mes o rango
 
-En **Parqueadero > Balance** eliges **Día**, **Semana** (de lunes a domingo) o **Mes**, y con las flechas pasas al anterior o al siguiente. Muestra:
+En **Parqueadero > Balance** eliges **Día**, **Semana** (de lunes a domingo), **Mes** o **Rango** (los días que escojas, hasta 92, con atajos a los últimos 30 y 90), y con las flechas pasas al anterior o al siguiente. Muestra:
 
 - **Recogido**: todo lo que entró (salidas y mensualidades), comparado con el periodo anterior. Si estás mirando hoy, la comparación es con ayer completo, porque hoy va por la mitad.
 - **Por medio de pago**: el efectivo es lo que debió entrar al cajón; Nequi, Daviplata y tarjeta se comparan con lo que dicen sus apps.
 - **Lo que pasó**: salidas de carros y de motos, mensualistas al día que salieron sin pagar, descuentos, entradas anuladas y si las cajas cuadraron.
-- **Día por día** (en semana y mes), con una barra para ver de un vistazo los días buenos y los flojos. Cada día lleva a su balance.
+- **Cómo va** (en semana, mes y rango): las gráficas. Ver lo que dicen está más abajo.
+- **Día por día** (en semana, mes y rango): la misma información en una tabla. Cada día lleva a su balance.
 - **Cajas**: cada caja es del día en que se abrió, aunque se cierre pasada la medianoche.
 - **Para revisar**: cada cobro distinto a la tarifa y cada entrada anulada, con su motivo.
 
 La plata cuenta el día en que se cobró, en la hora de Bogotá: una salida a las 11:30 p.m. es de ese día. Los días que un mensualista ya traía pagados (con el dueño anterior) no son plata de este sistema y no suman.
+
+#### Las gráficas
+
+Para saber qué días son flojos y cuáles buenos, y reforzar los flojos:
+
+- **Día por día**: una barra por día. Marca el mejor día y el más bajo, y una línea con el promedio. Hoy va más clara: el día va por la mitad y no cuenta para el promedio.
+- **Promedio por día de la semana**: los lunes, los martes... Sale con dos semanas o más de días completos. Para eso sirve el **Rango**: con los últimos 90 días, cada día de la semana tiene unas trece muestras.
+- **Qué ver**: **Todo lo recogido**, solo **Salidas** (sin mensualidades, que llegan de a montones el día que se pagan y hacen ver bueno un día que no lo fue) o **Vehículos** (los que entraron). Y de **Todos**, solo **Carros** o solo **Motos**. La tabla **Día por día** sigue el mismo filtro de vehículos.
+- **Al pasar el puntero** (o con el teclado) por una barra, dice el valor, el día y cómo se compone. Tocar una barra del día por día abre el balance de ese día.
+- Los días antes del primero con movimiento no cuentan para comparar: no son días flojos, el sistema todavía no se usaba.
+- Las gráficas son HTML hecho en el servidor (`app/parqueadero/graficas.py` calcula cada barra; `_grafica.html` la pinta): no hay librería de gráficas, y la letra se lee igual en el celular.
 
 ### Reporte diario a los jefes
 

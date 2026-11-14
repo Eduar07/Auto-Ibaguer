@@ -1148,6 +1148,72 @@ legend { padding: 0; margin-bottom: 8px; }
 .tabla-balance__barra span {
   display: block; width: var(--parte); min-width: 2px; height: 10px; border-radius: 5px; background: var(--azul);
 }
+/* Los días que se escojan: dos fechas y Ver, con atajos a los últimos 30 y 90 días. */
+.balance__rango { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.balance__rango .campo { min-width: 150px; }
+.balance__rango .ayuda { flex-basis: 100%; margin: 0; }
+.balance__otra-vista { margin: 0; }
+
+/* --- Las gráficas del Balance ---
+   Columnas de HTML, no un dibujo: la letra queda del tamaño de la página en el celular. Una
+   sola serie en el azul de la marca; la letra va en los colores del texto, nunca en el de la
+   barra. Barras finas (24 px a lo sumo) con la punta redondeada y la base recta, 2 px de aire
+   entre una y otra, y las líneas del fondo en trazo fino y continuo. */
+.graficas { display: flex; flex-direction: column; gap: 18px; }
+.graficas__cabeza { display: flex; flex-direction: column; gap: 10px; }
+.graficas__cabeza h2 { font-size: 19px; font-weight: 700; }
+.graficas__filtros { display: flex; flex-wrap: wrap; gap: 8px; }
+.segmento--pequeno { flex-wrap: wrap; max-width: 100%; }
+.segmento--pequeno a, .segmento--pequeno span { min-height: 36px; min-width: 0; padding: 0 12px; font-size: 14px; }
+.grafica { margin: 0; position: relative; display: flex; flex-direction: column; gap: 8px; }
+.grafica__titulo { font-size: 15px; font-weight: 700; color: var(--tinta); }
+.grafica__cuerpo {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px;
+  height: 236px; padding: 22px 0 24px; /* arriba, el valor del mejor día; abajo, las fechas */
+}
+.grafica__eje { position: relative; min-width: 44px; color: var(--tinta-suave); font-size: 12px; font-variant-numeric: tabular-nums; }
+.grafica__eje span { position: absolute; right: 0; transform: translateY(50%); white-space: nowrap; }
+.grafica__area { position: relative; border-bottom: 1px solid var(--borde-fuerte); }
+.grafica__linea { position: absolute; left: 0; right: 0; border-top: 1px solid var(--linea); }
+.grafica__promedio { position: absolute; left: 0; right: 0; z-index: 2; border-top: 1px solid var(--tinta-suave); pointer-events: none; }
+.grafica__promedio span {
+  position: absolute; right: 0; bottom: 3px; padding: 0 4px; border-radius: 4px;
+  background: rgba(255, 255, 255, 0.94); color: var(--tinta-gris); font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.grafica__columnas { position: absolute; inset: 0; display: flex; margin: 0; padding: 0; list-style: none; }
+.grafica__columnas > li { flex: 1 1 0; min-width: 0; display: flex; }
+.grafica__columna {
+  flex: 1; position: relative; display: flex; align-items: flex-end; justify-content: center;
+  padding: 0 1px; color: inherit; text-decoration: none; border-radius: 4px 4px 0 0; outline-offset: -2px;
+}
+.grafica__barra { display: block; width: min(24px, 100%); background: var(--azul); border-radius: 4px 4px 0 0; }
+.grafica__columna--en-curso .grafica__barra { background: #9cc4e6; }
+.grafica__columna:hover, .grafica__columna:focus-visible { background: var(--azul-resalte); }
+.grafica__columna:hover .grafica__barra, .grafica__columna:focus-visible .grafica__barra { background: var(--azul-oscuro); }
+.grafica__valor {
+  position: absolute; left: 50%; transform: translateX(-50%); margin-bottom: 4px; z-index: 3;
+  padding: 1px 5px; border-radius: 5px; background: rgba(255, 255, 255, 0.94);
+  color: var(--tinta-suave); font-size: 12px; white-space: nowrap; pointer-events: none;
+}
+.grafica__valor strong { color: var(--tinta); font-weight: 700; }
+.grafica__valor--inicio { left: 0; transform: none; }
+.grafica__valor--fin { left: auto; right: 0; transform: none; }
+.grafica__etiqueta {
+  position: absolute; top: calc(100% + 5px); left: 50%; transform: translateX(-50%);
+  color: var(--tinta-suave); font-size: 12px; white-space: nowrap;
+}
+.grafica__resumen { margin: 0; color: var(--tinta-gris); font-size: 14px; }
+.grafica__aviso {
+  position: absolute; top: 30px; z-index: 5; max-width: 240px; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(14, 26, 43, 0.16); font-size: 13px; pointer-events: none;
+}
+.grafica__aviso strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.grafica__aviso[hidden] { display: none; }
+.graficas__numeros summary { cursor: pointer; color: var(--azul-texto); font-weight: 600; }
+.graficas__numeros table { margin-top: 8px; }
+
 .reporte-texto {
   margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--fondo);
   font-family: inherit; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
@@ -1159,6 +1225,8 @@ legend { padding: 0; margin-bottom: 8px; }
 @media (min-width: 720px) {
   .parqueadero__columnas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .balance__barra { flex-direction: row-reverse; align-items: center; justify-content: space-between; }
+  .graficas__cabeza { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .grafica__cuerpo { height: 276px; }
   .parqueo { grid-template-columns: auto minmax(180px, 1.3fr) minmax(160px, 1fr) auto; }
   .parqueo__icono { grid-row: auto; align-self: center; padding-top: 0; }
   .parqueo__tiempo { flex-direction: column; align-items: flex-start; }

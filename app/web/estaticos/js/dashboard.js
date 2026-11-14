@@ -384,6 +384,53 @@
     if (formulario.dataset.formulario === "cierre-caja") actualizarCierre(formulario);
   });
 
+  // --- Gráficas del Balance ----------------------------------------------------------------
+  // Al pasar el puntero o el foco por una columna, el aviso dice su valor primero y después
+  // qué día es. Ayuda, pero no es la única forma de verlo: la tabla de abajo tiene lo mismo.
+  // Los textos van con textContent: nunca se pegan como HTML.
+
+  function mostrarAviso(columna) {
+    const figura = columna.closest("[data-grafica]");
+    const aviso = figura ? figura.querySelector(".grafica__aviso") : null;
+    if (!aviso) return;
+    const valor = document.createElement("strong");
+    valor.textContent = columna.dataset.valor || "";
+    const nombre = document.createElement("span");
+    nombre.textContent = columna.dataset.nombre || "";
+    aviso.replaceChildren(valor, nombre);
+    if (columna.dataset.detalle) {
+      const detalle = document.createElement("span");
+      detalle.className = "suave";
+      detalle.textContent = columna.dataset.detalle;
+      aviso.append(detalle);
+    }
+    aviso.hidden = false;
+    const marco = figura.getBoundingClientRect();
+    const caja = columna.getBoundingClientRect();
+    const centro = caja.left + caja.width / 2 - marco.left;
+    const izquierda = Math.min(Math.max(centro - aviso.offsetWidth / 2, 0), marco.width - aviso.offsetWidth);
+    aviso.style.left = Math.max(izquierda, 0) + "px";
+  }
+
+  function esconderAviso(columna) {
+    const figura = columna.closest("[data-grafica]");
+    const aviso = figura ? figura.querySelector(".grafica__aviso") : null;
+    if (aviso) aviso.hidden = true;
+  }
+
+  for (const evento of ["pointerover", "focusin"]) {
+    document.addEventListener(evento, (e) => {
+      const columna = e.target.closest ? e.target.closest("[data-punto]") : null;
+      if (columna) mostrarAviso(columna);
+    });
+  }
+  for (const evento of ["pointerout", "focusout"]) {
+    document.addEventListener(evento, (e) => {
+      const columna = e.target.closest ? e.target.closest("[data-punto]") : null;
+      if (columna && !(e.relatedTarget && columna.contains(e.relatedTarget))) esconderAviso(columna);
+    });
+  }
+
   // --- Clientes ---------------------------------------------------------------------------
 
   function marcarClienteElegido() {

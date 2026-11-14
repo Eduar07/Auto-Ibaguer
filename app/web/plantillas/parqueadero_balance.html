@@ -1,14 +1,17 @@
 {% extends "pagina.html" %}
-{#- El balance del parqueadero por día, semana o mes. El del día es también el reporte para
-    los jefes: se imprime, se manda por WhatsApp o por correo. -#}
+{#- El balance del parqueadero por día, semana, mes o los días que se escojan. El del día es
+    también el reporte para los jefes: se imprime, se manda por WhatsApp o por correo. La
+    semana, el mes y el rango traen las gráficas, con sus filtros. -#}
 {% import "_iconos.html" as iconos %}
 {% from "_parqueadero_atajos.html" import atajos %}
+{% from "_grafica.html" import grafica %}
 {% macro dif(d) -%}
 <span class="{{ 'diferencia--cuadra' if d == 0 else ('diferencia--sobra' if d > 0 else 'diferencia--falta') }}">{{ "Cuadró" if d == 0 else (("Sobraron " if d > 0 else "Faltaron ") ~ (d|abs)|pesos) }}</span>
 {%- endmacro %}
 {% macro enlace(tipo, dia) %}/parqueadero/balance?periodo={{ tipo }}&amp;fecha={{ dia.isoformat() }}{% endmacro %}
 {% macro veces(n, una, varias) %}{{ n }} {{ una if n == 1 else varias }}{% endmacro %}
-{% set nombre_del_periodo = {"dia": "del día", "semana": "de la semana", "mes": "del mes"}[p.tipo] %}
+{% set nombre_del_periodo = {"dia": "del día", "semana": "de la semana", "mes": "del mes", "rango": "en esos días"}[p.tipo] %}
+{% set ese_periodo = {"dia": "ese día", "semana": "esa semana", "mes": "ese mes", "rango": "esos días"}[p.tipo] %}
 
 {% block titulo %}Balance del parqueadero · Auto Ibaguer{% endblock %}
 
@@ -24,21 +27,33 @@
 
   <div class="balance__barra">
     {#- Al cambiar de día a semana o a mes, se queda en la misma fecha. -#}
-    {% set referencia = hoy if p.contiene(hoy) else p.desde %}
     <nav class="segmento" aria-label="Ver el balance por">
-      {% for tipo, nombre in [("dia", "Día"), ("semana", "Semana"), ("mes", "Mes")] %}
-      {% if tipo == p.tipo %}<span aria-current="page">{{ nombre }}</span>{% else %}<a href="{{ enlace(tipo, referencia) }}">{{ nombre }}</a>{% endif %}
+      {% for nombre, url, actual in pestanas %}
+      {% if actual %}<span aria-current="page">{{ nombre }}</span>{% else %}<a href="{{ url }}">{{ nombre }}</a>{% endif %}
       {% endfor %}
     </nav>
     <div class="balance__navegacion">
-      <a class="boton boton--icono" href="{{ enlace(p.tipo, p.anterior().desde) }}" aria-label="{{ {'dia': 'Día anterior', 'semana': 'Semana anterior', 'mes': 'Mes anterior'}[p.tipo] }}">{{ iconos.icono("volver", 20) }}</a>
+      <a class="boton boton--icono" href="{{ ir_anterior }}" aria-label="{{ {'dia': 'Día anterior', 'semana': 'Semana anterior', 'mes': 'Mes anterior', 'rango': 'Los días anteriores'}[p.tipo] }}">{{ iconos.icono("volver", 20) }}</a>
       <h2>{{ p.titulo }}</h2>
-      {% if not p.contiene(hoy) %}
-      <a class="boton boton--icono" href="{{ enlace(p.tipo, p.siguiente().desde) }}" aria-label="{{ {'dia': 'Día siguiente', 'semana': 'Semana siguiente', 'mes': 'Mes siguiente'}[p.tipo] }}">{{ iconos.icono("adelante", 20) }}</a>
-      <a class="boton-texto" href="{{ enlace(p.tipo, hoy) }}">{{ {"dia": "Ir a hoy", "semana": "Ir a esta semana", "mes": "Ir a este mes"}[p.tipo] }}</a>
+      {% if ir_siguiente %}
+      <a class="boton boton--icono" href="{{ ir_siguiente }}" aria-label="{{ {'dia': 'Día siguiente', 'semana': 'Semana siguiente', 'mes': 'Mes siguiente', 'rango': 'Los días siguientes'}[p.tipo] }}">{{ iconos.icono("adelante", 20) }}</a>
+      {% endif %}
+      {% if ir_a_hoy %}
+      <a class="boton-texto" href="{{ ir_a_hoy }}">{{ {"dia": "Ir a hoy", "semana": "Ir a esta semana", "mes": "Ir a este mes", "rango": "Hasta hoy"}[p.tipo] }}</a>
       {% endif %}
     </div>
   </div>
+  {% if p.tipo == "rango" %}
+  <form class="balance__rango" method="get" action="/parqueadero/balance">
+    <input type="hidden" name="periodo" value="rango">
+    {% if ver != "plata" %}<input type="hidden" name="ver" value="{{ ver }}">{% endif %}
+    {% if tipo != "todos" %}<input type="hidden" name="tipo" value="{{ tipo }}">{% endif %}
+    <div class="campo"><label for="rango-desde">Desde</label><input id="rango-desde" name="desde" type="date" value="{{ p.desde.isoformat() }}" max="{{ hoy.isoformat() }}" required></div>
+    <div class="campo"><label for="rango-hasta">Hasta</label><input id="rango-hasta" name="hasta" type="date" value="{{ p.hasta.isoformat() }}" max="{{ hoy.isoformat() }}" required></div>
+    <button type="submit" class="boton boton--borde">Ver</button>
+    <p class="ayuda">Hasta {{ dias_maximos }} días. Rápido: <a href="{{ ultimos_30 }}">los últimos 30 días</a> · <a href="{{ ultimos_90 }}">los últimos 90</a>.</p>
+  </form>
+  {% endif %}
 
   <section class="panel" aria-labelledby="t-recogido">
     <div class="balance__total">
@@ -52,6 +67,40 @@
       <div class="cifra"><span class="cifra__valor">{{ b.cuantas_entradas }}</span><span class="cifra__nombre">{{ "entrada" if b.cuantas_entradas == 1 else "entradas" }} ({{ veces(b.entradas[TipoParqueo.MOTO], "moto", "motos") }}, {{ veces(b.entradas[TipoParqueo.CARRO], "carro", "carros") }})</span></div>
     </div>
   </section>
+
+  {% if p.tipo != "dia" %}
+  <section class="panel graficas" aria-labelledby="t-graficas">
+    <div class="graficas__cabeza">
+      <h2 id="t-graficas">Cómo va</h2>
+      <div class="graficas__filtros">
+        <nav class="segmento segmento--pequeno" aria-label="Qué ver en las gráficas">
+          {% for nombre, url, actual in opciones_ver %}{% if actual %}<span aria-current="page">{{ nombre }}</span>{% else %}<a href="{{ url }}#t-graficas">{{ nombre }}</a>{% endif %}{% endfor %}
+        </nav>
+        <nav class="segmento segmento--pequeno" aria-label="De qué vehículos">
+          {% for nombre, url, actual in opciones_tipo %}{% if actual %}<span aria-current="page">{{ nombre }}</span>{% else %}<a href="{{ url }}#t-graficas">{{ nombre }}</a>{% endif %}{% endfor %}
+        </nav>
+      </div>
+    </div>
+    {{ grafica(dia_a_dia, "grafica-dias") }}
+    {% if por_dia_de_la_semana %}
+    {{ grafica(por_dia_de_la_semana, "grafica-semana") }}
+    <details class="graficas__numeros">
+      <summary>Ver el promedio por día de la semana en números</summary>
+      <table class="tabla-caja tabla-caja--resumen">
+        <tbody>
+          {% for barra in por_dia_de_la_semana.barras %}
+          <tr><th scope="row">{{ barra.nombre }}</th><td>{{ barra.texto }}{% if barra.marca %} · {{ barra.marca|lower }}{% endif %}</td><td class="suave">{{ barra.detalle }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% else %}
+    <p class="ayuda">Con dos semanas o más de días completos (el mes, o un rango) sale también el promedio por día de la semana: cuáles días son flojos y cuáles buenos.</p>
+    {% endif %}
+  </section>
+  {% else %}
+  <p class="balance__otra-vista"><a class="boton-texto" href="{{ ver_el_mes }}">{{ iconos.icono("grafica", 18) }}Ver la gráfica del mes</a></p>
+  {% endif %}
 
   <div class="parqueadero__columnas">
     <section class="panel" aria-labelledby="t-medios">
@@ -94,21 +143,24 @@
 
   {% if p.tipo != "dia" %}
   <section class="lista" aria-labelledby="t-dias">
-    <div class="lista__cabeza"><h3 id="t-dias">Día por día</h3></div>
+    <div class="lista__cabeza"><h3 id="t-dias">Día por día{% if vehiculo %} · solo {{ "carros" if vehiculo.value == "carro" else "motos" }}{% endif %}</h3></div>
     <div class="tabla-desplazable">
       <table class="tabla-caja tabla-balance">
         <thead>
           <tr><th scope="col">Día</th><th scope="col">Recogido</th><th scope="col"><span class="solo-lector">Comparado con el mejor día</span></th><th scope="col">Salidas</th><th scope="col">Mensualidades</th><th scope="col">Entradas</th></tr>
         </thead>
         <tbody>
+          {% set mayor_del_filtro = namespace(valor=0) %}
+          {% for d in b.dias %}{% set c = d.de(vehiculo) %}{% if c.total > mayor_del_filtro.valor %}{% set mayor_del_filtro.valor = c.total %}{% endif %}{% endfor %}
           {% for d in b.dias if d.dia <= hoy %}
+          {% set c = d.de(vehiculo) %}
           <tr{% if d.dia == hoy %} class="tabla-balance__hoy"{% endif %}>
             <td><a href="{{ enlace('dia', d.dia) }}">{{ "Hoy" if d.dia == hoy else d.dia|dia_corto }}</a></td>
-            <td><strong>{{ d.total|pesos }}</strong></td>
-            <td class="tabla-balance__barra"><span style="--parte: {{ ((d.total * 100 / b.mayor_dia) if b.mayor_dia else 0)|round(1) }}%"></span></td>
-            <td>{{ d.salidas }} · {{ d.cobrado_salidas|pesos }}</td>
-            <td>{{ d.cobrado_mensualidades|pesos if d.cobrado_mensualidades else "—" }}</td>
-            <td>{{ d.entradas }}</td>
+            <td><strong>{{ c.total|pesos }}</strong></td>
+            <td class="tabla-balance__barra"><span style="--parte: {{ ((c.total * 100 / mayor_del_filtro.valor) if mayor_del_filtro.valor else 0)|round(1) }}%"></span></td>
+            <td>{{ c.salidas }} · {{ c.cobrado_salidas|pesos }}</td>
+            <td>{{ c.cobrado_mensualidades|pesos if c.cobrado_mensualidades else "—" }}</td>
+            <td>{{ c.entradas }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -142,7 +194,7 @@
     </div>
     <p class="ayuda">Cada caja es del día en que se abrió, aunque se cierre pasada la medianoche.</p>
     {% else %}
-    <p class="lista__vacia">No se abrió caja {{ "ese día" if p.tipo == "dia" else ("esa semana" if p.tipo == "semana" else "ese mes") }}.</p>
+    <p class="lista__vacia">No se abrió caja {{ ese_periodo }}.</p>
     {% endif %}
   </section>
 
@@ -223,6 +275,6 @@
   </section>
   {% endif %}
 
-  <p class="ayuda"><a href="/parqueadero/exportar?desde={{ p.desde.isoformat() }}&amp;hasta={{ p.hasta.isoformat() }}">Descargar {{ "ese día" if p.tipo == "dia" else ("esa semana" if p.tipo == "semana" else "ese mes") }} para Excel</a> (cada cobro, uno por fila).</p>
+  <p class="ayuda"><a href="/parqueadero/exportar?desde={{ p.desde.isoformat() }}&amp;hasta={{ p.hasta.isoformat() }}">Descargar {{ ese_periodo }} para Excel</a> (cada cobro, uno por fila).</p>
 </main>
 {% endblock %}

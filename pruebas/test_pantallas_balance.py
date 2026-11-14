@@ -411,6 +411,8 @@ def dias_de_trabajo(sesion: Session, desde: int, hasta: int) -> None:
         "/parqueadero/caja",
         "/parqueadero/mensualidades",
         "/parqueadero/balance?periodo=mes&fecha=2026-10-01",
+        "/parqueadero/balance?periodo=mes&fecha=2026-10-01&ver=vehiculos&tipo=moto",
+        "/parqueadero/balance?periodo=rango&desde=2026-09-01&hasta=2026-10-26",
         "/parqueadero/balance?periodo=semana&fecha=2026-10-05",
         "/parqueadero/balance?fecha=2026-10-05",
         "/parqueadero/balance/ticket?fecha=2026-10-05",

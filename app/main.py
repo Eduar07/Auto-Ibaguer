@@ -35,6 +35,7 @@ from app.web import (
     mensajes,
     parqueadero,
     probar_bot,
+    resultados,
     textos_del_bot,
     webhook,
 )
@@ -95,6 +96,7 @@ for modulo in (
     clientes,
     comentarios,
     parqueadero,
+    resultados,
     configuracion,
     textos_del_bot,
     mensajes,

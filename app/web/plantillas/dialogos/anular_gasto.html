@@ -1,0 +1,22 @@
+{#- Anular un gasto pagado por fuera de la caja: queda tachado, con el motivo. -#}
+{% import "_iconos.html" as iconos %}
+{% set g = fila.gasto %}
+<form class="dialogo__caja" hx-post="/resultados/gastos/{{ g.id }}/anular" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Anular el gasto</h2>
+    <p>{{ fila.negocio }} · {{ fila.categoria }} · {{ g.descripcion }} · <strong>{{ g.valor|pesos }}</strong></p>
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <div class="campo">
+      <label for="motivo-gasto">¿Por qué se anula?</label>
+      <input id="motivo-gasto" name="motivo" required maxlength="200" value="{{ motivo or '' }}" placeholder="Se anotó dos veces">
+    </div>
+  </div>
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--peligro boton--grande">Anular el gasto</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

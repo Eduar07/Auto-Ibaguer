@@ -1,0 +1,15 @@
+{% extends "pagina.html" %}
+{#- Los dos negocios juntos: el resultado del mes de cada uno y el total, los gastos pagados por
+    fuera de la caja y el cierre del mes para el contador. -#}
+{% block titulo %}Resultado del mes · Auto Ibaguer{% endblock %}
+{% block contenido %}
+<main class="principal pantalla parqueadero">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Resultado del mes</h1>
+      <p>Los dos negocios juntos: lo que entró, lo que se gastó y lo que quedó. Al terminar el mes, se cierra para el contador.</p>
+    </div>
+  </div>
+  {% include "_resultados.html" %}
+</main>
+{% endblock %}

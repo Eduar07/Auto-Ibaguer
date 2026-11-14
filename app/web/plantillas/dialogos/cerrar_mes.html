@@ -1,0 +1,20 @@
+{#- Confirmar el cierre del mes de un negocio: las cifras que se entregan al contador. -#}
+{% import "_iconos.html" as iconos %}
+<form class="dialogo__caja" hx-post="/resultados/cerrar" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button">
+  <input type="hidden" name="negocio" value="{{ r.negocio.value }}">
+  <input type="hidden" name="mes" value="{{ clave_del_mes }}">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Cerrar {{ nombre_del_mes }}: {{ r.nombre|lower }}</h2>
+    <p>Entró {{ r.ingresos|pesos }} · se gastó {{ r.total_gastos|pesos }} · {{ "quedó" if r.resultado >= 0 else "se perdió" }} <strong>{{ r.resultado|pesos }}</strong></p>
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if por_que_no %}<p class="error" role="alert">{{ por_que_no }}</p>{% endif %}
+    <div class="nota nota--suelta">{{ iconos.icono("info", 20) }}<span>Estas cifras quedan guardadas como se entregan al contador. Desde ahora, las cajas, las salidas y los gastos de {{ nombre_del_mes }} ya no se cambian: lo que haya que arreglar se anota en el mes siguiente. No se puede deshacer.</span></div>
+  </div>
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--oscuro boton--grande" {% if por_que_no %}disabled{% endif %}>Cerrar el mes</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

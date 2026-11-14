@@ -157,6 +157,15 @@ Lo que debe haber al cerrar es la base, más lo cobrado en efectivo, **menos las
 
 Las salidas salen en el cierre y en su ticket, en el **Balance** (los gastos por categoría, y aparte los retiros y las consignaciones), en el reporte a los jefes y en **Descargar las salidas** (Excel).
 
+### Resultado y cierre del mes (los dos negocios juntos)
+
+En **Elegir negocio**, abajo, **Los dos juntos: resultado del mes** (o <http://localhost:8000/resultados>):
+
+- Para cada negocio y para los dos juntos: lo que **entró** (por medio de pago), lo que **se gastó** (por categoría) y lo que **quedó**. Los retiros y las consignaciones se muestran aparte: son plata que se movió, no gasto.
+- Los gastos son los que salieron del cajón (**Registrar salida** en la caja) más los **pagados por fuera de la caja** (el arriendo por transferencia, la luz por Nequi), que se anotan aquí con **Anotar gasto**. Como las salidas, se anulan con motivo; no se borran.
+- **Descargar para el contador**: el resultado del mes de los dos negocios en un archivo para Excel. El detalle está en cada caja (cobros, salidas y cierres).
+- **Cerrar el mes para el contador**: desde el primer día del mes siguiente y con todas las cajas de ese mes cerradas. Las cifras quedan guardadas tal como se entregaron, y desde ese momento las cajas, cobros, salidas y gastos de ese mes ya no se cambian: lo que haya que arreglar se anota en el mes siguiente, como en cualquier contabilidad. No se puede deshacer.
+
 ### Corregir un cobro o una caja
 
 En **Caja > Cobros de esta caja**, cada cobro tiene **Corregir**:
@@ -669,6 +678,7 @@ app/
 ├── cli.py          comandos de la terminal (preparar-base, actualizar-tablas, revisar-base, crear-admin, simular-turno, registrar-whatsapp, probar-gemini)
 ├── config.py       configuración técnica, leída del archivo .env
 ├── errores.py      el error base de las reglas del negocio
+├── resultados.py   el resultado del mes de cada negocio y de los dos juntos, y su cierre para el contador
 ├── formato.py      pesos, horas y fechas a la colombiana ($40.000, 5:30 a.m.)
 ├── numeros.py      leer los números que escribe una persona sin que el servidor se caiga (un "²", miles de cifras)
 ├── tiempo.py       la hora del sistema y la hora de Bogotá
@@ -727,8 +737,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 ## Cambiar una tabla
 
 1. Cambia el modelo en el `tablas.py` del módulo.
-2. Crea la migración con el siguiente número (la última es la 0013):
-   `uv run alembic revision --autogenerate --rev-id 0014 -m "que cambio"`
+2. Crea la migración con el siguiente número (la última es la 0014):
+   `uv run alembic revision --autogenerate --rev-id 0015 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
 4. Aplícala: `uv run auto-ibaguer preparar-base` (o solo las tablas: `uv run auto-ibaguer actualizar-tablas`)
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.

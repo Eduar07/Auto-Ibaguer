@@ -7,11 +7,12 @@ toquen "Abrir caja" en el mismo segundo, o un error del programa lo intente, la 
 dos cajas abiertas del mismo negocio ni una corrección sin motivo.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Identity,
@@ -22,6 +23,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.caja.estados import CategoriaDeGasto, DatoDeCaja, Negocio, TipoCorreccion, TipoDeSalida
@@ -224,3 +226,63 @@ class SalidaDeCaja(Base):
     @property
     def anulada(self) -> bool:
         return self.anulada_en is not None
+
+
+class GastoFueraDeCaja(Base):
+    """Un gasto del negocio que no salió del cajón: el arriendo por transferencia, la luz por
+    Nequi, la nómina por el banco. No toca ninguna caja, pero sí el resultado del mes.
+
+    Como las salidas de caja, no se borra: se anula con motivo y quién."""
+
+    __tablename__ = "gasto_fuera_de_caja"
+    __table_args__ = (
+        CheckConstraint("valor > 0", name="valor_positivo"),
+        CheckConstraint("btrim(descripcion) <> ''", name="con_descripcion"),
+        CheckConstraint(
+            "(anulado_en IS NULL) = (motivo_anulacion IS NULL)", name="anulado_con_motivo"
+        ),
+        CheckConstraint(
+            "motivo_anulacion IS NULL OR btrim(motivo_anulacion) <> ''", name="motivo_no_vacio"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    negocio: Mapped[Negocio] = mapped_column(lista_cerrada(Negocio, "negocio"))
+    fecha: Mapped[date] = mapped_column(Date, index=True)  # el día en que se pagó
+    categoria: Mapped[CategoriaDeGasto] = mapped_column(
+        lista_cerrada(CategoriaDeGasto, "categoria_de_gasto")
+    )
+    descripcion: Mapped[str] = mapped_column(Text)
+    valor: Mapped[int] = mapped_column(Integer)
+    registrado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    registrado_por: Mapped[int | None] = mapped_column(ForeignKey("administrador.id"))
+    anulado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    anulado_por: Mapped[int | None] = mapped_column(ForeignKey("administrador.id"))
+    motivo_anulacion: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def anulado(self) -> bool:
+        return self.anulado_en is not None
+
+
+class CierreDeMes(Base):
+    """Un mes de un negocio entregado al contador: desde ese momento sus cajas, sus salidas y
+    sus gastos ya no se cambian (lo que haya que arreglar va en el mes siguiente, como hace
+    cualquier contabilidad). Guarda las cifras tal como se entregaron."""
+
+    __tablename__ = "cierre_de_mes"
+    __table_args__ = (
+        CheckConstraint("extract(day FROM mes) = 1", name="primer_dia_del_mes"),
+        Index("uq_cierre_de_mes_negocio_mes", "negocio", "mes", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
+    negocio: Mapped[Negocio] = mapped_column(lista_cerrada(Negocio, "negocio"))
+    mes: Mapped[date] = mapped_column(Date)  # el primer día del mes
+    cerrado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    cerrado_por: Mapped[int | None] = mapped_column(ForeignKey("administrador.id"))
+    # Las cifras que se entregaron: ingresos por medio, gastos por categoría, retiros,
+    # consignaciones y el resultado (app.resultados).
+    cifras: Mapped[dict] = mapped_column(JSONB)

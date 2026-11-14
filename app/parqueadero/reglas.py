@@ -300,12 +300,14 @@ def placa_o_ticket(texto: str) -> tuple[str | None, int | None]:
 
 @dataclass(frozen=True)
 class Cuadre:
-    """Lo que debería haber en una caja: la base más lo que entró en efectivo. Lo que entró
-    por Nequi, Daviplata o tarjeta se muestra aparte: no está en el cajón."""
+    """Lo que debería haber en una caja: la base más lo que entró en efectivo, menos lo que
+    salió del cajón (gastos, retiros, consignaciones). Lo que entró por Nequi, Daviplata o
+    tarjeta se muestra aparte: no está en el cajón."""
 
     base: int
     parqueos: Mapping[MedioPago, int]
     mensualidades: Mapping[MedioPago, int]
+    salidas_de_caja: int = 0
 
     def por_medio(self, medio: MedioPago) -> int:
         return self.parqueos.get(medio, 0) + self.mensualidades.get(medio, 0)
@@ -317,4 +319,4 @@ class Cuadre:
 
     @property
     def efectivo_esperado(self) -> int:
-        return self.base + self.por_medio(MedioPago.EFECTIVO)
+        return self.base + self.por_medio(MedioPago.EFECTIVO) - self.salidas_de_caja

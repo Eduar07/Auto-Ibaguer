@@ -1,5 +1,5 @@
-"""Las listas cerradas de la caja: de qué negocio es, qué dato de ella se corrigió y qué se le
-hizo a un cobro equivocado."""
+"""Las listas cerradas de la caja: de qué negocio es, qué dato de ella se corrigió, qué se le
+hizo a un cobro equivocado y qué plata salió del cajón."""
 
 from enum import StrEnum
 
@@ -20,6 +20,7 @@ class DatoDeCaja(StrEnum):
 
     BASE = "base"  # la plata para vueltos con que se abrió
     CONTEO = "conteo"  # el efectivo que se contó al cerrar
+    SALIDA = "salida"  # una salida de plata que se anuló (no salió, o no era de esta caja)
 
 
 class TipoCorreccion(StrEnum):
@@ -29,3 +30,46 @@ class TipoCorreccion(StrEnum):
     SALIDA_DESHECHA = "salida_deshecha"  # parqueadero: el vehículo volvió a quedar adentro
     PAGO_ANULADO = "pago_anulado"  # parqueadero: el pago de la mensualidad se quitó
     COBRO_DESHECHO = "cobro_deshecho"  # lavadero: el turno volvió a quedar por cobrar
+
+
+class TipoDeSalida(StrEnum):
+    """Plata que sale del cajón. No es un cobro al revés: es lo que se paga, se lleva el dueño o
+    se consigna, y el cuadre la resta de lo que debe haber al cerrar."""
+
+    GASTO = "gasto"  # se pagó algo con plata del cajón: bolsas, un repuesto, el almuerzo del turno
+    RETIRO = "retiro"  # un jefe se llevó plata
+    CONSIGNACION = "consignacion"  # se llevó plata al banco
+
+
+NOMBRE_DE_LA_SALIDA = {
+    TipoDeSalida.GASTO: "Gasto",
+    TipoDeSalida.RETIRO: "Retiro",
+    TipoDeSalida.CONSIGNACION: "Consignación",
+}
+
+
+class CategoriaDeGasto(StrEnum):
+    """En qué se gastó: así el resultado del mes dice cuánto se fue en cada cosa."""
+
+    INSUMOS = "insumos"  # jabón, cera, bolsas, tickets
+    ASEO = "aseo"
+    SERVICIOS = "servicios"  # agua, luz, internet
+    NOMINA = "nomina"  # pagos a trabajadores
+    MANTENIMIENTO = "mantenimiento"  # repuestos, arreglos
+    ARRIENDO = "arriendo"
+    VIGILANCIA = "vigilancia"
+    TRANSPORTE = "transporte"
+    OTRO = "otro"
+
+
+NOMBRE_DE_LA_CATEGORIA = {
+    CategoriaDeGasto.INSUMOS: "Insumos",
+    CategoriaDeGasto.ASEO: "Aseo",
+    CategoriaDeGasto.SERVICIOS: "Servicios públicos",
+    CategoriaDeGasto.NOMINA: "Nómina",
+    CategoriaDeGasto.MANTENIMIENTO: "Mantenimiento",
+    CategoriaDeGasto.ARRIENDO: "Arriendo",
+    CategoriaDeGasto.VIGILANCIA: "Vigilancia",
+    CategoriaDeGasto.TRANSPORTE: "Transporte",
+    CategoriaDeGasto.OTRO: "Otro",
+}

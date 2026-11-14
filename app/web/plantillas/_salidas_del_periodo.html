@@ -1,0 +1,23 @@
+{#- La plata que salió de las cajas del periodo (sin las anuladas): los gastos por categoría y,
+    aparte, los retiros y las consignaciones. Lo usan los dos Balances. `s` = SalidasDelPeriodo. -#}
+{% if s.total %}
+<section class="panel" aria-labelledby="t-salidas-del-periodo">
+  <div class="panel__cabeza">
+    <h2 id="t-salidas-del-periodo">Salidas de caja</h2>
+    <strong class="numero">{{ s.total|pesos }}</strong>
+  </div>
+  <div class="tabla-desplazable">
+    <table class="tabla-caja">
+      <thead><tr><th scope="col">Qué</th><th scope="col">Cuántas</th><th scope="col">Total</th></tr></thead>
+      <tbody>
+        {% for nombre, total, cuantos in s.gastos %}
+        <tr><th scope="row">Gasto · {{ nombre }}</th><td>{{ cuantos }}</td><td>{{ total|pesos }}</td></tr>
+        {% endfor %}
+        {% if s.retiros %}<tr><th scope="row">Retiros de los jefes</th><td></td><td>{{ s.retiros|pesos }}</td></tr>{% endif %}
+        {% if s.consignaciones %}<tr><th scope="row">Consignaciones al banco</th><td></td><td>{{ s.consignaciones|pesos }}</td></tr>{% endif %}
+      </tbody>
+    </table>
+  </div>
+  <p class="ayuda">Salió del cajón y la caja ya lo descuenta.{% if s.total_gastos %} Los gastos ({{ s.total_gastos|pesos }}) son del negocio.{% endif %}{% if s.retiros or s.consignaciones %} Los retiros y las consignaciones son plata que se movió, no un gasto.{% endif %} El detalle de cada una, en la caja: <strong>Descargar las salidas</strong>.</p>
+</section>
+{% endif %}

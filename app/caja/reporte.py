@@ -8,7 +8,7 @@ from datetime import date
 from typing import Protocol
 
 from app import formato, tiempo
-from app.caja.consultas import Correccion
+from app.caja.consultas import Correccion, SalidasDelPeriodo
 from app.caja.tablas import Caja
 
 # En el texto (WhatsApp y correo) van hasta tantas líneas de detalle por lista; el resto se
@@ -19,6 +19,9 @@ DETALLE_EN_EL_TEXTO = 10
 class _ConEfectivoEsperado(Protocol):
     @property
     def efectivo_esperado(self) -> int: ...
+
+    @property
+    def salidas_de_caja(self) -> int: ...
 
 
 class ResumenDeUnaCaja(Protocol):
@@ -60,10 +63,15 @@ def lineas_de_la_caja(resumen: ResumenDeUnaCaja, dia: date) -> list[str]:
     """Cómo cerró la caja (o lo que debería tener, si sigue abierta) y sus correcciones."""
     pesos = formato.pesos
     caja = resumen.caja
+    salidas = resumen.cuadre.salidas_de_caja
     if caja.cerrada_en is None:
         lineas = [
             f"Sigue abierta: debería haber {pesos(resumen.cuadre.efectivo_esperado)} en "
-            "efectivo (con la base)."
+            + (
+                f"efectivo (con la base, y sin las salidas de {pesos(salidas)})."
+                if salidas
+                else "efectivo (con la base)."
+            )
         ]
     else:
         cerro = tiempo.hora_local(caja.cerrada_en)
@@ -73,8 +81,10 @@ def lineas_de_la_caja(resumen: ResumenDeUnaCaja, dia: date) -> list[str]:
         quien = f" {resumen.cerro}" if resumen.cerro not in (None, "—") else ""
         lineas = [
             f"Cerró{quien} {cuando}",
-            f"Base {pesos(caja.base)} · Debía haber {pesos(caja.efectivo_esperado or 0)} · "
-            f"Contaron {pesos(caja.efectivo_contado or 0)}",
+            f"Base {pesos(caja.base)}"
+            + (f" · Salidas {pesos(salidas)}" if salidas else "")
+            + f" · Debía haber {pesos(caja.efectivo_esperado or 0)}"
+            + f" · Contaron {pesos(caja.efectivo_contado or 0)}",
             diferencia(caja.diferencia or 0),
         ]
         if resumen.corregida_despues_del_cierre:
@@ -101,3 +111,17 @@ def lineas_de_correcciones_de_antes(correcciones: Sequence[Correccion]) -> list[
         for fila in correcciones[:DETALLE_EN_EL_TEXTO]
     ]
     return lineas + y_mas(len(correcciones) - DETALLE_EN_EL_TEXTO)
+
+
+def lineas_de_las_salidas(salidas: SalidasDelPeriodo) -> list[str]:
+    """Lo que salió de las cajas: los gastos por categoría, los retiros y las consignaciones."""
+    pesos = formato.pesos
+    lineas = []
+    if salidas.gastos:
+        detalle = ", ".join(f"{nombre} {pesos(total)}" for nombre, total, _ in salidas.gastos)
+        lineas.append(f"Gastos: {pesos(salidas.total_gastos)} ({detalle})")
+    if salidas.retiros:
+        lineas.append(f"Retiros: {pesos(salidas.retiros)}")
+    if salidas.consignaciones:
+        lineas.append(f"Consignaciones: {pesos(salidas.consignaciones)}")
+    return lineas

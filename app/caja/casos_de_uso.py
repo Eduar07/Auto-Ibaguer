@@ -7,7 +7,7 @@ de quien la llama, y antes de cambiar algo que dos personas pueden tocar al mism
 pide un candado en PostgreSQL: el segundo espera a que termine el primero y ve lo que hizo.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 
 from sqlalchemy import func, select
@@ -22,8 +22,8 @@ from app.caja.errores import (
     SinCajaAbierta,
     ValorInvalido,
 )
-from app.caja.estados import DatoDeCaja, Negocio
-from app.caja.tablas import Caja, CorreccionCobro, CorreccionDeCaja
+from app.caja.estados import CategoriaDeGasto, DatoDeCaja, Negocio, TipoDeSalida
+from app.caja.tablas import Caja, CorreccionCobro, CorreccionDeCaja, SalidaDeCaja
 from app.errores import ReglaDelNegocio
 
 # Lo que debía haber en el cajón al cerrar (la base más lo que entró en efectivo). Lo dice
@@ -286,3 +286,138 @@ def corregir_conteo(
     sesion.add(correccion)
     sesion.flush()
     return correccion
+
+
+# --- La plata que sale del cajón -------------------------------------------------------------
+
+LARGO_DE_LA_DESCRIPCION = 120
+
+
+def _tipo_y_categoria(
+    tipo: TipoDeSalida | str, categoria: CategoriaDeGasto | str | None
+) -> tuple[TipoDeSalida, CategoriaDeGasto | None]:
+    try:
+        tipo = TipoDeSalida(tipo)
+    except ValueError:
+        raise ValorInvalido("Elige qué fue: un gasto, un retiro o una consignación.") from None
+    if tipo is not TipoDeSalida.GASTO:
+        return tipo, None
+    try:
+        return tipo, CategoriaDeGasto(categoria or "")
+    except ValueError:
+        raise ValorInvalido("Elige en qué se gastó: así el resultado del mes lo suma.") from None
+
+
+def registrar_salida(
+    sesion: Session,
+    negocio: Negocio,
+    *,
+    tipo: TipoDeSalida | str,
+    categoria: CategoriaDeGasto | str | None = None,
+    descripcion: str,
+    valor: int | None,
+    efectivo_esperado: EfectivoEsperado,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> SalidaDeCaja:
+    """Anota plata que sale del cajón de la caja abierta: un gasto (y en qué), un retiro o una
+    consignación. No puede salir más de lo que debe haber en el cajón en ese momento.
+
+    La caja se bloquea del todo mientras tanto: dos salidas al mismo tiempo no sacan entre las
+    dos más de lo que hay, y nadie cierra la caja a mitad de la salida."""
+    ahora = ahora or tiempo.ahora()
+    tipo, categoria = _tipo_y_categoria(tipo, categoria)
+    limpia = " ".join((descripcion or "").split())
+    if not limpia:
+        raise ValorInvalido("Escribe en qué se fue la plata: sale en el cierre y en el reporte.")
+    if len(limpia) > LARGO_DE_LA_DESCRIPCION:
+        raise ValorInvalido(
+            f"La descripción es muy larga: máximo {LARGO_DE_LA_DESCRIPCION} letras."
+        )
+    if valor is None or valor <= 0:
+        raise ValorInvalido("Escribe cuánta plata salió.")
+    reglas.sin_ceros_de_mas(valor, reglas.VALOR_MAXIMO_EN_LA_CAJA)
+    abierta = caja_abierta(sesion, negocio)
+    caja = bloquear_caja(sesion, negocio, abierta.id) if abierta else None
+    if caja is None or not caja.abierta:
+        raise SinCajaAbierta("La caja está cerrada: ábrela para registrar una salida.")
+    hay = efectivo_esperado(sesion, caja)
+    if valor > hay:
+        raise ValorInvalido(
+            f"En el cajón debe haber {formato.pesos(hay)}: no pueden salir "
+            f"{formato.pesos(valor)}. Revisa el valor."
+        )
+    salida = SalidaDeCaja(
+        caja_id=caja.id,
+        tipo=tipo,
+        categoria=categoria,
+        descripcion=limpia,
+        valor=valor,
+        registrada_en=ahora,
+        registrada_por=administrador_id,
+    )
+    sesion.add(salida)
+    sesion.flush()
+    return salida
+
+
+def anular_salida(
+    sesion: Session,
+    negocio: Negocio,
+    salida_id: int,
+    *,
+    motivo: str,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> SalidaDeCaja:
+    """Anula una salida que no fue (se registró dos veces, o no salió esa plata). No se borra:
+    queda anulada, con motivo y quién, y como corrección de su caja. Si la caja ya se cerró
+    (hasta 30 días antes), lo que debía haber en el cajón sube y la diferencia cambia."""
+    ahora = ahora or tiempo.ahora()
+    limpio = " ".join((motivo or "").split())
+    if not limpio:
+        raise ValorInvalido("Escribe por qué se anula: queda en la caja y en el reporte.")
+    salida = sesion.execute(
+        select(SalidaDeCaja)
+        .join(Caja, Caja.id == SalidaDeCaja.caja_id)
+        .where(SalidaDeCaja.id == salida_id, Caja.negocio == negocio)
+    ).scalar_one_or_none()
+    if salida is None:
+        raise ValorInvalido("Esa salida no existe.")
+    caja = bloquear_caja(sesion, negocio, salida.caja_id)
+    sesion.refresh(salida)
+    if salida.anulada:
+        raise ValorInvalido("Esa salida ya estaba anulada.")
+    if caja is None:  # la llave foránea no deja una salida sin caja; por si acaso
+        raise CajaNoCorregible("La caja de esa salida no existe.")
+    if not caja.abierta:
+        que_no_este_vencida(caja, ahora, CajaNoCorregible)
+    correccion = CorreccionDeCaja(
+        dato=DatoDeCaja.SALIDA,
+        caja_id=caja.id,
+        valor_antes=salida.valor,
+        valor_despues=0,
+        detalle=reglas.describir_salida(salida.tipo, salida.categoria, salida.descripcion),
+        motivo=limpio[:200],
+        administrador_id=administrador_id,
+        fecha_hora=ahora,
+    )
+    anotar_en_la_caja(correccion, caja)
+    salida.anulada_en = ahora
+    salida.anulada_por = administrador_id
+    salida.motivo_anulacion = limpio[:200]
+    sesion.add(correccion)
+    sesion.flush()
+    return salida
+
+
+def salidas_por_caja(sesion: Session, caja_ids: Sequence[int]) -> dict[int, int]:
+    """Cuánta plata salió de cada caja (sin las salidas anuladas)."""
+    if not caja_ids:
+        return {}
+    filas = sesion.execute(
+        select(SalidaDeCaja.caja_id, func.sum(SalidaDeCaja.valor))
+        .where(SalidaDeCaja.caja_id.in_(caja_ids), SalidaDeCaja.anulada_en.is_(None))
+        .group_by(SalidaDeCaja.caja_id)
+    )
+    return {caja_id: int(total) for caja_id, total in filas}

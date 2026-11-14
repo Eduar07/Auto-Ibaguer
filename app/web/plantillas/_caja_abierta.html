@@ -1,7 +1,7 @@
 {#- La caja abierta con sus cobros y correcciones, o el formulario para abrirla. Se vuelve a
     pintar sola después de corregir un cobro. -#}
 {% import "_iconos.html" as iconos %}
-{% from "_caja_resumen.html" import resumen_de_caja, movimientos_de_caja, correcciones_de_caja %}
+{% from "_caja_resumen.html" import resumen_de_caja, movimientos_de_caja, correcciones_de_caja, salidas_de_caja %}
 {% if caja %}
 <section class="panel" aria-labelledby="t-caja">
   <div class="panel__cabeza">
@@ -14,6 +14,7 @@
   {{ resumen_de_caja(resumen) }}
   <div class="botones">
     <button type="button" class="boton boton--oscuro" hx-get="{{ rutas.caja }}/cerrar" hx-target="#dialogo-contenido">Cerrar caja</button>
+    <button type="button" class="boton boton--borde" hx-get="{{ rutas.caja }}/salidas/nueva" hx-target="#dialogo-contenido">Registrar salida</button>
     <button type="button" class="boton boton--borde" data-imprimir="{{ rutas.caja }}/{{ caja.id }}/ticket">{{ iconos.icono("imprimir", 18) }}Imprimir cómo va</button>
     <button type="button" class="boton-texto" hx-get="{{ rutas.caja }}/{{ caja.id }}/corregir" hx-target="#dialogo-contenido">Corregir la base</button>
   </div>
@@ -24,6 +25,7 @@
   {{ movimientos_de_caja(movimientos, corregir=True) }}
   {% if movimientos %}<p class="ayuda">¿Un cobro quedó mal? Tócalo en <strong>Corregir</strong>. Después del cierre también se puede, hasta {{ dias_para_corregir }} días, desde la caja en <strong>Cierres anteriores</strong>.</p>{% endif %}
 </section>
+{{ salidas_de_caja(salidas, rutas, anular=True, registrar=True) }}
 {% if resumen.correcciones %}{{ correcciones_de_caja(resumen.correcciones) }}{% endif %}
 {% else %}
 <section class="panel" aria-labelledby="t-abrir">

@@ -196,6 +196,8 @@
     {% endif %}
   </section>
 
+  {% with s = b.salidas_de_caja %}{% include "_salidas_del_periodo.html" %}{% endwith %}
+
   {% macro linea_de_correccion(f) -%}
   {% if f.placa %}<span class="placa-texto">{{ f.placa }}</span> · {% endif %}{{ cuando(f.momento) }} · {{ f.que_paso }}: <span class="tachado">{{ f.antes }}</span>{% if f.despues %} → <strong>{{ f.despues }}</strong>{% endif %}{% if f.despues_del_cierre %} · <span class="insignia insignia--ambar">Después del cierre</span>{% endif %} · {{ f.motivo }} · {{ f.quien }}
   {%- endmacro %}

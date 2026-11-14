@@ -7,6 +7,7 @@
       <div class="campo"><label for="exportar-desde">Desde</label><input id="exportar-desde" name="desde" type="date" value="{{ exportar_desde.isoformat() }}" required></div>
       <div class="campo"><label for="exportar-hasta">Hasta</label><input id="exportar-hasta" name="hasta" type="date" value="{{ exportar_hasta.isoformat() }}" required></div>
       <button type="submit" class="boton boton--borde">Descargar para Excel</button>
+      <button type="submit" class="boton boton--borde" formaction="{{ rutas.exportar_salidas }}">Descargar las salidas</button>
     </form>
   </section>
 

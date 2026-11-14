@@ -120,6 +120,7 @@ def cuadre_de_caja(sesion: Session, caja: Caja) -> reglas.Cuadre:
         base=caja.base,
         parqueos=reglas.sumar_por_medio((medio, int(total)) for medio, total in parqueos),
         mensualidades=reglas.sumar_por_medio((medio, int(total)) for medio, total in mensualidades),
+        salidas_de_caja=cajas.salidas_por_caja(sesion, [caja.id]).get(caja.id, 0),
     )
 
 

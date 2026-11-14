@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app import formato, tiempo
 from app.caja import consultas as de_la_caja
+from app.caja.casos_de_uso import salidas_por_caja
 from app.caja.consultas import (  # noqa: F401  (las correcciones se muestran igual en las dos cajas)  # noqa: F401  (los filtros de cierres son comunes)
     CIERRES_POR_PAGINA,
     RESULTADOS,
@@ -246,6 +247,7 @@ def resumenes_de_cajas(sesion: Session, cajas: Sequence[Caja]) -> list[ResumenDe
         ).all()
     )
     por_caja, nombres = de_la_caja.correcciones_de_las_cajas(sesion, cajas)
+    salidas_de_caja = salidas_por_caja(sesion, ids)
     return [
         ResumenDeCaja(
             caja=caja,
@@ -253,6 +255,7 @@ def resumenes_de_cajas(sesion: Session, cajas: Sequence[Caja]) -> list[ResumenDe
                 base=caja.base,
                 parqueos=reglas.sumar_por_medio(cobros[caja.id]),
                 mensualidades=reglas.sumar_por_medio(pagos[caja.id]),
+                salidas_de_caja=salidas_de_caja.get(caja.id, 0),
             ),
             salidas=salidas.get(caja.id, 0),
             mensualidades=cuantos_pagos.get(caja.id, 0),

@@ -21,6 +21,7 @@ from app.caja.reporte import (
     DETALLE_EN_EL_TEXTO,
     lineas_de_correcciones_de_antes,
     lineas_de_la_caja,
+    lineas_de_las_salidas,
     y_mas,
 )
 from app.config import obtener_entorno
@@ -162,6 +163,9 @@ def texto(reporte: ReporteDelDia, *, negrilla: bool = True) -> str:
         lineas.append("No se abrió caja este día.")
     for resumen in b.cajas:
         lineas += lineas_de_la_caja(resumen, reporte.dia)
+    if b.salidas_de_caja.total:
+        lineas += ["", fuerte(f"Salidas de caja: {pesos(b.salidas_de_caja.total)}")]
+        lineas += lineas_de_las_salidas(b.salidas_de_caja)
     if b.correcciones_de_antes:
         lineas += [
             "",

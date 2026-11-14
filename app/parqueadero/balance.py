@@ -11,7 +11,7 @@ from datetime import date, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.caja.consultas import cajas_abiertas_entre
+from app.caja.consultas import SalidasDelPeriodo, cajas_abiertas_entre, salidas_del_periodo
 from app.caja.periodos import (  # noqa: F401  (los periodos son de los dos negocios)
     DIAS_MAXIMOS_DEL_RANGO,
     TIPOS_DE_PERIODO,
@@ -105,6 +105,8 @@ class Balance:
     # Las que se hicieron en el periodo a cajas de antes (ya cerradas): cambiaron días que ya
     # se habían revisado. Las de las cajas del periodo están en `correcciones`.
     correcciones_de_antes: list[Correccion] = field(default_factory=list)
+    # La plata que salió de las cajas del periodo: gastos, retiros y consignaciones.
+    salidas_de_caja: SalidasDelPeriodo = field(default_factory=lambda: SalidasDelPeriodo(gastos=[]))
 
     @property
     def total_salidas(self) -> int:
@@ -302,6 +304,7 @@ def balance(sesion: Session, p: Periodo) -> Balance:
         cajas=resumenes_de_cajas(sesion, cajas),
         dias=[_dia_del_balance(dia, por_tipo) for dia, por_tipo in por_dia.items()],
         correcciones_de_antes=correcciones_a_cajas_de_antes(sesion, inicio, fin),
+        salidas_de_caja=salidas_del_periodo(sesion, NEGOCIO, inicio, fin),
     )
 
 

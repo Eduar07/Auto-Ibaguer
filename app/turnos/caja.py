@@ -24,11 +24,13 @@ NEGOCIO = Negocio.LAVADERO
 
 @dataclass(frozen=True)
 class Cuadre:
-    """Lo que debería haber en la caja del lavadero: la base más lo que entró en efectivo. Lo
-    que entró por Nequi, Daviplata o tarjeta se muestra aparte: no está en el cajón."""
+    """Lo que debería haber en la caja del lavadero: la base más lo que entró en efectivo,
+    menos lo que salió del cajón (gastos, retiros, consignaciones). Lo que entró por Nequi,
+    Daviplata o tarjeta se muestra aparte: no está en el cajón."""
 
     base: int
     cobros: Mapping[MedioPago, int]
+    salidas_de_caja: int = 0
 
     def por_medio(self, medio: MedioPago) -> int:
         return self.cobros.get(medio, 0)
@@ -40,11 +42,11 @@ class Cuadre:
 
     @property
     def efectivo_esperado(self) -> int:
-        return self.base + self.por_medio(MedioPago.EFECTIVO)
+        return self.base + self.por_medio(MedioPago.EFECTIVO) - self.salidas_de_caja
 
 
-def cuadre(base: int, cobros: Iterable[tuple[MedioPago, int]]) -> Cuadre:
-    return Cuadre(base=base, cobros=sumar_por_medio(cobros))
+def cuadre(base: int, cobros: Iterable[tuple[MedioPago, int]], salidas_de_caja: int = 0) -> Cuadre:
+    return Cuadre(base=base, cobros=sumar_por_medio(cobros), salidas_de_caja=salidas_de_caja)
 
 
 def caja_abierta(sesion: Session) -> Caja | None:
@@ -83,6 +85,7 @@ def cuadre_de_caja(sesion: Session, caja: Caja) -> Cuadre:
                 .group_by(Pago.medio_pago)
             )
         ),
+        cajas.salidas_por_caja(sesion, [caja.id]).get(caja.id, 0),
     )
 
 

@@ -6,6 +6,12 @@ from datetime import datetime, timedelta
 
 from app import formato
 from app.caja.errores import ValorInvalido
+from app.caja.estados import (
+    NOMBRE_DE_LA_CATEGORIA,
+    NOMBRE_DE_LA_SALIDA,
+    CategoriaDeGasto,
+    TipoDeSalida,
+)
 from app.errores import ReglaDelNegocio
 from app.turnos.estados import MedioPago
 
@@ -64,3 +70,13 @@ def caja_corregible(cerrada_en: datetime | None, ahora: datetime) -> bool:
     return cerrada_en is None or ahora - cerrada_en <= timedelta(
         days=DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA
     )
+
+
+def describir_salida(
+    tipo: TipoDeSalida, categoria: CategoriaDeGasto | None, descripcion: str
+) -> str:
+    """ "Gasto · Aseo: bolsas de basura", "Retiro: para el pago del arriendo"."""
+    que = NOMBRE_DE_LA_SALIDA[tipo]
+    if categoria is not None:
+        que += f" · {NOMBRE_DE_LA_CATEGORIA[categoria]}"
+    return f"{que}: {descripcion}"

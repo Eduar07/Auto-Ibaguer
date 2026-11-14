@@ -13,6 +13,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app import formato, tiempo
+from app.caja import casos_de_uso as cajas_de_uso
 from app.caja import consultas as de_la_caja
 from app.caja.consultas import Cierres, Correccion, FiltroDeCierres
 from app.caja.tablas import Caja
@@ -133,10 +134,11 @@ def resumenes_de_cajas(sesion: Session, cajas: Sequence[Caja]) -> list[ResumenDe
             por_medio[caja_id].append((medio, int(total)))
         cuantos[caja_id] += cobros
     correcciones, nombres = de_la_caja.correcciones_de_las_cajas(sesion, cajas)
+    salidas = cajas_de_uso.salidas_por_caja(sesion, ids)
     return [
         ResumenDeCaja(
             caja=caja,
-            cuadre=caja_del_lavadero.cuadre(caja.base, por_medio[caja.id]),
+            cuadre=caja_del_lavadero.cuadre(caja.base, por_medio[caja.id], salidas.get(caja.id, 0)),
             cobros=cuantos[caja.id],
             abrio=nombres.get(caja.abierta_por, "—"),
             cerro=nombres.get(caja.cerrada_por, "—") if caja.cerrada_en else None,

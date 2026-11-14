@@ -76,7 +76,7 @@ Las secciones del **Lavadero**:
 | Botón principal de cada turno | **Marcar llegada** (llamado), **Pasar a puesto** (ya llegó), **Marcar listo** (en el puesto) y **Cobrar** (listo). |
 | Menú ⋯ de cada turno | Marcar llegada, corregir datos (tipo de vehículo, placa, servicio) y cancelar. |
 | **Nuevo turno** | Para el cliente que llega sin escribir por WhatsApp. Muestra antes qué número le toca y cuánto esperaría. |
-| **Caja** | La caja del lavadero, aparte de la del parqueadero y con las mismas partes: se abre con la base para vueltos y **sin la caja abierta no se cobra un turno** (la fila y el diálogo de cobrar lo dicen, con el enlace para abrirla). Cada turno cobrado entra a ella; se ve lo que entró por cada medio y lo que debe haber en el cajón, y se cierra contando el efectivo (dice si cuadró, sobró o faltó, e imprime el resumen). Un cobro equivocado se **corrige** (otro valor u otro medio) o se **deshace** (el turno vuelve a quedar por cobrar), siempre con el motivo; también con la caja cerrada, hasta 30 días después. Cada cobro tiene su botón **Recibo** para volver a imprimirlo. Abajo, los cierres anteriores con filtros y los archivos para Excel (cada turno cobrado, con el precio del menú y el descuento, y los cierres). |
+| **Caja** | La caja del lavadero, aparte de la del parqueadero y con las mismas partes: se abre con la base para vueltos y **sin la caja abierta no se cobra un turno** (la fila y el diálogo de cobrar lo dicen, con el enlace para abrirla). Cada turno cobrado entra a ella; se ve lo que entró por cada medio y lo que debe haber en el cajón, y se cierra contando el efectivo (dice si cuadró, sobró o faltó, e imprime el resumen). Un cobro equivocado se **corrige** (otro valor u otro medio) o se **deshace** (el turno vuelve a quedar por cobrar), siempre con el motivo; también con la caja cerrada, hasta 30 días después. Cada cobro tiene su botón **Recibo** para volver a imprimirlo. Con **Registrar salida** se anota la plata que sale del cajón (un gasto, un retiro o una consignación; ver *Salidas de caja*). Abajo, los cierres anteriores con filtros y los archivos para Excel (cada turno cobrado, con el precio del menú y el descuento, y los cierres). |
 | **Balance** | Lo cobrado por día, semana, mes o los días que escojas (hasta 92): por medio de pago, por servicio y por tipo de vehículo, el promedio por turno, los turnos pedidos (por WhatsApp o en el local), los cancelados y los que no llegaron, cuánto dura un lavado, los descuentos con su motivo, las cajas y sus correcciones. La semana, el mes y el rango traen las **gráficas** día por día y por día de la semana (en plata o en turnos). El del día es el **reporte para los jefes**: por WhatsApp, impreso o por correo (y por correo, solo, al cerrar la caja), sin nombres ni celulares de los clientes. |
 | **Clientes** | Buscar por nombre, celular o placa; la ficha con sus vehículos y visitas; dar turno, editar datos y borrarlos si el cliente lo pide (Ley 1581). |
 | **Configuración** | Negocio y horario, bot de WhatsApp, puestos (prender, apagar y agregar), menú y precios, y el aviso de datos personales. Se guarda todo junto, y si algo está mal no se guarda nada. Aparte, con su botón, **Recibo y reporte**: el NIT, la dirección y el texto del final del recibo, el ancho del papel, si el recibo se imprime solo al cobrar y los correos de los jefes para el reporte del día. Desde ahí se abren **Textos del bot** (cada texto se guarda por separado) y **Mensajes de WhatsApp**. |
@@ -91,7 +91,7 @@ Es el otro negocio del dashboard: se escoge al entrar, o tocando el nombre del n
 | Pantalla | Qué se hace ahí |
 |---|---|
 | **Entradas y salidas** | Registrar la entrada (carro o moto, la placa y, si quieres, el estado o lo que deja: sale en el ticket) e imprimir el ticket. Cobrar la salida escribiendo la placa o el número del ticket, o con **Cobrar** en la lista de los que están adentro, que dice cuánto va cada uno. **Anular** una entrada mal hecha: pide el motivo y no cuenta en la caja. |
-| **Caja** | Abrirla con la base para vueltos, ver lo que ha entrado por cada medio de pago y cerrarla contando el efectivo: dice si cuadró, sobró o faltó, e imprime el resumen para firmar. Cada cobro se puede **corregir**, y también la base; en una caja cerrada, hasta 30 días después, además el efectivo contado. Abajo, los **cierres anteriores** con filtros (desde y hasta qué día, cómo cerró: cuadró, sobró, faltó o se corrigió, y quién cerró), sus cuentas y su archivo para Excel, y el archivo de los cobros para Excel. |
+| **Caja** | Abrirla con la base para vueltos, ver lo que ha entrado por cada medio de pago y cerrarla contando el efectivo: dice si cuadró, sobró o faltó, e imprime el resumen para firmar. Cada cobro se puede **corregir**, y también la base; en una caja cerrada, hasta 30 días después, además el efectivo contado. Con **Registrar salida** se anota la plata que sale del cajón (ver *Salidas de caja*). Abajo, los **cierres anteriores** con filtros (desde y hasta qué día, cómo cerró: cuadró, sobró, faltó o se corrigió, y quién cerró), sus cuentas y su archivo para Excel, y el archivo de los cobros para Excel. |
 | **Mensualidades** | Crear la del cliente (placa, nombre, celular opcional y el valor que acuerdes), cobrar cada mes e imprimir el recibo. Dice quién está al día, a quién se le vence en 3 días o menos y quién debe. |
 | **Balance** | Lo que se recogió por día, semana, mes o los días que escojas, por medio de pago, con lo que hay que revisar (descuentos, anuladas, cajas que no cuadraron, correcciones). La semana, el mes y el rango traen **gráficas de barras** día por día y por día de la semana, con filtros. En el del día, el reporte para los jefes: por WhatsApp, impreso o por correo. |
 | **Tarifas y ticket** | El valor de la hora de carro y de moto, los minutos de gracia, la fracción de los primeros 15 minutos (opcional), el cobro por días (opcional, con una tabla de cuánto salen 1, 2, 3, 4, 7 y 15 días para responder en el mostrador) y lo que sale impreso: nombre, NIT (en el ticket sale "NIT 900.123.456-7"), dirección, teléfono, el texto del final del ticket y el ancho del papel. También los correos de los jefes para el reporte diario. |
@@ -144,6 +144,18 @@ Lo normal es cerrarla al final de cada día y abrir una nueva al otro día, para
 Si alguien está cobrando justo cuando otro cierra la caja, el sistema hace esperar a uno de los dos: o el cierre cuenta ese cobro, o el cobro pide abrir caja. Nunca queda un cobro en una caja ya contada.
 
 Un cero de más no se guarda, en ninguno de los dos negocios: la base o lo contado al cerrar van hasta $100.000.000, y un cobro (un lavado, una salida, una mensualidad, una tarifa) hasta $5.000.000. Si se pasa, el sistema pide revisar los ceros.
+
+### Salidas de caja
+
+La plata que sale del cajón se anota en la caja abierta con **Registrar salida**, en los dos negocios:
+
+- **Gasto**: se pagó algo con plata del cajón, con su categoría (insumos, aseo, servicios públicos, nómina, mantenimiento, arriendo, vigilancia, transporte u otro) y una descripción ("Bolsas de basura y jabón").
+- **Retiro**: un jefe se llevó plata.
+- **Consignación**: se llevó plata al banco.
+
+Lo que debe haber al cerrar es la base, más lo cobrado en efectivo, **menos las salidas**. No puede salir más de lo que debe haber en el cajón. Una salida no se borra: se **anula** con el motivo, y queda tachada con quién la anuló. Si la caja ya se cerró (hasta 30 días después), la anulación queda como corrección después del cierre y la diferencia se pone al día.
+
+Las salidas salen en el cierre y en su ticket, en el **Balance** (los gastos por categoría, y aparte los retiros y las consignaciones), en el reporte a los jefes y en **Descargar las salidas** (Excel).
 
 ### Corregir un cobro o una caja
 
@@ -648,7 +660,7 @@ app/
 ├── turnos/         la fila: turnos, llamados, avisos, puestos, historial, cobro, y la caja, el balance, el recibo y el reporte diario del lavadero (caja.py, consultas_de_caja.py, balance.py, recibo.py, reporte.py)
 ├── bot/            conversación de WhatsApp: pasos, botones, textos, avisos y la pausa
 ├── comentarios/    quejas, felicitaciones y preguntas para el administrador, y responderle al cliente
-├── caja/           lo común de las cuentas de los dos negocios: la caja (abrirla, cerrarla, cuadrarla, corregirla, los cierres con filtros), los periodos del balance, sus gráficas y lo que el reporte del día dice de la caja
+├── caja/           lo común de las cuentas de los dos negocios: la caja (abrirla, cerrarla, cuadrarla, corregirla, sus salidas, los cierres con filtros), los periodos del balance, sus gráficas y lo que el reporte del día dice de la caja
 ├── parqueadero/    entradas y salidas, cobro por hora, mensualidades, lo que entra a su caja, sus tarifas, el balance y el reporte diario
 ├── integraciones/  mensajes que entran y salen de WhatsApp (bandejas y reintentos) y el correo del reporte
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores
@@ -715,8 +727,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 ## Cambiar una tabla
 
 1. Cambia el modelo en el `tablas.py` del módulo.
-2. Crea la migración con el siguiente número (la última es la 0012):
-   `uv run alembic revision --autogenerate --rev-id 0013 -m "que cambio"`
+2. Crea la migración con el siguiente número (la última es la 0013):
+   `uv run alembic revision --autogenerate --rev-id 0014 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
 4. Aplícala: `uv run auto-ibaguer preparar-base` (o solo las tablas: `uv run auto-ibaguer actualizar-tablas`)
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.

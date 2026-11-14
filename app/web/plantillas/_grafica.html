@@ -1,0 +1,33 @@
+{#- Una gráfica de barras hecha con HTML: cada columna es una barra (su alto es un % del de la
+    gráfica), con las líneas del fondo y el promedio detrás. La letra queda del tamaño de la
+    página, también en el celular. Al pasar el puntero o el foco por una columna, el aviso
+    dice su valor (dashboard.js); el mismo dato está en su tabla, debajo. -#}
+{% macro grafica(g, id) -%}
+<figure class="grafica" id="{{ id }}" data-grafica>
+  <figcaption class="grafica__titulo">{{ g.titulo }}</figcaption>
+  <div class="grafica__cuerpo">
+    <div class="grafica__eje" aria-hidden="true">
+      {%- for l in g.rejilla %}<span style="bottom: {{ l.alto|round(2) }}%">{{ l.texto }}</span>{% endfor -%}
+    </div>
+    <div class="grafica__area">
+      {%- for l in g.rejilla if l.alto > 0 %}<span class="grafica__linea" style="bottom: {{ l.alto|round(2) }}%" aria-hidden="true"></span>{% endfor %}
+      {% if g.promedio %}<span class="grafica__promedio" style="bottom: {{ g.promedio.alto|round(2) }}%" aria-hidden="true"><span>{{ g.promedio.texto }}</span></span>{% endif %}
+      <ol class="grafica__columnas">
+        {%- for b in g.barras %}
+        <li>
+          {%- set clases = "grafica__columna" ~ (" grafica__columna--en-curso" if b.en_curso else "") %}
+          {%- set leer = b.nombre ~ ": " ~ b.texto ~ ". " ~ b.detalle %}
+          {% if b.enlace %}<a class="{{ clases }}" href="{{ b.enlace }}" data-punto data-valor="{{ b.texto }}" data-nombre="{{ b.nombre }}" data-detalle="{{ b.detalle }}" aria-label="{{ leer }}">{% else %}<span class="{{ clases }}" tabindex="0" data-punto data-valor="{{ b.texto }}" data-nombre="{{ b.nombre }}" data-detalle="{{ b.detalle }}" aria-label="{{ leer }}">{% endif %}
+            <span class="grafica__barra" style="height: {{ b.alto|round(2) }}%"></span>
+            {%- if b.marca %}<span class="grafica__valor grafica__valor--{{ b.lado }}" style="bottom: {{ b.alto|round(2) }}%" aria-hidden="true">{{ b.marca }} <strong>{{ b.texto }}</strong></span>{% endif %}
+            {%- if b.etiqueta %}<span class="grafica__etiqueta" aria-hidden="true">{{ b.etiqueta }}</span>{% endif %}
+          {% if b.enlace %}</a>{% else %}</span>{% endif %}
+        </li>
+        {%- endfor %}
+      </ol>
+    </div>
+  </div>
+  <p class="grafica__resumen">{{ g.resumen }}</p>
+  <div class="grafica__aviso" aria-hidden="true" hidden></div>
+</figure>
+{%- endmacro %}

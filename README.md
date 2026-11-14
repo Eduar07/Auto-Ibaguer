@@ -77,6 +77,7 @@ Las secciones del **Lavadero**:
 | Menú ⋯ de cada turno | Marcar llegada, corregir datos (tipo de vehículo, placa, servicio) y cancelar. |
 | **Nuevo turno** | Para el cliente que llega sin escribir por WhatsApp. Muestra antes qué número le toca y cuánto esperaría. |
 | **Caja** | La caja del lavadero, aparte de la del parqueadero y con las mismas partes: se abre con la base para vueltos y **sin la caja abierta no se cobra un turno** (la fila y el diálogo de cobrar lo dicen, con el enlace para abrirla). Cada turno cobrado entra a ella; se ve lo que entró por cada medio y lo que debe haber en el cajón, y se cierra contando el efectivo (dice si cuadró, sobró o faltó, e imprime el resumen). Un cobro equivocado se **corrige** (otro valor u otro medio) o se **deshace** (el turno vuelve a quedar por cobrar), siempre con el motivo; también con la caja cerrada, hasta 30 días después. Abajo, los cierres anteriores con filtros y los archivos para Excel (cada turno cobrado, con el precio del menú y el descuento, y los cierres). |
+| **Balance** | Lo cobrado por día, semana, mes o los días que escojas (hasta 92): por medio de pago, por servicio y por tipo de vehículo, el promedio por turno, los turnos pedidos (por WhatsApp o en el local), los cancelados y los que no llegaron, cuánto dura un lavado, los descuentos con su motivo, las cajas y sus correcciones. La semana, el mes y el rango traen las **gráficas** día por día y por día de la semana (en plata o en turnos). El del día es el **reporte para los jefes**: por WhatsApp o impreso, sin nombres ni celulares de los clientes. |
 | **Clientes** | Buscar por nombre, celular o placa; la ficha con sus vehículos y visitas; dar turno, editar datos y borrarlos si el cliente lo pide (Ley 1581). |
 | **Configuración** | Negocio y horario, bot de WhatsApp, puestos (prender, apagar y agregar), menú y precios, y el aviso de datos personales. Se guarda todo junto, y si algo está mal no se guarda nada. Desde ahí se abren **Textos del bot** (cada texto se guarda por separado) y **Mensajes de WhatsApp**. |
 | Lavado **Demorado** | Cuando un lavado pasa su duración estimada, su puesto se pone naranja y arriba se cuenta. En el celular, la pestaña de esa fila muestra un punto naranja aunque estés viendo la otra. Casi siempre quiere decir que ya está listo y falta marcarlo: mientras tanto el cliente no recibe el aviso y la espera de la fila se calcula mal. |
@@ -638,10 +639,10 @@ GitHub corre lo mismo en cada pull request (pestaña **Actions**) y, además, ar
 app/
 ├── catalogo/       filas, puestos, tipos de vehículo, servicios, precios y parámetros
 ├── clientes/       clientes, vehículos, placas y teléfonos
-├── turnos/         la fila: turnos, llamados, avisos, puestos, historial, cobro y la caja del lavadero (caja.py, consultas_de_caja.py)
+├── turnos/         la fila: turnos, llamados, avisos, puestos, historial, cobro, y la caja y el balance del lavadero (caja.py, consultas_de_caja.py, balance.py)
 ├── bot/            conversación de WhatsApp: pasos, botones, textos, avisos y la pausa
 ├── comentarios/    quejas, felicitaciones y preguntas para el administrador, y responderle al cliente
-├── caja/           la caja de cada negocio (abrirla, cerrarla, cuadrarla, corregirla y los cierres con filtros): una tabla, una caja por negocio
+├── caja/           lo común de las cuentas de los dos negocios: la caja (abrirla, cerrarla, cuadrarla, corregirla, los cierres con filtros), los periodos del balance y sus gráficas
 ├── parqueadero/    entradas y salidas, cobro por hora, mensualidades, lo que entra a su caja, sus tarifas, el balance y el reporte diario
 ├── integraciones/  mensajes que entran y salen de WhatsApp (bandejas y reintentos) y el correo del reporte
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores

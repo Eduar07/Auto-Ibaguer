@@ -1,0 +1,255 @@
+{% extends "pagina.html" %}
+{#- El balance del lavadero por día, semana, mes o los días que se escojan. El del día es
+    también el reporte para los jefes: se imprime o se manda por WhatsApp. La semana, el mes y
+    el rango traen las gráficas, en plata o en turnos. Las partes son las del Balance del
+    parqueadero. -#}
+{% import "_iconos.html" as iconos %}
+{% from "_grafica.html" import grafica %}
+{% macro dif(d) -%}
+<span class="{{ 'diferencia--cuadra' if d == 0 else ('diferencia--sobra' if d > 0 else 'diferencia--falta') }}">{{ "Cuadró" if d == 0 else (("Sobraron " if d > 0 else "Faltaron ") ~ (d|abs)|pesos) }}</span>
+{%- endmacro %}
+{% macro enlace(tipo, dia) %}/balance?periodo={{ tipo }}&amp;fecha={{ dia.isoformat() }}{% endmacro %}
+{% macro veces(n, una, varias) %}{{ n }} {{ una if n == 1 else varias }}{% endmacro %}
+{% set nombre_del_periodo = {"dia": "del día", "semana": "de la semana", "mes": "del mes", "rango": "en esos días"}[p.tipo] %}
+{% set ese_periodo = {"dia": "ese día", "semana": "esa semana", "mes": "ese mes", "rango": "esos días"}[p.tipo] %}
+{% macro renglones(titulo, id_, filas) -%}
+<section class="panel" aria-labelledby="{{ id_ }}">
+  <h2 id="{{ id_ }}">{{ titulo }}</h2>
+  {% if filas %}
+  <table class="tabla-caja tabla-caja--resumen">
+    <tbody>
+      {% for r in filas %}
+      <tr><th scope="row">{{ r.nombre }}</th><td>{{ veces(r.cobros, "turno", "turnos") }} · <strong>{{ r.cobrado|pesos }}</strong></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="lista__vacia">Sin cobros {{ ese_periodo }}.</p>
+  {% endif %}
+</section>
+{%- endmacro %}
+
+{% block titulo %}Balance del lavadero · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla parqueadero">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Balance del lavadero</h1>
+      <p>Lo que se cobró y lo que pasó. Cada cobro cuenta el día en que se hizo y cada turno, el día para el que se pidió.</p>
+    </div>
+  </div>
+
+  <div class="balance__barra">
+    {#- Al cambiar de día a semana o a mes, se queda en la misma fecha. -#}
+    <nav class="segmento" aria-label="Ver el balance por">
+      {% for nombre, url, actual in pestanas %}
+      {% if actual %}<span aria-current="page">{{ nombre }}</span>{% else %}<a href="{{ url }}">{{ nombre }}</a>{% endif %}
+      {% endfor %}
+    </nav>
+    <div class="balance__navegacion">
+      <a class="boton boton--icono" href="{{ ir_anterior }}" aria-label="{{ {'dia': 'Día anterior', 'semana': 'Semana anterior', 'mes': 'Mes anterior', 'rango': 'Los días anteriores'}[p.tipo] }}">{{ iconos.icono("volver", 20) }}</a>
+      <h2>{{ p.titulo }}</h2>
+      {% if ir_siguiente %}
+      <a class="boton boton--icono" href="{{ ir_siguiente }}" aria-label="{{ {'dia': 'Día siguiente', 'semana': 'Semana siguiente', 'mes': 'Mes siguiente', 'rango': 'Los días siguientes'}[p.tipo] }}">{{ iconos.icono("adelante", 20) }}</a>
+      {% endif %}
+      {% if ir_a_hoy %}
+      <a class="boton-texto" href="{{ ir_a_hoy }}">{{ {"dia": "Ir a hoy", "semana": "Ir a esta semana", "mes": "Ir a este mes", "rango": "Hasta hoy"}[p.tipo] }}</a>
+      {% endif %}
+    </div>
+  </div>
+  {% if p.tipo == "rango" %}
+  <form class="balance__rango" method="get" action="/balance">
+    <input type="hidden" name="periodo" value="rango">
+    {% if ver != "plata" %}<input type="hidden" name="ver" value="{{ ver }}">{% endif %}
+    <div class="campo"><label for="rango-desde">Desde</label><input id="rango-desde" name="desde" type="date" value="{{ p.desde.isoformat() }}" max="{{ hoy.isoformat() }}" required></div>
+    <div class="campo"><label for="rango-hasta">Hasta</label><input id="rango-hasta" name="hasta" type="date" value="{{ p.hasta.isoformat() }}" max="{{ hoy.isoformat() }}" required></div>
+    <button type="submit" class="boton boton--borde">Ver</button>
+    <p class="ayuda">Hasta {{ dias_maximos }} días. Rápido: <a href="{{ ultimos_30 }}">los últimos 30 días</a> · <a href="{{ ultimos_90 }}">los últimos 90</a>.</p>
+  </form>
+  {% endif %}
+
+  <section class="panel" aria-labelledby="t-cobrado">
+    <div class="balance__total">
+      <span id="t-cobrado" class="etiqueta">Cobrado {{ nombre_del_periodo }}</span>
+      <strong>{{ b.cobrado|pesos }}</strong>
+      <span class="suave">{{ nombre_del_anterior }}: {{ anterior|pesos }}</span>
+    </div>
+    <div class="cifras cifras--pequenas">
+      <div class="cifra"><span class="cifra__valor">{{ b.cobros }}</span><span class="cifra__nombre">{{ "turno cobrado" if b.cobros == 1 else "turnos cobrados" }}</span></div>
+      <div class="cifra"><span class="cifra__valor">{{ b.ticket_promedio|pesos if b.ticket_promedio else "—" }}</span><span class="cifra__nombre">por turno, en promedio</span></div>
+      <div class="cifra"><span class="cifra__valor">{{ b.turnos }}</span><span class="cifra__nombre">{{ "turno pedido" if b.turnos == 1 else "turnos pedidos" }} ({{ b.por_whatsapp }} por WhatsApp)</span></div>
+      {% if b.lavado_promedio_min is not none %}<div class="cifra"><span class="cifra__valor">{{ b.lavado_promedio_min|duracion }}</span><span class="cifra__nombre">dura un lavado, en promedio</span></div>{% endif %}
+    </div>
+  </section>
+
+  {% if p.tipo != "dia" %}
+  <section class="panel graficas" aria-labelledby="t-graficas">
+    <div class="graficas__cabeza">
+      <h2 id="t-graficas">Cómo va</h2>
+      <div class="graficas__filtros">
+        <nav class="segmento segmento--pequeno" aria-label="Qué ver en las gráficas">
+          {% for nombre, url, actual in opciones_ver %}{% if actual %}<span aria-current="page">{{ nombre }}</span>{% else %}<a href="{{ url }}#t-graficas">{{ nombre }}</a>{% endif %}{% endfor %}
+        </nav>
+      </div>
+    </div>
+    {{ grafica(dia_a_dia, "grafica-dias") }}
+    {% if por_dia_de_la_semana %}
+    {{ grafica(por_dia_de_la_semana, "grafica-semana") }}
+    {% else %}
+    <p class="ayuda">Con dos semanas o más de días completos (el mes, o un rango) sale también el promedio por día de la semana: cuáles días son flojos y cuáles buenos.</p>
+    {% endif %}
+  </section>
+  {% else %}
+  <p class="balance__otra-vista"><a class="boton-texto" href="{{ ver_el_mes }}">{{ iconos.icono("grafica", 18) }}Ver la gráfica del mes</a></p>
+  {% endif %}
+
+  <div class="parqueadero__columnas">
+    <section class="panel" aria-labelledby="t-medios">
+      <h2 id="t-medios">Por medio de pago</h2>
+      <table class="tabla-caja tabla-caja--resumen">
+        <tbody>
+          {% for medio, valor in b.por_medio.items() %}
+          <tr><th scope="row">{{ nombre_del_medio[medio] }}</th><td>{{ valor|pesos }}</td></tr>
+          {% endfor %}
+          <tr class="tabla-caja__total"><th scope="row">Total</th><td>{{ b.cobrado|pesos }}</td></tr>
+        </tbody>
+      </table>
+      <p class="ayuda">El efectivo es lo que entró al cajón. Nequi, Daviplata y tarjeta se comparan con lo que dicen sus apps.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="t-novedades">
+      <h2 id="t-novedades">Lo que pasó</h2>
+      <table class="tabla-caja tabla-caja--resumen">
+        <tbody>
+          <tr><th scope="row">Turnos pedidos</th><td>{{ b.turnos }} · {{ b.por_whatsapp }} por WhatsApp, {{ b.en_el_local }} en el local</td></tr>
+          <tr><th scope="row">Cancelados</th><td>{{ b.cancelados or "—" }}</td></tr>
+          <tr><th scope="row">No llegaron</th><td>{{ b.no_llegaron or "—" }}</td></tr>
+          <tr><th scope="row">Descuentos</th><td>{% if b.descuentos %}{{ b.descuentos|pesos }} en {{ veces(b.con_descuento, "turno", "turnos") }}{% else %}—{% endif %}</td></tr>
+          {% if b.recargos %}<tr><th scope="row">Cobrado por encima del menú</th><td>{{ b.recargos|pesos }}</td></tr>{% endif %}
+          <tr><th scope="row">Correcciones</th><td>{% if b.correcciones %}<span class="diferencia--falta">{{ b.correcciones|length }}</span>{% endif %}{% if b.correcciones_de_antes %}{% if b.correcciones %} · {% endif %}<span class="diferencia--falta">{{ b.correcciones_de_antes|length }} a cajas de días anteriores</span>{% endif %}{% if not b.correcciones and not b.correcciones_de_antes %}—{% endif %}</td></tr>
+          <tr><th scope="row">Cajas cerradas{% if b.cajas_cerradas %} ({{ b.cajas_cerradas|length }}){% endif %}</th>
+            <td>{% if not b.cajas_cerradas %}—{% else %}
+              {#- Los sobrantes y los faltantes van aparte: uno de un día no tapa el otro. -#}
+              {%- set partes = [] -%}
+              {%- if b.cajas_que_cuadraron %}{% set partes = partes + [("diferencia--cuadra", veces(b.cajas_que_cuadraron, "cuadró", "cuadraron"))] %}{% endif -%}
+              {%- if b.sobrantes %}{% set partes = partes + [("diferencia--sobra", "sobraron " ~ (b.sobrantes|sum)|pesos)] %}{% endif -%}
+              {%- if b.faltantes %}{% set partes = partes + [("diferencia--falta", "faltaron " ~ (b.faltantes|sum)|pesos)] %}{% endif -%}
+              {%- for clase, texto in partes %}{% if not loop.first %} · {% endif %}<span class="{{ clase }}">{{ texto }}</span>{% endfor -%}
+            {%- endif %}</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    {{ renglones("Por servicio", "t-servicios", b.por_servicio) }}
+    {{ renglones("Por tipo de vehículo", "t-tipos", b.por_tipo) }}
+  </div>
+
+  {% if p.tipo != "dia" %}
+  <section class="lista" aria-labelledby="t-dias">
+    <div class="lista__cabeza"><h3 id="t-dias">Día por día</h3></div>
+    <div class="tabla-desplazable">
+      <table class="tabla-caja tabla-balance">
+        <thead>
+          <tr><th scope="col">Día</th><th scope="col">Cobrado</th><th scope="col"><span class="solo-lector">Comparado con el mejor día</span></th><th scope="col">Turnos cobrados</th><th scope="col">Turnos pedidos</th></tr>
+        </thead>
+        <tbody>
+          {% set mayor = b.dias|map(attribute="cobrado")|max %}
+          {% for d in b.dias if d.dia <= hoy %}
+          <tr{% if d.dia == hoy %} class="tabla-balance__hoy"{% endif %}>
+            <td><a href="{{ enlace('dia', d.dia) }}">{{ "Hoy" if d.dia == hoy else d.dia|dia_corto }}</a></td>
+            <td><strong>{{ d.cobrado|pesos }}</strong></td>
+            <td class="tabla-balance__barra"><span style="--parte: {{ ((d.cobrado * 100 / mayor) if mayor else 0)|round(1) }}%"></span></td>
+            <td>{{ d.cobros }}</td>
+            <td>{{ d.turnos }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="lista" aria-labelledby="t-cajas">
+    <div class="lista__cabeza"><h3 id="t-cajas">Cajas {{ nombre_del_periodo }}</h3></div>
+    {% if b.cajas %}
+    <div class="tabla-desplazable">
+      <table class="tabla-caja tabla-caja--cierres">
+        <thead>
+          <tr><th scope="col">Abrió</th><th scope="col">Diferencia</th><th scope="col">Entró</th><th scope="col">Efectivo esperado</th><th scope="col">Contado</th><th scope="col">Cerró</th><th scope="col"><span class="solo-lector">Ver</span></th></tr>
+        </thead>
+        <tbody>
+          {% for r in b.cajas %}
+          <tr>
+            <td>{{ cuando(r.caja.abierta_en) }}<span class="suave"> · {{ r.abrio }}</span></td>
+            <td>{% if r.caja.cerrada_en %}{{ dif(r.caja.diferencia) }}{% if r.corregida_despues_del_cierre %} <span class="insignia insignia--ambar">Corregida</span>{% endif %}{% else %}<span class="insignia insignia--verde">Sigue abierta</span>{% endif %}</td>
+            <td>{{ r.cuadre.total|pesos }}</td>
+            <td>{{ (r.caja.efectivo_esperado if r.caja.cerrada_en else r.cuadre.efectivo_esperado)|pesos }}</td>
+            <td>{{ r.caja.efectivo_contado|pesos if r.caja.cerrada_en else "—" }}</td>
+            <td>{% if r.caja.cerrada_en %}{{ cuando(r.caja.cerrada_en) }}<span class="suave"> · {{ r.cerro }}</span>{% else %}—{% endif %}</td>
+            <td><a href="/caja/{{ r.caja.id }}">Ver</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="ayuda">Cada caja es del día en que se abrió, aunque se cierre pasada la medianoche.</p>
+    {% else %}
+    <p class="lista__vacia">No se abrió caja {{ ese_periodo }}.</p>
+    {% endif %}
+  </section>
+
+  {% macro linea_de_correccion(f) -%}
+  {% if f.placa %}<span class="placa-texto">{{ f.placa }}</span> · {% endif %}{{ cuando(f.momento) }} · {{ f.que_paso }}: <span class="tachado">{{ f.antes }}</span>{% if f.despues %} → <strong>{{ f.despues }}</strong>{% endif %}{% if f.despues_del_cierre %} · <span class="insignia insignia--ambar">Después del cierre</span>{% endif %} · {{ f.motivo }} · {{ f.quien }}
+  {%- endmacro %}
+  {% if b.ajustes or b.correcciones or b.correcciones_de_antes %}
+  <section class="panel" aria-labelledby="t-revisar">
+    <h2 id="t-revisar">Para revisar</h2>
+    {% if b.correcciones %}
+    <div>
+      <span class="etiqueta">Correcciones en las cajas {{ nombre_del_periodo }} ({{ b.correcciones|length }})</span>
+      <ul class="lista-simple">
+        {% for f in b.correcciones %}<li>{{ linea_de_correccion(f) }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if b.correcciones_de_antes %}
+    <div>
+      <span class="etiqueta">Correcciones a cajas de días anteriores ({{ b.correcciones_de_antes|length }})</span>
+      <ul class="lista-simple">
+        {% for f in b.correcciones_de_antes %}<li><a href="{{ enlace('dia', f.dia_de_la_caja) }}">Caja del {{ f.dia_de_la_caja|fecha }}</a> · {{ linea_de_correccion(f) }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if b.ajustes %}
+    <div>
+      <span class="etiqueta">Cobros distintos al menú ({{ b.cuantos_ajustes }})</span>
+      <ul class="lista-simple">
+        {% for a in b.ajustes %}
+        <li>{{ a.turno }} · <span class="placa-texto">{{ a.placa }}</span> · {{ cuando(a.hora) }} · menú {{ a.menu|pesos }}, cobrado <strong>{{ a.cobrado|pesos }}</strong> · {{ a.motivo }}</li>
+        {% endfor %}
+        {% if b.cuantos_ajustes > b.ajustes|length %}<li class="suave">y {{ b.cuantos_ajustes - b.ajustes|length }} más: están todos en el archivo para Excel.</li>{% endif %}
+      </ul>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if p.tipo == "dia" %}
+  <section class="panel" aria-labelledby="t-reporte">
+    <h2 id="t-reporte">Reporte del día para los jefes</h2>
+    <p class="suave">Lo que se cobró y lo que pasó, con placas y plata: sin nombres ni celulares de los clientes.</p>
+    <div class="botones">
+      <a class="boton" href="{{ whatsapp }}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
+      <button type="button" class="boton boton--borde" data-imprimir="/balance/ticket?fecha={{ p.desde.isoformat() }}">{{ iconos.icono("imprimir", 18) }}Imprimir</button>
+    </div>
+    <details class="ajuste">
+      <summary>Ver el texto del reporte</summary>
+      <pre class="reporte-texto">{{ texto_del_reporte }}</pre>
+    </details>
+  </section>
+  {% endif %}
+
+  <p class="ayuda"><a href="/caja/exportar?desde={{ p.desde.isoformat() }}&amp;hasta={{ p.hasta.isoformat() }}">Descargar {{ ese_periodo }} para Excel</a> (cada turno cobrado, uno por fila).</p>
+</main>
+{% endblock %}

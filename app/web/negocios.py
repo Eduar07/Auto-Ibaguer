@@ -37,13 +37,15 @@ LAVADERO = Negocio(
     nombre="Lavadero",
     icono="gota",
     descripcion=(
-        "La fila en vivo, la caja con el cobro de cada turno, los clientes y sus comentarios."
+        "La fila en vivo, la caja y el balance de lo cobrado, los clientes y sus comentarios."
     ),
     secciones=(
         Seccion("fila", "/fila", "Fila en vivo", "Fila", "fila"),
         Seccion("caja", "/caja", "Caja", "Caja", "caja"),
+        Seccion("balance", "/balance", "Balance", "Balance", "grafica"),
         Seccion("clientes", "/clientes", "Clientes", "Clientes", "cliente"),
-        Seccion("comentarios", "/comentarios", "Comentarios", "Comentarios", "actividad"),
+        # En la barra del celular caben seis si los nombres son cortos: "Buzón" de comentarios.
+        Seccion("comentarios", "/comentarios", "Comentarios", "Buzón", "actividad"),
         Seccion("configuracion", "/configuracion", "Configuración", "Ajustes", "ajustes"),
     ),
 )

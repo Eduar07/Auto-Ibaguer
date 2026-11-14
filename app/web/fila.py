@@ -26,6 +26,7 @@ from app.turnos import caja as caja_del_lavadero
 from app.turnos import casos_de_uso as casos
 from app.turnos import consultas, datos, reglas
 from app.turnos.estados import Actor, MedioPago, OrigenTurno
+from app.turnos.recibo import leer_ajustes as leer_ajustes_del_recibo
 from app.turnos.tablas import Turno
 from app.web import en_vivo
 from app.web.comun import (
@@ -64,12 +65,15 @@ def _accion(
     *,
     dialogo: str | None = None,
     contexto: Callable[[], dict[str, Any]] | None = None,
+    eventos: dict[str, Any] | None = None,
 ) -> Response:
     """Corre un caso de uso y confirma (commit). Devuelve la fila actualizada.
 
-    `hacer` devuelve el mensaje de éxito. Si una regla no lo permite, se deshace todo y
-    se explica: dentro del diálogo, si la acción venía de uno, o como aviso en la fila.
+    `hacer` devuelve el mensaje de éxito y puede llenar `eventos` por el camino (por ejemplo,
+    el recibo que hay que imprimir). Si una regla no lo permite, se deshace todo y se explica:
+    dentro del diálogo, si la acción venía de uno, o como aviso en la fila.
     """
+    eventos = eventos if eventos is not None else {}
     try:
         mensaje = hacer()
         sesion.commit()
@@ -81,8 +85,8 @@ def _accion(
     if pagina_actual(request) not in ("", "/fila"):
         # Por ejemplo, "Dar turno" desde la ficha de un cliente: allá no hay fila que
         # actualizar; la pantalla se entera con "datos-cambiados".
-        return sin_cambios(cerrar_dialogo=True, aviso=mensaje, datos_cambiados=True)
-    return _tablero(request, sesion, cerrar_dialogo=True, aviso=mensaje)
+        return sin_cambios(cerrar_dialogo=True, aviso=mensaje, datos_cambiados=True, **eventos)
+    return _tablero(request, sesion, cerrar_dialogo=True, aviso=mensaje, **eventos)
 
 
 def _numero(sesion: Session, turno_id: int) -> str:
@@ -448,14 +452,18 @@ def cobrar(
             administrador_id=administrador.id,
         )
         medio = pago.medio_pago.value
+        if leer_ajustes_del_recibo(sesion).imprimir_al_cobrar:
+            eventos["imprimir"] = f"/turnos/{turno_id}/recibo"
         return f"{numero} cobrado: {formato.pesos(pago.precio_cobrado)} en {medio}."
 
+    eventos: dict[str, Any] = {}
     return _accion(
         request,
         sesion,
         hacer,
         dialogo="dialogos/cobrar.html",
         contexto=lambda: _contexto_cobro(sesion, turno_id, formulario),
+        eventos=eventos,
     )
 
 

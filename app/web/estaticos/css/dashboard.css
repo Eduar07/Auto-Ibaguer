@@ -728,6 +728,9 @@ legend { padding: 0; margin-bottom: 8px; }
   background: linear-gradient(to top, var(--fondo) 75%, rgba(243, 245, 247, 0));
 }
 .barra-guardar .boton { min-height: 48px; padding: 0 22px; }
+/* El botón de una sección que se guarda aparte (Recibo y reporte), al final de la sección. */
+.seccion-configuracion__acciones { display: flex; justify-content: flex-end; }
+.seccion-configuracion__acciones .boton { min-height: 48px; padding: 0 22px; }
 
 /* --- Mensajes de WhatsApp ------------------------------------------------------------ */
 
@@ -1021,6 +1024,9 @@ legend { padding: 0; margin-bottom: 8px; }
   .campo-pesos input { width: 100%; }
   .barra-guardar { bottom: calc(68px + env(safe-area-inset-bottom)); }
   .barra-guardar .boton { flex: 1 1 0; }
+  .seccion-configuracion__acciones .boton { flex: 1 1 0; }
+  /* Datos largos (una dirección) no caben a media pantalla: en el celular, uno debajo del otro. */
+  .dos-columnas--apiladas-en-celular { grid-template-columns: minmax(0, 1fr); }
   .dias { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; max-width: 360px; }
   .chat-bot { flex-basis: 100%; }
   .chat-bot__charla { height: 62vh; }

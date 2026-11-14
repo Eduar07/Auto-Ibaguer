@@ -5,9 +5,10 @@ un cobro equivocado (otro valor, otro medio de pago, o deshacerlo si era el turn
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,16 +17,17 @@ from app import formato, tiempo
 from app.caja.errores import CobroNoCorregible, ValorInvalido
 from app.caja.reglas import como_se_pago
 from app.caja.tablas import CorreccionCobro
-from app.catalogo.parametros import leer_parametros
-from app.catalogo.tablas import Fila, Servicio
+from app.catalogo.tablas import Fila, Servicio, TipoVehiculo
 from app.clientes.tablas import Vehiculo
+from app.db.sesion import AbrirSesion, abrir_sesion
 from app.errores import ReglaDelNegocio
-from app.parqueadero.tarifas import leer_ajustes
 from app.turnos import caja as caja_del_lavadero
 from app.turnos import casos_de_uso as casos
 from app.turnos import consultas_de_caja as consultas
 from app.turnos import reglas
+from app.turnos import reporte as reporte_del_lavadero
 from app.turnos.estados import EstadoTurno
+from app.turnos.recibo import datos_del_ticket
 from app.turnos.tablas import Pago, Turno
 from app.web.caja import (
     MEDIOS,
@@ -34,31 +36,21 @@ from app.web.caja import (
     RutasDeCaja,
     caja_de_la_pantalla,
     rutas_de_caja,
+    ticket,
 )
 from app.web.comun import Admin, SesionBD, html, leer_pesos, verificar_origen
+from app.web.tablas import Administrador
 
 
-@dataclass(frozen=True)
-class AjustesDelTicket:
-    """Lo que sale arriba en el ticket de la caja del lavadero: el nombre y el teléfono del
-    negocio (Configuración). El ancho del papel es el de la impresora, el mismo que usa el
-    parqueadero (Tarifas y ticket)."""
-
-    nombre: str
-    telefono: str
-    ancho_ticket: int
-    nit: str = ""
-    direccion: str = ""
-    pie_ticket: str = ""
+def obtener_abrir_sesion() -> AbrirSesion:
+    """Con qué abrir una sesión para lo que corre después de contestar (el correo con el
+    reporte al cerrar la caja). Las pruebas la cambian por una dentro de su transacción."""
+    return abrir_sesion
 
 
-def ajustes_del_ticket(sesion: Session) -> AjustesDelTicket:
-    parametros = leer_parametros(sesion)
-    return AjustesDelTicket(
-        nombre=parametros.nombre_negocio,
-        telefono=parametros.telefono_contacto,
-        ancho_ticket=leer_ajustes(sesion).ancho_ticket,
-    )
+def _al_cerrar(tareas: BackgroundTasks, abrir: AbrirSesion, dia_de_la_caja: date) -> None:
+    """Después de contestar el cierre: el reporte de ese día a los jefes, si hay correo."""
+    tareas.add_task(reporte_del_lavadero.enviar_al_cerrar, abrir, dia_de_la_caja)
 
 
 CAJA = CajaDeUnNegocio(
@@ -83,7 +75,9 @@ CAJA = CajaDeUnNegocio(
     todos_los_cierres=consultas.todos_los_cierres,
     quienes_cerraron=consultas.quienes_cerraron,
     lineas_para_excel=consultas.lineas_para_excel,
-    ajustes_del_ticket=ajustes_del_ticket,
+    ajustes_del_ticket=datos_del_ticket,
+    obtener_abrir_sesion=obtener_abrir_sesion,
+    al_cerrar=_al_cerrar,
 )
 router_de_la_caja = rutas_de_caja(CAJA)
 
@@ -252,3 +246,45 @@ def deshacer_cobro(
 
 def _como_quedo(correccion: CorreccionCobro) -> str:
     return f"{formato.pesos(correccion.valor_despues)} {como_se_pago(correccion.medio_despues)}"
+
+
+# --- El recibo de un turno cobrado -----------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Recibo:
+    pago: Pago
+    numero: str  # "C-03"
+    placa: str
+    tipo: str  # "Automóvil"
+    servicio: str
+    atendio: str | None  # el usuario que cobró
+
+
+@router.get("/turnos/{turno_id}/recibo", response_class=HTMLResponse)
+def recibo(request: Request, sesion: SesionBD, _: Admin, turno_id: int) -> Response:
+    """El recibo del cobro de un turno, para la impresora. 404 si el turno no tiene cobro."""
+    fila = sesion.execute(
+        select(Pago, Turno, Fila.prefijo, Vehiculo.placa, TipoVehiculo.nombre, Servicio.nombre)
+        .join(Turno, Turno.id == Pago.turno_id)
+        .join(Fila, Fila.id == Turno.fila_id)
+        .join(Vehiculo, Vehiculo.id == Turno.vehiculo_id)
+        .join(TipoVehiculo, TipoVehiculo.id == Vehiculo.tipo_vehiculo_id)
+        .outerjoin(Servicio, Servicio.id == Turno.servicio_id)
+        .where(Pago.turno_id == turno_id)
+    ).one_or_none()
+    if fila is None:
+        raise HTTPException(status_code=404, detail="Ese turno no tiene un cobro.")
+    pago, turno, prefijo, placa, tipo, servicio = fila
+    atendio = sesion.get(Administrador, pago.administrador_id) if pago.administrador_id else None
+    contexto = {
+        "r": Recibo(
+            pago=pago,
+            numero=reglas.numero_de_turno(prefijo, turno.consecutivo),
+            placa=placa or "—",
+            tipo=tipo,
+            servicio=servicio or "—",
+            atendio=atendio.usuario if atendio else None,
+        )
+    }
+    return ticket(request, "tickets/recibo_lavadero.html", contexto, datos_del_ticket(sesion))

@@ -17,22 +17,22 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app import formato, tiempo
+from app.caja.reporte import (
+    DETALLE_EN_EL_TEXTO,
+    lineas_de_correcciones_de_antes,
+    lineas_de_la_caja,
+    y_mas,
+)
 from app.config import obtener_entorno
 from app.integraciones import correo
 from app.parqueadero import consultas
 from app.parqueadero.balance import Balance, balance, limites, periodo
-from app.parqueadero.consultas import ResumenDeCaja
 from app.parqueadero.estados import EstadoParqueo, TipoParqueo
 from app.parqueadero.reglas import NOMBRE_DEL_MEDIO
 from app.parqueadero.tablas import Parqueo
 from app.parqueadero.tarifas import leer_ajustes
 
 logger = logging.getLogger(__name__)
-
-
-# En el texto (WhatsApp y correo) van hasta tantas líneas de detalle por lista; el resto se
-# cuenta ("y 4 más") y se ve completo en el Balance. Un mensaje eterno no se lee.
-DETALLE_EN_EL_TEXTO = 10
 
 
 @dataclass(frozen=True)
@@ -150,24 +150,24 @@ def texto(reporte: ReporteDelDia, *, negrilla: bool = True) -> str:
             f"- {a.placa}: {pesos(a.calculado)} → {pesos(a.cobrado)} ({a.motivo})"
             for a in b.ajustes[:DETALLE_EN_EL_TEXTO]
         ]
-        lineas += _y_mas(b.cuantos_ajustes - min(len(b.ajustes), DETALLE_EN_EL_TEXTO))
+        lineas += y_mas(b.cuantos_ajustes - min(len(b.ajustes), DETALLE_EN_EL_TEXTO))
     if b.total_anuladas:
         lineas += ["", fuerte(f"Entradas anuladas: {b.total_anuladas}")]
         lineas += [
             f"- {a.placa} (ticket {a.ticket}): {a.motivo}" for a in b.anuladas[:DETALLE_EN_EL_TEXTO]
         ]
-        lineas += _y_mas(b.total_anuladas - min(len(b.anuladas), DETALLE_EN_EL_TEXTO))
+        lineas += y_mas(b.total_anuladas - min(len(b.anuladas), DETALLE_EN_EL_TEXTO))
     lineas += ["", fuerte("Caja")]
     if not b.cajas:
         lineas.append("No se abrió caja este día.")
     for resumen in b.cajas:
-        lineas += _lineas_de_la_caja(resumen, reporte.dia)
+        lineas += lineas_de_la_caja(resumen, reporte.dia)
     if b.correcciones_de_antes:
         lineas += [
             "",
             fuerte(f"Correcciones a cajas de días anteriores: {len(b.correcciones_de_antes)}"),
         ]
-        lineas += _lineas_de_correcciones_de_antes(b)
+        lineas += lineas_de_correcciones_de_antes(b.correcciones_de_antes)
     adentro = f"{sum(reporte.adentro.values())} ({_motos_y_carros(reporte.adentro)})"
     lineas += [
         "",
@@ -185,65 +185,6 @@ def texto(reporte: ReporteDelDia, *, negrilla: bool = True) -> str:
             f"Mensualidades pendientes de pago{cuando}: {len(reporte.pendientes)} ({placas})"
         )
     return "\n".join(lineas)
-
-
-def _y_mas(cuantos: int) -> list[str]:
-    return [f"- y {cuantos} más (ver el Balance)"] if cuantos > 0 else []
-
-
-def _lineas_de_la_caja(resumen: ResumenDeCaja, dia: date) -> list[str]:
-    """Cómo cerró la caja (o lo que debería tener, si sigue abierta) y sus correcciones."""
-    pesos = formato.pesos
-    caja = resumen.caja
-    if caja.cerrada_en is None:
-        lineas = [
-            f"Sigue abierta: debería haber {pesos(resumen.cuadre.efectivo_esperado)} en "
-            "efectivo (con la base)."
-        ]
-    else:
-        cerro = tiempo.hora_local(caja.cerrada_en)
-        cuando = f"a {formato.hora_con_articulo(cerro)}"
-        if cerro.date() != dia:  # se cerró pasada la medianoche
-            cuando = f"el {formato.dia_y_mes(cerro.date())} {cuando}"
-        quien = f" {resumen.cerro}" if resumen.cerro not in (None, "—") else ""
-        lineas = [
-            f"Cerró{quien} {cuando}",
-            f"Base {pesos(caja.base)} · Debía haber {pesos(caja.efectivo_esperado or 0)} · "
-            f"Contaron {pesos(caja.efectivo_contado or 0)}",
-            _diferencia(caja.diferencia or 0),
-        ]
-        if resumen.corregida_despues_del_cierre:
-            al_cerrar = _diferencia(resumen.diferencia_al_cerrar or 0)
-            lineas.append(
-                f"Se corrigió después del cierre. Al cerrar: {al_cerrar[0].lower()}{al_cerrar[1:]}"
-            )
-        if caja.nota_cierre:
-            lineas.append(f"Nota: {caja.nota_cierre}")
-    if resumen.correcciones:
-        # Lo que se corrigió después de cobrar: es lo primero que un jefe debe revisar.
-        lineas.append(f"Correcciones: {len(resumen.correcciones)}")
-        lineas += [f"- {fila.en_una_linea}" for fila in resumen.correcciones[:DETALLE_EN_EL_TEXTO]]
-        lineas += _y_mas(len(resumen.correcciones) - DETALLE_EN_EL_TEXTO)
-    return lineas
-
-
-def _lineas_de_correcciones_de_antes(b: Balance) -> list[str]:
-    """Lo que se corrigió este día en cajas de días anteriores, con el día de cada caja."""
-    lineas = [
-        f"- Caja del {formato.dia_y_mes(fila.dia_de_la_caja)}: {fila.en_una_linea}"
-        if fila.dia_de_la_caja
-        else f"- {fila.en_una_linea}"
-        for fila in b.correcciones_de_antes[:DETALLE_EN_EL_TEXTO]
-    ]
-    return lineas + _y_mas(len(b.correcciones_de_antes) - DETALLE_EN_EL_TEXTO)
-
-
-def _diferencia(diferencia: int) -> str:
-    if diferencia == 0:
-        return "Cuadró exacto."
-    if diferencia > 0:
-        return f"Sobraron {formato.pesos(diferencia)}."
-    return f"Faltaron {formato.pesos(-diferencia)}."
 
 
 def enlace_de_whatsapp(reporte: ReporteDelDia) -> str:

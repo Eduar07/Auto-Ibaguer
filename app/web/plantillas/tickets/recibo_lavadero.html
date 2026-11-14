@@ -1,0 +1,26 @@
+{% extends "tickets/_base.html" %}
+{#- El recibo de un turno cobrado en el lavadero: para entregarle al cliente. Arriba los datos
+    del negocio (Configuración > Recibo y reporte), sin datos personales del cliente. -#}
+{% block titulo %}Recibo {{ r.numero }}{% endblock %}
+{% block contenido %}
+<section class="ticket__bloque ticket__bloque--centro">
+  <span class="ticket__tipo-documento">Recibo de pago</span>
+  <span>Turno {{ r.numero }}</span>
+  <span class="ticket__placa">{{ r.placa }}</span>
+  <span>{{ r.tipo }}</span>
+</section>
+<dl class="ticket__datos">
+  <dt>Fecha</dt><dd>{{ r.pago.fecha_hora|fecha_y_hora }}</dd>
+  <dt>Servicio</dt><dd>{{ r.servicio }}</dd>
+  {% set ajuste = r.pago.precio_cobrado - r.pago.precio_menu %}
+  {% if ajuste %}
+  <dt>Precio</dt><dd>{{ r.pago.precio_menu|pesos }}</dd>
+  <dt>{{ "Descuento" if ajuste < 0 else "Recargo" }}</dt><dd>{{ "−" if ajuste < 0 else "+" }}{{ (ajuste|abs)|pesos }}</dd>
+  {% endif %}
+</dl>
+<div class="ticket__total"><span>Total</span><strong>{{ r.pago.precio_cobrado|pesos }}</strong></div>
+<dl class="ticket__datos">
+  <dt>Pago</dt><dd>{{ r.pago.medio_pago.value|capitalize }}</dd>
+  {% if r.atendio %}<dt>Atendió</dt><dd>{{ r.atendio }}</dd>{% endif %}
+</dl>
+{% endblock %}

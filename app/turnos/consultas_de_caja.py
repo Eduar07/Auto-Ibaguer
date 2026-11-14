@@ -42,6 +42,11 @@ class CobroDeCaja:
         """Dónde se abre el diálogo para corregir este cobro."""
         return f"/turnos/{self.turno_id}/corregir-cobro"
 
+    @property
+    def para_imprimir(self) -> str:
+        """El recibo del cobro, para volver a imprimirlo."""
+        return f"/turnos/{self.turno_id}/recibo"
+
 
 def _cobros(sesion: Session, *condiciones, orden: tuple = ()) -> list[tuple]:
     """Los pagos con su turno, su número, su placa, su servicio y su tipo de vehículo."""

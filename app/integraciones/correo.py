@@ -1,4 +1,5 @@
-"""Mandar un correo por SMTP: el reporte diario del parqueadero a los jefes.
+"""Mandar un correo por SMTP: el reporte diario de cada negocio (parqueadero y lavadero) a
+los jefes.
 
 Sirve cualquier cuenta de correo con SMTP. Con Gmail: servidor smtp.gmail.com, puerto 465 y
 una "contraseña de aplicación" (no la contraseña normal). Los datos van en el entorno

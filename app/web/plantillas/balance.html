@@ -238,11 +238,22 @@
   {% if p.tipo == "dia" %}
   <section class="panel" aria-labelledby="t-reporte">
     <h2 id="t-reporte">Reporte del día para los jefes</h2>
-    <p class="suave">Lo que se cobró y lo que pasó, con placas y plata: sin nombres ni celulares de los clientes.</p>
+    <p class="suave">Lo que se cobró y lo que pasó, con placas y plata: sin nombres ni celulares de los clientes.{% if correo_configurado and destinos %} Al cerrar la caja les llega solo por correo.{% endif %}</p>
     <div class="botones">
       <a class="boton" href="{{ whatsapp }}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
       <button type="button" class="boton boton--borde" data-imprimir="/balance/ticket?fecha={{ p.desde.isoformat() }}">{{ iconos.icono("imprimir", 18) }}Imprimir</button>
+      {% if correo_configurado and destinos %}
+      <form hx-post="/balance/enviar" hx-swap="none" hx-disabled-elt="find button">
+        <input type="hidden" name="fecha" value="{{ p.desde.isoformat() }}">
+        <button type="submit" class="boton boton--borde">Enviar por correo ahora</button>
+      </form>
+      {% endif %}
     </div>
+    {% if not destinos %}
+    <p class="ayuda">Para que les llegue solo por correo al cerrar la caja, escribe los correos de los jefes en <a href="/configuracion#recibo">Configuración &gt; Recibo y reporte</a>.</p>
+    {% elif not correo_configurado %}
+    <p class="ayuda">El correo del sistema todavía no está configurado: mientras tanto, mándalo por WhatsApp.</p>
+    {% endif %}
     <details class="ajuste">
       <summary>Ver el texto del reporte</summary>
       <pre class="reporte-texto">{{ texto_del_reporte }}</pre>

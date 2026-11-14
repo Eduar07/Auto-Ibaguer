@@ -64,7 +64,7 @@ class ConfiguracionEntorno(BaseSettings):
     # con clientes de verdad, Gemini solo se usa con el plan de pago.
     gemini_plan_de_pago: bool = False
 
-    # --- Correo, para el reporte diario del parqueadero (app.integraciones.correo). Por
+    # --- Correo, para el reporte diario de los dos negocios (app.integraciones.correo). Por
     # ejemplo un Gmail: smtp.gmail.com, puerto 465 y una "contraseña de aplicación". Sin el
     # servidor no se manda correo; la clave es secreta: solo en el .env o en Render.
     correo_servidor: str = ""

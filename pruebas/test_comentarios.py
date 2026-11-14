@@ -456,12 +456,18 @@ def test_la_pantalla_muestra_lo_que_falta_por_atender(adentro: TestClient, sesio
     assert '<span id="contador-comentarios-celular" class="contador">2<' in pagina
 
 
-def test_el_numero_del_menu_sale_en_todas_las_pantallas(adentro: TestClient, sesion: Session):
+def test_el_numero_del_menu_sale_en_todas_las_pantallas_del_lavadero(
+    adentro: TestClient, sesion: Session
+):
     assert 'id="contador-comentarios" class="contador" hidden' in adentro.get("/clientes").text
 
     comentario(sesion)
 
     assert '<span id="contador-comentarios" class="contador">1<' in adentro.get("/fila").text
+    # Los comentarios son del lavadero: el parqueadero no los muestra ni los vuelve a pedir.
+    parqueadero = adentro.get("/parqueadero").text
+    assert "contador-comentarios" not in parqueadero
+    assert "/comentarios/contador" not in parqueadero
 
 
 def test_marcar_como_atendido_y_volver_a_pendiente(

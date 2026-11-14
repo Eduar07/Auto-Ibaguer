@@ -139,4 +139,4 @@ def pagina_mensajes(request: Request, sesion: SesionBD, _: Admin) -> Response:
         "entrantes": entrantes,
         "salientes": salientes,
     }
-    return pagina(request, sesion, "mensajes.html", contexto, seccion="configuracion")
+    return pagina(request, sesion, "mensajes.html", contexto, seccion="lavadero/configuracion")

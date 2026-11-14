@@ -1,6 +1,5 @@
 {% extends "pagina.html" %}
 {% import "_iconos.html" as iconos %}
-{% from "_parqueadero_atajos.html" import atajos %}
 
 {% block titulo %}Caja del parqueadero · Auto Ibaguer{% endblock %}
 
@@ -12,7 +11,6 @@
       <p>Aparte de la plata del lavadero. Se abre con la base para vueltos y se cierra contando el efectivo.</p>
     </div>
   </div>
-  {{ atajos("caja") }}
 
   {% if caja_de_otro_dia %}
   <div class="error">Esta caja viene de un día anterior. Ciérrala contando el cajón y abre la de hoy: así cada día cuadra aparte.</div>

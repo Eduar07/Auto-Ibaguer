@@ -1,6 +1,5 @@
 {% extends "pagina.html" %}
 {% import "_iconos.html" as iconos %}
-{% from "_parqueadero_atajos.html" import atajos %}
 {% set c = resumen.caja %}
 
 {% block titulo %}Caja {{ c.id }} · Auto Ibaguer{% endblock %}
@@ -13,7 +12,6 @@
       <p>Abrió {{ resumen.abrio }} {{ cuando_paso(c.abierta_en) }}{% if c.cerrada_en %} · cerró {{ resumen.cerro }} {{ cuando_paso(c.cerrada_en) }}{% endif %}</p>
     </div>
   </div>
-  {{ atajos("caja") }}
   {% if imprimir_al_abrir %}<span hidden data-imprimir-al-abrir="{{ imprimir_al_abrir }}"></span>{% endif %}
 
   <div id="una-caja" class="contenedor-invisible">

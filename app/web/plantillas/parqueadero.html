@@ -1,6 +1,5 @@
 {% extends "pagina.html" %}
 {% import "_iconos.html" as iconos %}
-{% from "_parqueadero_atajos.html" import atajos %}
 
 {% block titulo %}Parqueadero · Auto Ibaguer{% endblock %}
 
@@ -12,7 +11,6 @@
       <p>Carro {{ ajustes.hora_carro|pesos }} y moto {{ ajustes.hora_moto|pesos }} la hora, con {{ ajustes.gracia_minutos }} minutos de gracia después de cada hora.</p>
     </div>
   </div>
-  {{ atajos("entradas") }}
 
   {% if caja_de_otro_dia %}
   <div class="error">La caja está abierta desde {{ cuando_paso(caja.abierta_en) }} Ciérrala contando el cajón y abre la de hoy: así cada día cuadra aparte. <a href="/parqueadero/caja">Ir a la caja</a></div>

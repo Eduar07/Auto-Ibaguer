@@ -49,7 +49,7 @@ def pagina_clientes(
         "ficha": ficha,
         **_lista(sesion, q, numero),
     }
-    return pagina(request, sesion, "clientes.html", contexto, seccion="clientes")
+    return pagina(request, sesion, "clientes.html", contexto, seccion="lavadero/clientes")
 
 
 @router.get("/clientes/lista", response_class=HTMLResponse)

@@ -51,7 +51,7 @@ def pagina_comentarios(
 ) -> Response:
     ver = ver if ver in VISTAS else "pendientes"
     contexto = {"ver": ver, "comentarios": consultas.lista(sesion, solo_por_atender=VISTAS[ver])}
-    return pagina(request, sesion, "comentarios.html", contexto, seccion="comentarios")
+    return pagina(request, sesion, "comentarios.html", contexto, seccion="lavadero/comentarios")
 
 
 def _sin_renovar_la_sesion(request: Request, sesion: Session) -> None:

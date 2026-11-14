@@ -61,7 +61,7 @@ def test_entrar_con_la_clave_correcta(web: TestClient, admin: Administrador):
     )
 
     assert respuesta.status_code == 303
-    assert respuesta.headers["location"] == "/fila"
+    assert respuesta.headers["location"] == "/inicio"  # a escoger el negocio
     cookie = respuesta.headers["set-cookie"].lower()
     assert sesiones.NOMBRE_COOKIE in cookie
     assert "httponly" in cookie
@@ -143,10 +143,10 @@ def test_usar_el_dashboard_renueva_la_sesion(adentro: TestClient):
     assert sesiones.NOMBRE_COOKIE in respuesta.headers["set-cookie"]
 
 
-def test_con_sesion_abierta_entrar_lleva_a_la_fila(adentro: TestClient):
+def test_con_sesion_abierta_entrar_lleva_a_escoger_el_negocio(adentro: TestClient):
     respuesta = adentro.get("/entrar", follow_redirects=False)
 
-    assert respuesta.headers["location"] == "/fila"
+    assert respuesta.headers["location"] == "/inicio"
 
 
 def test_salir_borra_la_sesion(adentro: TestClient):

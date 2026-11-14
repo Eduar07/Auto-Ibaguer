@@ -1,27 +1,39 @@
-{#- Lo que tienen todas las pantallas del dashboard: el encabezado con las secciones, el
-    diálogo, los avisos y, en el celular, la barra de abajo para cambiar de sección. -#}
+{#- Lo que tienen todas las pantallas del dashboard: el encabezado, el diálogo, los avisos y, en
+    el celular, la barra de abajo para cambiar de sección.
+
+    Cada pantalla es de un negocio (`negocio`: el lavadero o el parqueadero, ver
+    app/web/negocios.py) y solo muestra las secciones de ese negocio. Lo del lavadero (el bot,
+    el turno nuevo, los comentarios) no sale en el parqueadero. El nombre del negocio, arriba a
+    la izquierda, lleva a /inicio para cambiar de negocio; esa pantalla no es de ninguno. -#}
 {% extends "base.html" %}
 {% import "_iconos.html" as iconos %}
 {% import "_contador_comentarios.html" as contadores with context %}
 
 {% block cuerpo %}
-{% set secciones = [
-  ("fila", "/fila", "Fila en vivo", "Fila", "fila"),
-  ("clientes", "/clientes", "Clientes", "Clientes", "cliente"),
-  ("comentarios", "/comentarios", "Comentarios", "Comentarios", "actividad"),
-  ("parqueadero", "/parqueadero", "Parqueadero", "Parqueo", "parqueo"),
-  ("configuracion", "/configuracion", "Configuración", "Ajustes", "ajustes"),
-] %}
+{% set en_el_lavadero = negocio is not none and negocio.clave == "lavadero" %}
 <header class="encabezado">
   <div class="encabezado__contenido">
-    <a class="marca" href="/fila">{{ iconos.icono("gota", 28) }}<span class="marca__nombre">Auto Ibaguer</span></a>
-    <nav class="navegacion" aria-label="Secciones del dashboard">
-      {% for clave, ruta, nombre, _, _ in secciones %}
-      <a href="{{ ruta }}"{% if seccion == clave %} aria-current="page"{% endif %}>{{ nombre }}{% if clave == "comentarios" %}{{ contadores.contador("contador-comentarios") }}{% endif %}</a>
+    {% if negocio %}
+    <a class="marca marca--negocio" href="/inicio">
+      {{ iconos.icono("gota", 28) }}
+      <span class="marca__textos">
+        <span class="marca__empresa">Auto Ibaguer</span>
+        <span class="marca__nombre">{{ negocio.nombre }}{{ iconos.icono("cambiar", 16, 2.25) }}<span class="solo-lector">: cambiar de negocio</span></span>
+      </span>
+    </a>
+    <nav class="navegacion" aria-label="Secciones del {{ negocio.nombre|lower }}">
+      {% for s in negocio.secciones %}
+      <a href="{{ s.ruta }}"{% if seccion == s.clave %} aria-current="page"{% endif %}>{{ s.nombre }}{% if s.clave == "comentarios" %}{{ contadores.contador("contador-comentarios") }}{% endif %}</a>
       {% endfor %}
     </nav>
+    {% else %}
+    <a class="marca" href="/inicio">{{ iconos.icono("gota", 28) }}<span class="marca__nombre">Auto Ibaguer</span></a>
+    {% endif %}
+    {% if en_el_lavadero %}
     <div hidden hx-get="/comentarios/contador" hx-trigger="every 60s, comentarios-cambiados from:body" hx-swap="none"></div>
+    {% endif %}
     <div class="encabezado__acciones">
+      {% if en_el_lavadero %}
       <span class="estado-bot{% if not bot_activo %} estado-bot--apagado{% endif %}">
         <span class="estado-bot__punto" aria-hidden="true"></span>{{ "Bot activo" if bot_activo else "Bot apagado" }}
       </span>
@@ -29,6 +41,7 @@
               hx-get="/turnos/nuevo" hx-target="#dialogo-contenido">
         {{ iconos.icono("mas", 18, 2.5) }}<span class="boton-nuevo__texto">Nuevo turno</span>
       </button>
+      {% endif %}
       <form method="post" action="/salir">
         <button type="submit" class="boton-salir">Salir</button>
       </form>
@@ -38,11 +51,13 @@
 
 {% block contenido %}{% endblock %}
 
-<nav class="navegacion-celular" aria-label="Secciones">
-  {% for clave, ruta, _, corto, icono in secciones %}
-  <a href="{{ ruta }}"{% if seccion == clave %} aria-current="page"{% endif %}>{{ iconos.icono(icono, 22) }}{{ corto }}{% if clave == "comentarios" %}{{ contadores.contador("contador-comentarios-celular") }}{% endif %}</a>
+{% if negocio %}
+<nav class="navegacion-celular" aria-label="Secciones del {{ negocio.nombre|lower }}">
+  {% for s in negocio.secciones %}
+  <a href="{{ s.ruta }}"{% if seccion == s.clave %} aria-current="page"{% endif %}>{{ iconos.icono(s.icono, 22) }}{{ s.corto }}{% if s.clave == "comentarios" %}{{ contadores.contador("contador-comentarios-celular") }}{% endif %}</a>
   {% endfor %}
 </nav>
+{% endif %}
 
 <dialog id="dialogo" class="dialogo" aria-labelledby="dialogo-titulo">
   <div id="dialogo-contenido" class="dialogo__contenido"></div>

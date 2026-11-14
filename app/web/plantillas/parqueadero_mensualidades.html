@@ -1,6 +1,5 @@
 {% extends "pagina.html" %}
 {% import "_iconos.html" as iconos %}
-{% from "_parqueadero_atajos.html" import atajos %}
 
 {% block titulo %}Mensualidades · Auto Ibaguer{% endblock %}
 
@@ -13,7 +12,6 @@
     </div>
     <button type="button" class="boton" hx-get="/parqueadero/mensualidades/nueva" hx-target="#dialogo-contenido">{{ iconos.icono("mas", 18, 2.5) }}Nueva mensualidad</button>
   </div>
-  {{ atajos("mensualidades") }}
 
   <section class="lista" id="lista-mensualidades" aria-label="Mensualidades activas">
     {% include "_parqueadero_mensualidades.html" %}

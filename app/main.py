@@ -29,6 +29,7 @@ from app.web import (
     en_vivo,
     entrar,
     fila,
+    inicio,
     mensajes,
     parqueadero,
     probar_bot,
@@ -81,6 +82,7 @@ app.mount(
 )
 for modulo in (
     entrar,
+    inicio,
     fila,
     clientes,
     comentarios,

@@ -80,6 +80,18 @@ code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-si
 .marca:hover { color: #fff; }
 .marca .icono { color: var(--gota); }
 .marca__nombre { font-family: var(--condensada); font-weight: 700; font-size: 23px; letter-spacing: 0.01em; }
+/* Dentro de un negocio, la marca dice en cuál se está ("Lavadero", "Parqueadero") y lleva a
+   /inicio para cambiar: por eso se resalta al pasar por encima, como un botón. */
+.marca--negocio { margin-left: -8px; padding: 2px 10px 2px 8px; border-radius: 10px; min-height: 44px; }
+.marca--negocio:hover { background: var(--encabezado-2); }
+.marca__textos { display: flex; flex-direction: column; min-width: 0; }
+.marca__empresa {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.2;
+  color: var(--encabezado-texto);
+}
+.marca--negocio .marca__nombre { display: inline-flex; align-items: center; gap: 6px; line-height: 1.05; }
+.marca--negocio .marca__nombre .icono { color: var(--encabezado-texto); }
+.marca--negocio:hover .marca__nombre .icono { color: #fff; }
 .navegacion { display: none; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; }
 .navegacion a {
   display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px;
@@ -579,7 +591,8 @@ legend { padding: 0; margin-bottom: 8px; }
 
 /* Barra de secciones del celular */
 .navegacion-celular {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* Una columna igual por cada sección del negocio: el lavadero tiene 4 y el parqueadero 5. */
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
   background: var(--superficie); border-top: 1px solid var(--borde); padding: 4px 4px max(8px, env(safe-area-inset-bottom));
 }
 .navegacion-celular a {
@@ -968,7 +981,7 @@ legend { padding: 0; margin-bottom: 8px; }
 }
 
 @media (max-width: 719px) {
-  body { padding-bottom: 76px; }
+  body:has(.navegacion-celular) { padding-bottom: 76px; }
   .avisos { bottom: calc(84px + env(safe-area-inset-bottom)); }
   .solo-celular { display: inline-flex; }
   .boton-salir { padding: 0 6px; }
@@ -1014,23 +1027,77 @@ legend { padding: 0; margin-bottom: 8px; }
   .dia span { width: 100%; height: auto; aspect-ratio: 1; }
 }
 
+/* Celulares angostos (360 px, los Android más comunes): el encabezado del lavadero (negocio,
+   bot, turno nuevo y Salir) cabe en una sola línea si se aprietan un poco los espacios. */
+@media (max-width: 374.98px) {
+  .encabezado__contenido { column-gap: 8px; }
+  .encabezado__acciones { column-gap: 6px; }
+  .marca--negocio { margin-left: -6px; padding: 2px 6px; }
+  .boton-salir { padding: 0 4px; }
+}
+
 @media (min-width: 720px) {
   .navegacion-celular { display: none; }
   .titular--siempre h1 { font-size: 30px; }
 }
 
 /* =====================================================================================
-   Parqueadero: entradas y salidas, caja, mensualidades y tarifas
+   Elegir negocio (/inicio): el lavadero o el parqueadero, con lo de hoy de cada uno
    =================================================================================== */
 
-.atajos { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
-.atajos a {
-  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px;
-  border-radius: 999px; background: var(--superficie); border: 1px solid var(--borde);
-  color: var(--tinta); font-size: 14px; font-weight: 600; text-decoration: none;
+.elegir { max-width: 1040px; }
+.negocios { display: grid; gap: 16px; }
+.negocio {
+  position: relative; display: flex; flex-direction: column; gap: 14px; padding: 20px;
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: 16px;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.atajos a:hover { border-color: var(--azul); color: var(--azul-texto); }
-.atajos a[aria-current="page"] { background: var(--tinta); border-color: var(--tinta); color: #fff; }
+.negocio:hover { border-color: var(--azul); box-shadow: 0 10px 28px rgba(14, 26, 43, 0.08); }
+/* El enlace es el nombre, pero cubre toda la tarjeta: se toca en cualquier parte. */
+.negocio__enlace { color: var(--tinta); text-decoration: none; }
+.negocio__enlace::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.negocio__enlace:hover { color: var(--tinta); }
+.negocio__enlace:focus-visible { outline: none; }
+.negocio:has(.negocio__enlace:focus-visible) { outline: 3px solid var(--gota); outline-offset: 2px; }
+.negocio__cabeza { display: flex; align-items: center; gap: 14px; }
+.negocio__icono {
+  flex: none; width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center;
+  background: var(--azul-claro); color: var(--azul);
+}
+.negocio h2 { flex: 1 1 auto; min-width: 0; font-family: var(--condensada); font-size: 32px; font-weight: 700; line-height: 1; }
+.negocio__flecha { display: flex; color: var(--tinta-suave); transition: transform 0.15s; }
+.negocio:hover .negocio__flecha { color: var(--azul); transform: translateX(3px); }
+.negocio__descripcion { color: var(--tinta-suave); font-size: 15px; line-height: 1.45; }
+.negocio__cuantos { margin: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.negocio__cuantos > div {
+  display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 4px; min-width: 0;
+  padding: 10px 12px; border-radius: 12px; background: var(--fondo);
+}
+.negocio__cuantos dt { font-size: 13px; color: var(--tinta-suave); }
+.negocio__cuantos dd { margin: 0; font-size: 30px; }
+.negocio__plata {
+  margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px;
+  padding: 12px 14px; border-radius: 12px; background: var(--azul-resalte); border: 1px solid var(--azul-resalte-borde);
+}
+.negocio__plata dt { font-size: 15px; font-weight: 600; color: var(--tinta-gris); }
+.negocio__plata dd { margin: 0; font-size: 30px; }
+.negocio__estado { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 1.45; color: var(--tinta-suave); }
+.negocio__estado strong { color: var(--tinta); }
+.negocio__estado--alerta { padding: 8px 12px; border-radius: 10px; background: var(--naranja-claro); color: var(--naranja-texto); }
+.negocio__estado--alerta strong { color: var(--naranja-oscuro); }
+.negocio__punto { flex: none; width: 9px; height: 9px; margin-top: 6px; border-radius: 999px; background: var(--verde); }
+.negocio__punto--apagado { background: var(--pendiente); }
+.negocio__punto--alerta { background: var(--naranja); }
+
+@media (min-width: 720px) {
+  .elegir { padding-top: 40px; gap: 24px; }
+  .negocios { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .negocio { padding: 24px; }
+}
+
+/* =====================================================================================
+   Parqueadero: entradas y salidas, caja, mensualidades y tarifas
+   =================================================================================== */
 
 .estado-caja { display: flex; align-items: center; gap: 8px; color: var(--verde); font-weight: 600; font-size: 15px; }
 .estado-caja a { color: var(--azul-texto); }

@@ -3,7 +3,6 @@
     también el reporte para los jefes: se imprime, se manda por WhatsApp o por correo. La
     semana, el mes y el rango traen las gráficas, con sus filtros. -#}
 {% import "_iconos.html" as iconos %}
-{% from "_parqueadero_atajos.html" import atajos %}
 {% from "_grafica.html" import grafica %}
 {% macro dif(d) -%}
 <span class="{{ 'diferencia--cuadra' if d == 0 else ('diferencia--sobra' if d > 0 else 'diferencia--falta') }}">{{ "Cuadró" if d == 0 else (("Sobraron " if d > 0 else "Faltaron ") ~ (d|abs)|pesos) }}</span>
@@ -23,7 +22,6 @@
       <p>Lo que se recogió y lo que pasó. Cada cobro cuenta el día en que se hizo.</p>
     </div>
   </div>
-  {{ atajos("balance") }}
 
   <div class="balance__barra">
     {#- Al cambiar de día a semana o a mes, se queda en la misma fecha. -#}

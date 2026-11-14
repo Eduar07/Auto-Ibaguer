@@ -1,0 +1,60 @@
+{% extends "pagina.html" %}
+{#- Elegir negocio, justo después de entrar: el lavadero o el parqueadero, cada uno con lo de
+    hoy. Toda la tarjeta lleva al negocio (el enlace es el nombre y cubre la tarjeta). -#}
+{% import "_iconos.html" as iconos %}
+{% macro veces(n, una, varias) %}{{ n }} {{ una if n == 1 else varias }}{% endmacro %}
+
+{% macro tarjeta(n, cuantos, plata, alerta=False) %}
+<article class="negocio" aria-labelledby="negocio-{{ n.clave }}">
+  <div class="negocio__cabeza">
+    <span class="negocio__icono">{{ iconos.icono(n.icono, 30) }}</span>
+    <h2 id="negocio-{{ n.clave }}"><a class="negocio__enlace" href="{{ n.inicio }}">{{ n.nombre }}</a></h2>
+    <span class="negocio__flecha">{{ iconos.icono("adelante", 24) }}</span>
+  </div>
+  <p class="negocio__descripcion">{{ n.descripcion }}</p>
+  <dl class="negocio__cuantos">
+    {% for nombre, valor in cuantos %}
+    <div><dt>{{ nombre }}</dt><dd class="numero">{{ valor }}</dd></div>
+    {% endfor %}
+  </dl>
+  <dl class="negocio__plata">
+    <dt>{{ plata[0] }}</dt><dd class="numero">{{ plata[1]|pesos }}</dd>
+  </dl>
+  <p class="negocio__estado{% if alerta %} negocio__estado--alerta{% endif %}">{{ caller() }}</p>
+</article>
+{% endmacro %}
+
+{% block titulo %}Elegir negocio · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla elegir">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>{{ saludo }}, {{ usuario }}</h1>
+      <p>¿En cuál negocio vas a trabajar? Para cambiar después, toca el nombre del negocio arriba a la izquierda.</p>
+    </div>
+  </div>
+
+  <div class="negocios">
+    {% set l = hoy_lavadero %}
+    {% call tarjeta(lavadero, [("En espera", l.en_espera), ("En lavado", l.en_lavado), ("Por cobrar", l.por_cobrar)], ("Cobrado hoy", l.cobrado)) %}
+      <span class="negocio__punto{% if not l.bot_activo %} negocio__punto--apagado{% endif %}" aria-hidden="true"></span>
+      <span>{{ "Bot activo" if l.bot_activo else "Bot apagado" }}{% if l.cobros %} · {{ veces(l.cobros, "cobro", "cobros") }} hoy{% endif %}{% if l.comentarios_pendientes %} · <strong>{{ veces(l.comentarios_pendientes, "comentario", "comentarios") }} por atender</strong>{% endif %}</span>
+    {% endcall %}
+
+    {% set p = hoy_parqueadero %}
+    {% call tarjeta(parqueadero, [("Adentro", p.adentro), ("Salieron hoy", p.salidas)], ("Recogido hoy", p.recogido), alerta=p.caja_de_otro_dia) %}
+      {% if p.caja_de_otro_dia %}
+      <span class="negocio__punto negocio__punto--alerta" aria-hidden="true"></span>
+      <span><strong>La caja está abierta desde {{ cuando_paso(p.caja.abierta_en) }}</strong> Ciérrala y abre la de hoy.</span>
+      {% elif p.caja %}
+      <span class="negocio__punto" aria-hidden="true"></span>
+      <span>Caja abierta {{ cuando_paso(p.caja.abierta_en) }}</span>
+      {% else %}
+      <span class="negocio__punto negocio__punto--apagado" aria-hidden="true"></span>
+      <span>Caja cerrada</span>
+      {% endif %}
+    {% endcall %}
+  </div>
+</main>
+{% endblock %}

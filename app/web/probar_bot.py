@@ -71,7 +71,7 @@ def pagina_probar_bot(request: Request, sesion: SesionBD, _: Admin, celular: str
         "desde": _ultimo_aviso(sesion, telefono),
         "error": error,
     }
-    return pagina(request, sesion, "probar_bot.html", contexto, seccion="configuracion")
+    return pagina(request, sesion, "probar_bot.html", contexto, seccion="lavadero/configuracion")
 
 
 @router.post("/probar-bot/mensaje", response_class=HTMLResponse)

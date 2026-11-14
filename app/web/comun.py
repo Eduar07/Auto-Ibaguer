@@ -28,6 +28,7 @@ from app.config import obtener_entorno
 from app.db.sesion import obtener_sesion
 from app.turnos.estados import NOMBRE_DEL_ESTADO, EstadoTurno, MedioPago
 from app.web import sesiones
+from app.web.negocios import LAVADERO, de_la_seccion
 from app.web.tablas import Administrador
 
 SesionBD = Annotated[Session, Depends(obtener_sesion)]
@@ -238,13 +239,16 @@ def pagina(
     *,
     seccion: str,
 ) -> HTMLResponse:
-    """Una pantalla completa, con el encabezado: en qué sección está, si el bot está activo y
-    cuántos comentarios de los clientes faltan por atender."""
-    encabezado = {
-        "seccion": seccion,
-        "bot_activo": leer_parametros(sesion).bot_activo,
-        "comentarios_pendientes": comentarios_por_atender(sesion),
-    }
+    """Una pantalla completa, con el encabezado de su negocio: `seccion` dice de cuál y en qué
+    parte está ("lavadero/fila", "parqueadero/caja"). En el lavadero, además, si el bot está
+    activo y cuántos comentarios de los clientes faltan por atender."""
+    negocio, clave = de_la_seccion(seccion)
+    encabezado: dict[str, Any] = {"seccion": clave, "negocio": negocio}
+    if negocio is LAVADERO:
+        encabezado |= {
+            "bot_activo": leer_parametros(sesion).bot_activo,
+            "comentarios_pendientes": comentarios_por_atender(sesion),
+        }
     return html(request, plantilla, {**contexto, **encabezado})
 
 

@@ -1,0 +1,77 @@
+{#- El resultado del mes de los dos negocios (se vuelve a pintar entero al cerrar el mes o al
+    anotar o anular un gasto). -#}
+{% import "_iconos.html" as iconos %}
+<div id="resultados" class="resultados">
+  <div class="balance__barra">
+    <div class="balance__navegacion">
+      <a class="boton-texto" href="/resultados?mes={{ anterior }}">{{ iconos.icono("volver", 18, 2.2) }}Mes anterior</a>
+      <strong class="balance__periodo">{{ nombre_del_mes|capitalize }}</strong>
+      {% if siguiente %}<a class="boton-texto" href="/resultados?mes={{ siguiente }}">Mes siguiente</a>{% endif %}
+    </div>
+    <a class="boton boton--borde" href="/resultados/exportar?mes={{ clave_del_mes }}" download>Descargar para el contador</a>
+  </div>
+
+  <section class="panel" aria-labelledby="t-total">
+    <h2 id="t-total">Los dos juntos</h2>
+    <div class="cifras">
+      <div class="cifra"><span class="cifra__valor">{{ total.ingresos|pesos }}</span><span class="cifra__nombre">entró</span></div>
+      <div class="cifra"><span class="cifra__valor">{{ total.gastos|pesos }}</span><span class="cifra__nombre">se gastó</span></div>
+      <div class="cifra"><span class="cifra__valor {{ 'diferencia--falta' if total.resultado < 0 else '' }}">{{ total.resultado|pesos }}</span><span class="cifra__nombre">{{ "quedó" if total.resultado >= 0 else "se perdió" }}</span></div>
+    </div>
+  </section>
+
+  <div class="dos-columnas dos-columnas--apiladas-en-celular resultados__negocios">
+    {% for r, por_que_no in resultados %}
+    <section class="panel" aria-labelledby="t-{{ r.negocio.value }}">
+      <div class="panel__cabeza">
+        <h2 id="t-{{ r.negocio.value }}">{{ r.nombre }}</h2>
+        {% if r.cierre %}<span class="insignia insignia--gris">Cerrado</span>{% else %}<span class="insignia insignia--verde">Abierto</span>{% endif %}
+      </div>
+      <table class="tabla-caja">
+        <tbody>
+          {% for medio, valor in r.por_medio.items() %}<tr><th scope="row">{{ nombre_del_medio[medio] }}</th><td>{{ valor|pesos }}</td></tr>{% endfor %}
+          <tr class="tabla-caja__total"><th scope="row">Entró</th><td><strong>{{ r.ingresos|pesos }}</strong></td></tr>
+          {% for nombre, total in r.gastos %}<tr><th scope="row">Gasto · {{ nombre }}</th><td class="diferencia--falta">−{{ total|pesos }}</td></tr>{% endfor %}
+          <tr class="tabla-caja__total"><th scope="row">Se gastó</th><td><strong>{{ "−" if r.total_gastos else "" }}{{ r.total_gastos|pesos }}</strong></td></tr>
+          <tr class="tabla-caja__total"><th scope="row">{{ "Quedó" if r.resultado >= 0 else "Se perdió" }}</th><td><strong class="{{ 'diferencia--falta' if r.resultado < 0 else 'diferencia--cuadra' }}">{{ r.resultado|pesos }}</strong></td></tr>
+        </tbody>
+      </table>
+      {% if r.retiros or r.consignaciones %}<p class="suave">Aparte, sin ser gasto: retiros {{ r.retiros|pesos }} · consignaciones {{ r.consignaciones|pesos }}.</p>{% endif %}
+      {% if r.cierre %}
+      <p class="ayuda">Se cerró el {{ cuando_cerro(r.cierre) }}, {{ quien_cerro(r.cierre) }}. Sus cajas, salidas y gastos ya no se cambian: lo que haya que arreglar va en el mes siguiente.</p>
+      {% elif por_que_no %}
+      <p class="ayuda">{{ por_que_no }}</p>
+      {% else %}
+      <button type="button" class="boton boton--oscuro" hx-get="/resultados/cerrar?negocio={{ r.negocio.value }}&amp;mes={{ clave_del_mes }}" hx-target="#dialogo-contenido">Cerrar {{ nombre_del_mes }} para el contador</button>
+      {% endif %}
+    </section>
+    {% endfor %}
+  </div>
+
+  <section class="lista" aria-labelledby="t-gastos-fuera">
+    <div class="lista__cabeza">
+      <h3 id="t-gastos-fuera">Gastos pagados por fuera de la caja</h3>
+      <button type="button" class="boton boton--borde boton--pequeno" hx-get="/resultados/gastos/nuevo?mes={{ clave_del_mes }}" hx-target="#dialogo-contenido">Anotar gasto</button>
+    </div>
+    {% if gastos %}
+    <ul class="movimientos">
+      {% for f in gastos %}{% set g = f.gasto %}
+      <li{% if g.anulado %} class="movimientos--anulado"{% endif %}>
+        <time>{{ g.fecha.day }}/{{ g.fecha.month }}</time>
+        <span class="movimientos__que">
+          <strong>{{ f.negocio }} · {{ f.categoria }}</strong>
+          <span class="suave">{{ g.descripcion }} · {{ f.registro }}</span>
+          {% if g.anulado %}<span class="suave">Anulado por {{ f.anulo }}: {{ g.motivo_anulacion }}</span>{% endif %}
+        </span>
+        <span class="movimientos__valor">
+          <strong class="{{ 'tachado' if g.anulado else 'diferencia--falta' }}">−{{ g.valor|pesos }}</strong>
+          {% if not g.anulado %}<button type="button" class="boton-texto movimientos__corregir" hx-get="/resultados/gastos/{{ g.id }}/anular" hx-target="#dialogo-contenido">Anular</button>{% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="lista__vacia">Ninguno este mes. Aquí van el arriendo por transferencia, la luz por Nequi, la nómina por el banco: lo que no salió del cajón. Lo que sí salió se anota en la caja con <strong>Registrar salida</strong>.</p>
+    {% endif %}
+  </section>
+</div>

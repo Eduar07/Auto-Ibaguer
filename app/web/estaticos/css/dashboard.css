@@ -1323,3 +1323,10 @@ form:not(:has(input[name="tipo"][value="gasto"]:checked)) .solo-si-es-gasto { di
   .parqueo__acciones { grid-column: auto; justify-content: flex-end; }
   .titular--siempre:has(> .boton) { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
 }
+
+/* --- Resultado del mes (los dos negocios juntos) ------------------------------------ */
+
+.resultados { display: flex; flex-direction: column; gap: 16px; }
+.resultados__negocios { align-items: start; }
+.tabla-caja__total th, .tabla-caja__total td { border-top: 2px solid var(--linea); }
+.elegir__juntos { display: flex; justify-content: center; margin: 8px 0 0; }

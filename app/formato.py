@@ -115,6 +115,11 @@ def fecha(dia: date) -> str:
     return f"{dia.day} de {MESES[dia.month - 1]} de {dia.year}"
 
 
+def mes_y_año(dia: date) -> str:
+    """date(2026, 10, 3) -> "octubre de 2026" """
+    return f"{MESES[dia.month - 1]} de {dia.year}"
+
+
 def dia_y_mes(dia: date) -> str:
     """date(2026, 10, 3) -> "3 de octubre" """
     return f"{dia.day} de {MESES[dia.month - 1]}"

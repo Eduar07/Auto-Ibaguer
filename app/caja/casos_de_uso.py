@@ -8,7 +8,7 @@ pide un candado en PostgreSQL: el segundo espera a que termine el primero y ve l
 """
 
 from collections.abc import Callable, Sequence
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -23,12 +23,25 @@ from app.caja.errores import (
     ValorInvalido,
 )
 from app.caja.estados import CategoriaDeGasto, DatoDeCaja, Negocio, TipoDeSalida
-from app.caja.tablas import Caja, CorreccionCobro, CorreccionDeCaja, SalidaDeCaja
+from app.caja.tablas import (
+    Caja,
+    CierreDeMes,
+    CorreccionCobro,
+    CorreccionDeCaja,
+    GastoFueraDeCaja,
+    SalidaDeCaja,
+)
 from app.errores import ReglaDelNegocio
 
 # Lo que debía haber en el cajón al cerrar (la base más lo que entró en efectivo). Lo dice
 # cada negocio, porque cada uno sabe qué cobros entran a su caja.
 EfectivoEsperado = Callable[[Session, Caja], int]
+
+
+def dia_de_la_caja(caja: Caja) -> date:
+    """El día en que se abrió, en Bogotá: una caja cerrada pasada la medianoche sigue siendo
+    del día en que se abrió (y de su mes)."""
+    return tiempo.hora_local(caja.abierta_en).date()
 
 
 def candado(sesion: Session, nombre: str) -> None:
@@ -164,6 +177,27 @@ def motivo_de_la_correccion(motivo: str | None) -> str:
     return limpio[:200]
 
 
+def mes_cerrado(sesion: Session, negocio: Negocio, dia: date) -> CierreDeMes | None:
+    """El cierre del mes de ese día, si ese mes del negocio ya se entregó al contador."""
+    return sesion.scalars(
+        select(CierreDeMes).where(
+            CierreDeMes.negocio == negocio, CierreDeMes.mes == dia.replace(day=1)
+        )
+    ).one_or_none()
+
+
+def que_el_mes_siga_abierto(
+    sesion: Session, negocio: Negocio, dia: date, error: type[ReglaDelNegocio] = ValorInvalido
+) -> None:
+    """Un mes entregado al contador ya no se cambia: lo que haya que arreglar va en el mes
+    siguiente (así las cifras que él tiene siguen siendo las del sistema)."""
+    if mes_cerrado(sesion, negocio, dia) is not None:
+        raise error(
+            f"{formato.mes_y_año(dia).capitalize()} ya se cerró para el contador: lo que haya "
+            "que arreglar se anota en el mes siguiente."
+        )
+
+
 def que_no_este_vencida(caja: Caja, ahora: datetime, error: type[ReglaDelNegocio]) -> None:
     if not reglas.caja_corregible(caja.cerrada_en, ahora):
         raise error(
@@ -190,6 +224,7 @@ def caja_del_cobro(sesion: Session, negocio: Negocio, caja_id: int | None, ahora
     if caja is None:  # la llave foránea no deja un cobro sin caja; por si acaso
         raise CobroNoCorregible("La caja de ese cobro no existe.")
     que_no_este_vencida(caja, ahora, CobroNoCorregible)
+    que_el_mes_siga_abierto(sesion, negocio, dia_de_la_caja(caja), CobroNoCorregible)
     return caja
 
 
@@ -209,6 +244,7 @@ def _caja_para_corregir(sesion: Session, negocio: Negocio, caja_id: int, ahora: 
     if caja is None:
         raise CajaNoCorregible("Esa caja no existe.")
     que_no_este_vencida(caja, ahora, CajaNoCorregible)
+    que_el_mes_siga_abierto(sesion, negocio, dia_de_la_caja(caja), CajaNoCorregible)
     return caja
 
 
@@ -392,6 +428,7 @@ def anular_salida(
         raise CajaNoCorregible("La caja de esa salida no existe.")
     if not caja.abierta:
         que_no_este_vencida(caja, ahora, CajaNoCorregible)
+        que_el_mes_siga_abierto(sesion, negocio, dia_de_la_caja(caja), CajaNoCorregible)
     correccion = CorreccionDeCaja(
         dato=DatoDeCaja.SALIDA,
         caja_id=caja.id,
@@ -421,3 +458,81 @@ def salidas_por_caja(sesion: Session, caja_ids: Sequence[int]) -> dict[int, int]
         .group_by(SalidaDeCaja.caja_id)
     )
     return {caja_id: int(total) for caja_id, total in filas}
+
+
+# --- Los gastos que no salen del cajón ---------------------------------------------------------
+
+
+def registrar_gasto_fuera_de_caja(
+    sesion: Session,
+    negocio: Negocio,
+    *,
+    fecha: date | None,
+    categoria: CategoriaDeGasto | str | None,
+    descripcion: str,
+    valor: int | None,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> GastoFueraDeCaja:
+    """Anota un gasto pagado por fuera del cajón (el arriendo por transferencia, la luz por
+    Nequi): no toca ninguna caja, pero sí el resultado del mes."""
+    ahora = ahora or tiempo.ahora()
+    _, categoria = _tipo_y_categoria(TipoDeSalida.GASTO, categoria)
+    limpia = " ".join((descripcion or "").split())
+    if not limpia:
+        raise ValorInvalido("Escribe qué se pagó: sale en el resultado del mes.")
+    if len(limpia) > LARGO_DE_LA_DESCRIPCION:
+        raise ValorInvalido(
+            f"La descripción es muy larga: máximo {LARGO_DE_LA_DESCRIPCION} letras."
+        )
+    if valor is None or valor <= 0:
+        raise ValorInvalido("Escribe cuánto se pagó.")
+    reglas.sin_ceros_de_mas(valor, reglas.VALOR_MAXIMO_EN_LA_CAJA)
+    hoy = tiempo.hora_local(ahora).date()
+    if fecha is None:
+        raise ValorInvalido("Escribe el día en que se pagó.")
+    if fecha > hoy:
+        raise ValorInvalido(
+            "El gasto ya tiene que estar pagado: la fecha no puede ser después de hoy."
+        )
+    que_el_mes_siga_abierto(sesion, negocio, fecha)
+    gasto = GastoFueraDeCaja(
+        negocio=negocio,
+        fecha=fecha,
+        categoria=categoria,
+        descripcion=limpia,
+        valor=valor,
+        registrado_en=ahora,
+        registrado_por=administrador_id,
+    )
+    sesion.add(gasto)
+    sesion.flush()
+    return gasto
+
+
+def anular_gasto_fuera_de_caja(
+    sesion: Session,
+    gasto_id: int,
+    *,
+    motivo: str,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> GastoFueraDeCaja:
+    """Anula un gasto que no fue: queda tachado, con motivo y quién; no se borra."""
+    ahora = ahora or tiempo.ahora()
+    limpio = " ".join((motivo or "").split())
+    if not limpio:
+        raise ValorInvalido("Escribe por qué se anula: queda en el resultado del mes.")
+    gasto = sesion.execute(
+        select(GastoFueraDeCaja).where(GastoFueraDeCaja.id == gasto_id).with_for_update()
+    ).scalar_one_or_none()
+    if gasto is None:
+        raise ValorInvalido("Ese gasto no existe.")
+    if gasto.anulado:
+        raise ValorInvalido("Ese gasto ya estaba anulado.")
+    que_el_mes_siga_abierto(sesion, gasto.negocio, gasto.fecha)
+    gasto.anulado_en = ahora
+    gasto.anulado_por = administrador_id
+    gasto.motivo_anulacion = limpio[:200]
+    sesion.flush()
+    return gasto

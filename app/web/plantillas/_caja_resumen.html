@@ -1,31 +1,34 @@
-{#- Lo que entró a una caja del parqueadero, por medio de pago, y lo que debe haber en el
-    cajón. Lo usan la caja abierta y la de un cierre anterior. -#}
+{#- Lo que entró a una caja (del lavadero o del parqueadero), por medio de pago, y lo que debe
+    haber en el cajón. Lo usan la caja abierta y la de un cierre anterior. Las cuentas de al
+    lado del total (`r.cifras`) y las columnas (`r.columnas`) las pone cada negocio: si todo lo
+    que entra es de una sola clase, basta el total por medio. -#}
 {% import "_iconos.html" as iconos %}
 {% macro resumen_de_caja(r) -%}
 {% set c = r.caja %}
 {% set cuadre = r.cuadre %}
 <div class="cifras">
   <div class="cifra"><span class="cifra__valor">{{ cuadre.total|pesos }}</span><span class="cifra__nombre">entró en total</span></div>
-  <div class="cifra"><span class="cifra__valor">{{ r.salidas }}</span><span class="cifra__nombre">salida{{ "s" if r.salidas != 1 }}</span></div>
-  {% if r.mensualidades %}
-  <div class="cifra"><span class="cifra__valor">{{ r.mensualidades }}</span><span class="cifra__nombre">mensualidad{{ "es" if r.mensualidades != 1 }}</span></div>
-  {% endif %}
+  {% for valor, nombre in r.cifras %}
+  <div class="cifra"><span class="cifra__valor">{{ valor }}</span><span class="cifra__nombre">{{ nombre }}</span></div>
+  {% endfor %}
 </div>
 <div class="tabla-desplazable">
   <table class="tabla-caja">
     <thead>
-      <tr><th scope="col">Medio de pago</th><th scope="col">Salidas</th><th scope="col">Mensualidades</th><th scope="col">Total</th></tr>
+      {% set por_columna = r.columnas|length > 1 %}
+      <tr><th scope="col">Medio de pago</th>{% if por_columna %}{% for columna in r.columnas %}<th scope="col">{{ columna }}</th>{% endfor %}{% endif %}<th scope="col">Total</th></tr>
     </thead>
     <tbody>
-      {% for medio, salidas, mensualidades in lineas_del_cuadre(cuadre) %}
+      {% for medio, valores, total in r.lineas %}
       <tr>
         <th scope="row">{{ medio.value|capitalize }}</th>
-        <td>{{ salidas|pesos }}</td>
-        <td>{{ mensualidades|pesos }}</td>
-        <td><strong>{{ (salidas + mensualidades)|pesos }}</strong></td>
+        {% if por_columna %}{% for valor in valores %}
+        <td>{{ valor|pesos }}</td>
+        {% endfor %}{% endif %}
+        <td><strong>{{ total|pesos }}</strong></td>
       </tr>
       {% else %}
-      <tr><td colspan="4" class="suave">Todavía no ha entrado plata a esta caja.</td></tr>
+      <tr><td colspan="{{ r.columnas|length + 2 if por_columna else 2 }}" class="suave">Todavía no ha entrado plata a esta caja.</td></tr>
       {% endfor %}
     </tbody>
   </table>

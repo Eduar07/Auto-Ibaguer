@@ -3,7 +3,7 @@
     botón y la caja el de corregir el conteo o la base. Se vuelve a pintar sola después de
     corregir. -#}
 {% import "_iconos.html" as iconos %}
-{% from "_parqueadero_resumen_caja.html" import resumen_de_caja, movimientos_de_caja, correcciones_de_caja %}
+{% from "_caja_resumen.html" import resumen_de_caja, movimientos_de_caja, correcciones_de_caja %}
 {% set c = resumen.caja %}
 <section class="panel" aria-labelledby="t-caja">
   <div class="panel__cabeza">
@@ -16,11 +16,11 @@
   {{ resumen_de_caja(resumen) }}
   {% if c.nota_cierre %}<p class="suave">Nota del cierre: {{ c.nota_cierre }}</p>{% endif %}
   <div class="botones">
-    <button type="button" class="boton boton--borde" data-imprimir="/parqueadero/caja/{{ c.id }}/ticket">{{ iconos.icono("imprimir", 18) }}Imprimir resumen</button>
+    <button type="button" class="boton boton--borde" data-imprimir="{{ rutas.caja }}/{{ c.id }}/ticket">{{ iconos.icono("imprimir", 18) }}Imprimir resumen</button>
     {% if se_puede_corregir %}
-    <button type="button" class="boton boton--borde" hx-get="/parqueadero/caja/{{ c.id }}/corregir" hx-target="#dialogo-contenido">{{ "Corregir el conteo o la base" if c.cerrada_en else "Corregir la base" }}</button>
+    <button type="button" class="boton boton--borde" hx-get="{{ rutas.caja }}/{{ c.id }}/corregir" hx-target="#dialogo-contenido">{{ "Corregir el conteo o la base" if c.cerrada_en else "Corregir la base" }}</button>
     {% endif %}
-    <a class="boton-texto" href="/parqueadero/caja">{{ iconos.icono("volver", 18, 2.2) }}Volver a la caja</a>
+    <a class="boton-texto" href="{{ rutas.caja }}">{{ iconos.icono("volver", 18, 2.2) }}Volver a la caja</a>
   </div>
   {% if c.cerrada_en %}
   <p class="ayuda">

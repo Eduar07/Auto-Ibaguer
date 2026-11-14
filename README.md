@@ -76,6 +76,7 @@ Las secciones del **Lavadero**:
 | Botón principal de cada turno | **Marcar llegada** (llamado), **Pasar a puesto** (ya llegó), **Marcar listo** (en el puesto) y **Cobrar** (listo). |
 | Menú ⋯ de cada turno | Marcar llegada, corregir datos (tipo de vehículo, placa, servicio) y cancelar. |
 | **Nuevo turno** | Para el cliente que llega sin escribir por WhatsApp. Muestra antes qué número le toca y cuánto esperaría. |
+| **Caja** | La caja del lavadero, aparte de la del parqueadero y con las mismas partes: se abre con la base para vueltos y **sin la caja abierta no se cobra un turno** (la fila y el diálogo de cobrar lo dicen, con el enlace para abrirla). Cada turno cobrado entra a ella; se ve lo que entró por cada medio y lo que debe haber en el cajón, y se cierra contando el efectivo (dice si cuadró, sobró o faltó, e imprime el resumen). Un cobro equivocado se **corrige** (otro valor u otro medio) o se **deshace** (el turno vuelve a quedar por cobrar), siempre con el motivo; también con la caja cerrada, hasta 30 días después. Abajo, los cierres anteriores con filtros y los archivos para Excel (cada turno cobrado, con el precio del menú y el descuento, y los cierres). |
 | **Clientes** | Buscar por nombre, celular o placa; la ficha con sus vehículos y visitas; dar turno, editar datos y borrarlos si el cliente lo pide (Ley 1581). |
 | **Configuración** | Negocio y horario, bot de WhatsApp, puestos (prender, apagar y agregar), menú y precios, y el aviso de datos personales. Se guarda todo junto, y si algo está mal no se guarda nada. Desde ahí se abren **Textos del bot** (cada texto se guarda por separado) y **Mensajes de WhatsApp**. |
 | Lavado **Demorado** | Cuando un lavado pasa su duración estimada, su puesto se pone naranja y arriba se cuenta. En el celular, la pestaña de esa fila muestra un punto naranja aunque estés viendo la otra. Casi siempre quiere decir que ya está listo y falta marcarlo: mientras tanto el cliente no recibe el aviso y la espera de la fila se calcula mal. |
@@ -637,7 +638,7 @@ GitHub corre lo mismo en cada pull request (pestaña **Actions**) y, además, ar
 app/
 ├── catalogo/       filas, puestos, tipos de vehículo, servicios, precios y parámetros
 ├── clientes/       clientes, vehículos, placas y teléfonos
-├── turnos/         la fila: turnos, llamados, avisos, puestos, historial y cobro
+├── turnos/         la fila: turnos, llamados, avisos, puestos, historial, cobro y la caja del lavadero (caja.py, consultas_de_caja.py)
 ├── bot/            conversación de WhatsApp: pasos, botones, textos, avisos y la pausa
 ├── comentarios/    quejas, felicitaciones y preguntas para el administrador, y responderle al cliente
 ├── caja/           la caja de cada negocio (abrirla, cerrarla, cuadrarla, corregirla y los cierres con filtros): una tabla, una caja por negocio
@@ -679,6 +680,7 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 |---|---|
 | `comun.py` | Lo que comparten las pantallas: plantillas, la sesión del administrador y las respuestas. |
 | `entrar.py`, `inicio.py`, `fila.py`, `clientes.py`, `comentarios.py`, `configuracion.py`, `textos_del_bot.py`, `mensajes.py`, `probar_bot.py`, `parqueadero.py` | Las rutas de cada pantalla (`inicio.py` es la de escoger el negocio, con lo de hoy de cada uno). Llaman a los casos de uso; no tienen reglas propias. |
+| `caja.py` | Las pantallas de la caja, las mismas para los dos negocios: abrirla, cerrarla, una caja con su ticket, corregir la base o el conteo, los cierres con filtros y los archivos para Excel. Cada negocio pone lo suyo en un `CajaDeUnNegocio` (`caja_del_lavadero.py` y `parqueadero.py`). |
 | `negocios.py` | Los dos negocios, el lavadero y el parqueadero, y las secciones de cada uno: el menú de arriba y la barra de abajo del celular salen de ahí. |
 | `webhook.py` | La dirección a la que Meta avisa cada mensaje de WhatsApp. No pide la sesión del administrador: la protege la firma de Meta. |
 | `tablero.py` | Arma lo que muestra la fila en vivo. Solo lee. |

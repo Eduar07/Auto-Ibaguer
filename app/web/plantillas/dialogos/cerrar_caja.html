@@ -1,9 +1,9 @@
-{#- Cerrar la caja del parqueadero: se cuenta el efectivo del cajón y queda la diferencia. -#}
+{#- Cerrar la caja de un negocio: se cuenta el efectivo del cajón y queda la diferencia. -#}
 {% import "_iconos.html" as iconos %}
 {% set c = resumen.caja %}
 {% set esperado = resumen.cuadre.efectivo_esperado %}
 <form class="dialogo__caja" data-formulario="cierre-caja" data-esperado="{{ esperado }}"
-      hx-post="/parqueadero/caja/cerrar" hx-target="#dialogo-contenido"
+      hx-post="{{ rutas.caja }}/cerrar" hx-target="#dialogo-contenido"
       hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
   <input type="hidden" name="caja_id" value="{{ c.id }}">
   <div class="dialogo__cabeza">

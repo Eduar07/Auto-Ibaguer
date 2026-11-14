@@ -16,87 +16,11 @@
   <div class="error">Esta caja viene de un día anterior. Ciérrala contando el cajón y abre la de hoy: así cada día cuadra aparte.</div>
   {% endif %}
   <div id="caja-abierta" class="contenedor-invisible">
-    {% include "_parqueadero_caja_abierta.html" %}
+    {% include "_caja_abierta.html" %}
   </div>
 
-  <section class="panel" aria-labelledby="t-excel">
-    <h2 id="t-excel">Llevar las cuentas en Excel</h2>
-    <p class="suave">Descarga cada cobro (salidas y mensualidades) entre dos días, en un archivo que Excel abre directo.</p>
-    <form class="exportar" method="get" action="/parqueadero/exportar">
-      <div class="campo"><label for="exportar-desde">Desde</label><input id="exportar-desde" name="desde" type="date" value="{{ exportar_desde.isoformat() }}" required></div>
-      <div class="campo"><label for="exportar-hasta">Hasta</label><input id="exportar-hasta" name="hasta" type="date" value="{{ exportar_hasta.isoformat() }}" required></div>
-      <button type="submit" class="boton boton--borde">Descargar para Excel</button>
-    </form>
-  </section>
+  {% include "_cobros_para_excel.html" %}
 
-  <section class="lista" aria-labelledby="t-cerradas">
-    <div class="lista__cabeza"><h3 id="t-cerradas">Cierres anteriores</h3></div>
-    <form class="cierres__filtros" method="get" action="/parqueadero/caja#t-cerradas">
-      <div class="campo"><label for="cierres-desde">Desde</label><input id="cierres-desde" name="desde" type="date" value="{{ filtro.desde.isoformat() if filtro.desde else '' }}"></div>
-      <div class="campo"><label for="cierres-hasta">Hasta</label><input id="cierres-hasta" name="hasta" type="date" value="{{ filtro.hasta.isoformat() if filtro.hasta else '' }}"></div>
-      <div class="campo">
-        <label for="cierres-resultado">Cómo cerró</label>
-        <select id="cierres-resultado" name="resultado">
-          {% for clave, nombre in resultados.items() %}<option value="{{ clave }}"{% if filtro.resultado == clave %} selected{% endif %}>{{ nombre }}</option>{% endfor %}
-        </select>
-      </div>
-      {% if quienes|length > 1 or filtro.quien %}
-      <div class="campo">
-        <label for="cierres-quien">Quién cerró</label>
-        <select id="cierres-quien" name="quien">
-          <option value="">Todos</option>
-          {% for id_, usuario in quienes %}<option value="{{ id_ }}"{% if filtro.quien == id_ %} selected{% endif %}>{{ usuario }}</option>{% endfor %}
-        </select>
-      </div>
-      {% endif %}
-      <div class="cierres__botones">
-        <button type="submit" class="boton boton--borde">Filtrar</button>
-        {% if filtro.filtra %}<a class="boton-texto" href="/parqueadero/caja#t-cerradas">Quitar filtros</a>{% endif %}
-      </div>
-    </form>
-    {% if cierres.cuantos %}
-    <p class="cierres__cuentas">
-      <strong>{{ cierres.cuantos }} cierre{{ "s" if cierres.cuantos != 1 }}</strong> · entraron {{ cierres.entro|pesos }}
-      {%- if cierres.cuadraron %} · <span class="diferencia--cuadra">{{ cierres.cuadraron }} cuadr{{ "ó" if cierres.cuadraron == 1 else "aron" }}</span>{% endif %}
-      {%- if cierres.cuantos_sobrantes %} · <span class="diferencia--sobra">sobraron {{ cierres.sobrantes|pesos }} en {{ cierres.cuantos_sobrantes }}</span>{% endif %}
-      {%- if cierres.cuantos_faltantes %} · <span class="diferencia--falta">faltaron {{ cierres.faltantes|pesos }} en {{ cierres.cuantos_faltantes }}</span>{% endif %}
-    </p>
-    <div class="tabla-desplazable">
-      <table class="tabla-caja tabla-caja--cierres">
-        <thead>
-          <tr><th scope="col">Cerró</th><th scope="col">Entró</th><th scope="col">Efectivo esperado</th><th scope="col">Contado</th><th scope="col">Diferencia</th><th scope="col"><span class="solo-lector">Ver</span></th></tr>
-        </thead>
-        <tbody>
-          {% for r in cierres.filas %}
-          {% set d = r.caja.diferencia %}
-          <tr>
-            <td>{{ cuando(r.caja.cerrada_en) }}<span class="suave"> · {{ r.cerro }}</span></td>
-            <td>{{ r.cuadre.total|pesos }}</td>
-            <td>{{ r.caja.efectivo_esperado|pesos }}</td>
-            <td>{{ r.caja.efectivo_contado|pesos }}</td>
-            <td><span class="{{ 'diferencia--cuadra' if d == 0 else ('diferencia--sobra' if d > 0 else 'diferencia--falta') }}">{{ "Cuadró" if d == 0 else (("+" if d > 0 else "−") ~ (d|abs)|pesos) }}</span>{% if r.corregida_despues_del_cierre %} <span class="insignia insignia--ambar">Corregida</span>{% endif %}</td>
-            <td><a href="/parqueadero/caja/{{ r.caja.id }}">Ver<span class="solo-lector"> la caja {{ r.caja.id }}</span></a></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="cierres__pie">
-      {% if cierres.paginas > 1 %}
-      <nav class="cierres__paginas" aria-label="Páginas de cierres">
-        {% if pagina_anterior %}<a class="boton-texto" href="{{ pagina_anterior }}#t-cerradas">{{ iconos.icono("volver", 18, 2.2) }}Más nuevos</a>{% endif %}
-        <span class="suave">Página {{ cierres.pagina }} de {{ cierres.paginas }}</span>
-        {% if pagina_siguiente %}<a class="boton-texto" href="{{ pagina_siguiente }}#t-cerradas">Más viejos{{ iconos.icono("adelante", 18, 2.2) }}</a>{% endif %}
-      </nav>
-      {% endif %}
-      <a class="boton-texto" href="{{ exportar_cierres }}">{{ "Descargar estos cierres para Excel" if filtro.filtra else "Descargar los cierres para Excel" }}</a>
-    </div>
-    <p class="ayuda">Cada caja es del día en que se abrió, aunque se cierre pasada la medianoche.</p>
-    {% elif filtro.filtra %}
-    <p class="lista__vacia">Ningún cierre cumple ese filtro. <a href="/parqueadero/caja#t-cerradas">Quitar filtros</a></p>
-    {% else %}
-    <p class="lista__vacia">Todavía no hay cierres de caja.</p>
-    {% endif %}
-  </section>
+  {% include "_cierres_anteriores.html" %}
 </main>
 {% endblock %}

@@ -1,7 +1,7 @@
 {#- La caja abierta con sus cobros y correcciones, o el formulario para abrirla. Se vuelve a
     pintar sola después de corregir un cobro. -#}
 {% import "_iconos.html" as iconos %}
-{% from "_parqueadero_resumen_caja.html" import resumen_de_caja, movimientos_de_caja, correcciones_de_caja %}
+{% from "_caja_resumen.html" import resumen_de_caja, movimientos_de_caja, correcciones_de_caja %}
 {% if caja %}
 <section class="panel" aria-labelledby="t-caja">
   <div class="panel__cabeza">
@@ -13,9 +13,9 @@
   </div>
   {{ resumen_de_caja(resumen) }}
   <div class="botones">
-    <button type="button" class="boton boton--oscuro" hx-get="/parqueadero/caja/cerrar" hx-target="#dialogo-contenido">Cerrar caja</button>
-    <button type="button" class="boton boton--borde" data-imprimir="/parqueadero/caja/{{ caja.id }}/ticket">{{ iconos.icono("imprimir", 18) }}Imprimir cómo va</button>
-    <button type="button" class="boton-texto" hx-get="/parqueadero/caja/{{ caja.id }}/corregir" hx-target="#dialogo-contenido">Corregir la base</button>
+    <button type="button" class="boton boton--oscuro" hx-get="{{ rutas.caja }}/cerrar" hx-target="#dialogo-contenido">Cerrar caja</button>
+    <button type="button" class="boton boton--borde" data-imprimir="{{ rutas.caja }}/{{ caja.id }}/ticket">{{ iconos.icono("imprimir", 18) }}Imprimir cómo va</button>
+    <button type="button" class="boton-texto" hx-get="{{ rutas.caja }}/{{ caja.id }}/corregir" hx-target="#dialogo-contenido">Corregir la base</button>
   </div>
 </section>
 
@@ -29,7 +29,7 @@
 <section class="panel" aria-labelledby="t-abrir">
   <h2 id="t-abrir">Abrir caja</h2>
   <p class="suave">Escribe la plata que dejas en el cajón para dar vueltos. Si no dejas nada, pon 0.</p>
-  <form class="campos-juntos formulario-corto" hx-post="/parqueadero/caja/abrir" hx-swap="none"
+  <form class="campos-juntos formulario-corto" hx-post="{{ rutas.caja }}/abrir" hx-swap="none"
         hx-disabled-elt="find button" autocomplete="off">
     <div class="dos-columnas">
       <div class="campo">

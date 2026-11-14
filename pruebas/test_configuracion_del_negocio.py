@@ -96,6 +96,7 @@ def test_solo_dias_de_la_semana(sesion: Session, dias: list[str]):
 # --- Precios y servicios ---------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("caja_del_lavadero")
 def test_un_precio_nuevo_apaga_el_viejo_y_no_cambia_los_cobros_anteriores(sesion: Session):
     basico = servicio(sesion, "Básico").id
     automovil = tipo_vehiculo(sesion, "Automóvil").id

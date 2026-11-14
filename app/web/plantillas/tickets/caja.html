@@ -10,14 +10,15 @@
 <dl class="ticket__datos">
   <dt>Abrió</dt><dd>{{ resumen.abrio }} · {{ c.abierta_en|fecha_y_hora }}</dd>
   {% if c.cerrada_en %}<dt>Cerró</dt><dd>{{ resumen.cerro }} · {{ c.cerrada_en|fecha_y_hora }}</dd>{% endif %}
-  <dt>Salidas</dt><dd>{{ resumen.salidas }}</dd>
-  {% if resumen.mensualidades %}<dt>Mensualidades</dt><dd>{{ resumen.mensualidades }}</dd>{% endif %}
+  {% for valor, nombre in resumen.cifras %}<dt>{{ nombre|capitalize }}</dt><dd>{{ valor }}</dd>
+  {% endfor %}
   <dt>Base</dt><dd>{{ c.base|pesos }}</dd>
 </dl>
 <dl class="ticket__datos ticket__datos--separado">
-  {% for medio, salidas, mensualidades in lineas_del_cuadre(cuadre) %}
-  <dt>{{ medio.value|capitalize }}</dt><dd>{{ (salidas + mensualidades)|pesos }}</dd>
-  {% if mensualidades %}<dt class="ticket__sub">mensualidades</dt><dd class="ticket__sub">{{ mensualidades|pesos }}</dd>{% endif %}
+  {% for medio, valores, total in resumen.lineas %}
+  <dt>{{ medio.value|capitalize }}</dt><dd>{{ total|pesos }}</dd>
+  {#- Si entra de varias clases (salidas y mensualidades), lo que no es de la primera. -#}
+  {% for valor in valores[1:] %}{% if valor %}<dt class="ticket__sub">{{ resumen.columnas[loop.index]|lower }}</dt><dd class="ticket__sub">{{ valor|pesos }}</dd>{% endif %}{% endfor %}
   {% else %}
   <dt>Sin cobros</dt><dd>{{ 0|pesos }}</dd>
   {% endfor %}

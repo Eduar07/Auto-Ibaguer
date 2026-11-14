@@ -103,7 +103,7 @@ def test_saluda_al_que_entro(adentro: TestClient, reloj):
 
 
 @pytest.fixture
-def un_dia_en_el_lavadero(sesion: Session):
+def un_dia_en_el_lavadero(sesion: Session, caja_del_lavadero):
     """Dos esperando, uno lavándose en C2, uno listo por cobrar y uno ya cobrado ($40.000).
     Ayer se cobró otro, que hoy no cuenta. Y un comentario por atender."""
     ayer = turno_listo(sesion, placa="AAA111", ahora=LUNES_8AM - AYER)
@@ -164,7 +164,11 @@ def test_las_cifras_en_la_pantalla(
         ("Recogido hoy", "$3.000"),
     ]:
         assert f'<dt>{nombre}</dt><dd class="numero">{valor}</dd>' in pagina, nombre
-    assert "Bot activo · 1 cobro hoy · <strong>1 comentario por atender</strong>" in pagina
+    # La caja del lavadero se abrió ayer y sigue abierta: en naranja, con el bot y lo pendiente.
+    assert (
+        "<strong>La caja está abierta desde ayer a las 6:00 a.m.</strong> Ciérrala y abre la "
+        "de hoy. · Bot activo · <strong>1 comentario por atender</strong>"
+    ) in pagina
     assert "Caja abierta hoy a las 6:00 a.m." in pagina
 
 
@@ -204,7 +208,7 @@ def test_una_seccion_mal_escrita_se_avisa_de_una_vez(seccion: str):
 def test_el_lavadero_muestra_solo_lo_suyo(adentro: TestClient):
     pagina = adentro.get("/fila").text
 
-    rutas = ["/fila", "/clientes", "/comentarios", "/configuracion"]
+    rutas = ["/fila", "/caja", "/clientes", "/comentarios", "/configuracion"]
     assert secciones(pagina, "navegacion") == secciones(pagina, "navegacion-celular") == rutas
     arriba = encabezado(pagina)
     assert "Nuevo turno" in arriba and "Bot activo" in arriba

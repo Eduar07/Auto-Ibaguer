@@ -22,6 +22,7 @@ from app.clientes.tablas import Vehiculo
 from app.config import obtener_entorno
 from app.db.sesion import obtener_motor
 from app.errores import ReglaDelNegocio
+from app.turnos import caja as caja_del_lavadero
 from app.turnos import casos_de_uso as casos
 from app.turnos import consultas, datos, reglas
 from app.turnos.estados import Actor, MedioPago, OrigenTurno
@@ -388,6 +389,7 @@ def _contexto_cobro(sesion: Session, turno_id: int, formulario: dict[str, Any]) 
         "servicios": _menu(sesion).get(turno.tipo_vehiculo_id, []),
         "formulario": formulario,
         "ahora": tiempo.ahora(),
+        "caja_abierta": caja_del_lavadero.caja_abierta(sesion) is not None,
     }
 
 

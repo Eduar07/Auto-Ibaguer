@@ -315,6 +315,7 @@ def test_sin_autorizacion_de_datos_el_dialogo_lo_explica_y_conserva_lo_escrito(
 # --- Mover la fila: puesto, listo y cobro ------------------------------------------------
 
 
+@pytest.mark.usefixtures("caja_del_lavadero")
 def test_una_fila_completa_desde_el_dashboard(adentro: TestClient, sesion: Session, reloj: dict):
     """La prueba final del hito: crear, pasar a puesto, marcar listo y cobrar."""
     nuevo = adentro.post(
@@ -365,6 +366,7 @@ def test_una_fila_completa_desde_el_dashboard(adentro: TestClient, sesion: Sessi
     assert "$60.000" in cobro.text  # la caja de hoy ya lo suma
 
 
+@pytest.mark.usefixtures("caja_del_lavadero")
 def test_cobrar_sin_placa_lo_explica_dentro_del_dialogo(adentro: TestClient, sesion: Session):
     turno_id = turno_listo(sesion, placa=None)
     guardar(sesion)
@@ -380,6 +382,7 @@ def test_cobrar_sin_placa_lo_explica_dentro_del_dialogo(adentro: TestClient, ses
     assert estado(sesion, turno_id) == EstadoTurno.LISTO
 
 
+@pytest.mark.usefixtures("caja_del_lavadero")
 def test_cobrar_distinto_al_menu_pide_el_motivo(adentro: TestClient, sesion: Session):
     turno_id = turno_listo(sesion)
     guardar(sesion)

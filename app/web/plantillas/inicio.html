@@ -4,6 +4,21 @@
 {% import "_iconos.html" as iconos %}
 {% macro veces(n, una, varias) %}{{ n }} {{ una if n == 1 else varias }}{% endmacro %}
 
+{#- Cómo está la caja del negocio: abierta desde cuándo, cerrada o, en naranja, abierta desde
+    otro día (alguien olvidó cerrarla). `mas` va después, en la misma línea. -#}
+{% macro estado_de_la_caja(caja, de_otro_dia, mas="") -%}
+{% if de_otro_dia %}
+<span class="negocio__punto negocio__punto--alerta" aria-hidden="true"></span>
+<span><strong>La caja está abierta desde {{ cuando_paso(caja.abierta_en) }}</strong> Ciérrala y abre la de hoy.{{ mas }}</span>
+{% elif caja %}
+<span class="negocio__punto" aria-hidden="true"></span>
+<span>Caja abierta {{ cuando_paso(caja.abierta_en) }}{{ mas }}</span>
+{% else %}
+<span class="negocio__punto negocio__punto--apagado" aria-hidden="true"></span>
+<span>Caja cerrada{{ mas }}</span>
+{% endif %}
+{%- endmacro %}
+
 {% macro tarjeta(n, cuantos, plata, alerta=False) %}
 <article class="negocio" aria-labelledby="negocio-{{ n.clave }}">
   <div class="negocio__cabeza">
@@ -37,23 +52,14 @@
 
   <div class="negocios">
     {% set l = hoy_lavadero %}
-    {% call tarjeta(lavadero, [("En espera", l.en_espera), ("En lavado", l.en_lavado), ("Por cobrar", l.por_cobrar)], ("Cobrado hoy", l.cobrado)) %}
-      <span class="negocio__punto{% if not l.bot_activo %} negocio__punto--apagado{% endif %}" aria-hidden="true"></span>
-      <span>{{ "Bot activo" if l.bot_activo else "Bot apagado" }}{% if l.cobros %} · {{ veces(l.cobros, "cobro", "cobros") }} hoy{% endif %}{% if l.comentarios_pendientes %} · <strong>{{ veces(l.comentarios_pendientes, "comentario", "comentarios") }} por atender</strong>{% endif %}</span>
+    {% set lo_demas %} · {{ "Bot activo" if l.bot_activo else "Bot apagado" }}{% if l.comentarios_pendientes %} · <strong>{{ veces(l.comentarios_pendientes, "comentario", "comentarios") }} por atender</strong>{% endif %}{% endset %}
+    {% call tarjeta(lavadero, [("En espera", l.en_espera), ("En lavado", l.en_lavado), ("Por cobrar", l.por_cobrar)], ("Cobrado hoy", l.cobrado), alerta=l.caja_de_otro_dia) %}
+      {{ estado_de_la_caja(l.caja, l.caja_de_otro_dia, lo_demas) }}
     {% endcall %}
 
     {% set p = hoy_parqueadero %}
     {% call tarjeta(parqueadero, [("Adentro", p.adentro), ("Salieron hoy", p.salidas)], ("Recogido hoy", p.recogido), alerta=p.caja_de_otro_dia) %}
-      {% if p.caja_de_otro_dia %}
-      <span class="negocio__punto negocio__punto--alerta" aria-hidden="true"></span>
-      <span><strong>La caja está abierta desde {{ cuando_paso(p.caja.abierta_en) }}</strong> Ciérrala y abre la de hoy.</span>
-      {% elif p.caja %}
-      <span class="negocio__punto" aria-hidden="true"></span>
-      <span>Caja abierta {{ cuando_paso(p.caja.abierta_en) }}</span>
-      {% else %}
-      <span class="negocio__punto negocio__punto--apagado" aria-hidden="true"></span>
-      <span>Caja cerrada</span>
-      {% endif %}
+      {{ estado_de_la_caja(p.caja, p.caja_de_otro_dia) }}
     {% endcall %}
   </div>
 </main>

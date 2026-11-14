@@ -250,8 +250,12 @@
     const placa = formulario.querySelector("input[name='placa']");
     const confirmar = formulario.querySelector("[data-confirmar]");
     const faltaPlaca = placa !== null && placa.value.trim() === "";
-    confirmar.disabled = faltaPlaca;
-    confirmar.textContent = faltaPlaca ? "Escribe la placa para cobrar" : "Confirmar cobro";
+    // Con la caja del lavadero cerrada no se cobra: el diálogo dice dónde abrirla.
+    const cajaCerrada = formulario.hasAttribute("data-caja-cerrada");
+    confirmar.disabled = faltaPlaca || cajaCerrada;
+    confirmar.textContent = cajaCerrada
+      ? "Abre la caja para cobrar"
+      : faltaPlaca ? "Escribe la placa para cobrar" : "Confirmar cobro";
   }
 
   function prepararFormularios(raiz) {

@@ -4,7 +4,7 @@
 {% set precio_del_menu = (servicios|selectattr("id", "equalto", formulario.servicio_id)|map(attribute="precio")|first) if formulario.servicio_id else none %}
 {% set total = formulario.precio_cobrado if formulario.precio_cobrado is not none else precio_del_menu %}
 {% set falta_placa = t.placa_pendiente and not formulario.placa %}
-<form class="dialogo__caja" data-formulario="cobro"
+<form class="dialogo__caja" data-formulario="cobro"{% if not caja_abierta %} data-caja-cerrada{% endif %}
       hx-post="/turnos/{{ t.id }}/cobrar" hx-target="#dialogo-contenido"
       hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
   <div class="dialogo__cabeza">
@@ -16,7 +16,9 @@
   </div>
 
   <div class="dialogo__cuerpo">
-    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    {% if not caja_abierta %}
+    <div class="error" role="alert">La caja del lavadero está cerrada. <a href="/caja">Abre la caja</a> para poder cobrar.</div>
+    {% elif error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 
     <div class="dos-columnas">
       <div class="tarjeta-dato">
@@ -91,8 +93,8 @@
       <span>Total a cobrar · <span data-medio>{{ formulario.medio_pago|capitalize }}</span></span>
       <strong data-total>{{ total|pesos if total is not none else "—" }}</strong>
     </div>
-    <button type="submit" class="boton boton--grande" data-confirmar {% if falta_placa %}disabled{% endif %}>
-      {{- "Escribe la placa para cobrar" if falta_placa else "Confirmar cobro" -}}
+    <button type="submit" class="boton boton--grande" data-confirmar {% if falta_placa or not caja_abierta %}disabled{% endif %}>
+      {{- "Abre la caja para cobrar" if not caja_abierta else ("Escribe la placa para cobrar" if falta_placa else "Confirmar cobro") -}}
     </button>
     <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
   </div>

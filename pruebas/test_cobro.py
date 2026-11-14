@@ -14,6 +14,8 @@ from app.turnos.tablas import Pago, Turno
 from pruebas.fabricas import LUNES_8AM, en_el_local, historial, minutos, servicio, turno_listo
 
 E = EstadoTurno
+
+pytestmark = pytest.mark.usefixtures("caja_del_lavadero")
 A_LAS_9 = LUNES_8AM + minutos(60)
 
 

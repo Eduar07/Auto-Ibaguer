@@ -16,6 +16,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import tiempo
+from app.caja import casos_de_uso as cajas
+from app.caja.errores import CobroNoCorregible, ValorInvalido
+from app.caja.estados import TipoCorreccion
+from app.caja.reglas import como_se_pago
+from app.caja.tablas import CorreccionCobro
 from app.catalogo.parametros import Parametros, leer_parametros
 from app.catalogo.tablas import Fila, Puesto, Servicio, TipoVehiculo
 from app.clientes import servicio as clientes
@@ -23,6 +28,7 @@ from app.clientes.errores import NoExiste
 from app.clientes.tablas import Cliente, Vehiculo
 from app.formato import hora, hora_con_articulo, pesos
 from app.integraciones import bandeja_salida
+from app.turnos import caja as caja_del_lavadero
 from app.turnos import consultas, datos, reglas
 from app.turnos.errores import (
     CambioNoPermitido,
@@ -627,7 +633,8 @@ def cobrar(
     placa: str | None = None,
     ahora: datetime | None = None,
 ) -> Pago:
-    """Cobra un turno Listo.
+    """Cobra un turno Listo. El cobro entra a la caja abierta del lavadero: sin caja abierta
+    no se cobra.
 
     No se cobra sin placa ni con el servicio por definir. El precio sale del menú; si
     el administrador cobra otro, debe escribir el motivo. El pago guarda una copia del
@@ -637,6 +644,7 @@ def cobrar(
     turno = datos.bloquear_turno(sesion, turno_id)
     if not reglas.puede_cambiar(turno.estado, EstadoTurno.PAGADO, Actor.ADMINISTRADOR):
         raise CambioNoPermitido(_por_que_no(turno.estado, EstadoTurno.PAGADO, Actor.ADMINISTRADOR))
+    caja = caja_del_lavadero.caja_para_cobrar(sesion)
     if turno.servicio_id is None:
         raise FaltaServicio("Define el servicio antes de cobrar.")
     vehiculo = sesion.get(Vehiculo, turno.vehiculo_id)
@@ -658,6 +666,7 @@ def cobrar(
         precio_cobrado=cobrado,
         motivo_ajuste=motivo_limpio,
         medio_pago=medio,
+        caja_id=caja.id,
         administrador_id=administrador_id,
         fecha_hora=ahora,
     )
@@ -673,6 +682,150 @@ def cobrar(
     )
     sesion.flush()
     return pago
+
+
+# --- Corregir un cobro --------------------------------------------------------------------
+#
+# Como en el parqueadero: un cobro equivocado (otro medio de pago, otro valor, el turno que no
+# era) se corrige en su caja, abierta o cerrada hace hasta 30 días, con el motivo. No se borra
+# nada sin dejar rastro: la corrección queda en `correccion_cobro` (con cómo estaba, cómo quedó
+# y quién) y en el historial del turno. En una caja ya cerrada, lo que debía haber en el cajón
+# se pone al día y la diferencia del cierre cambia con la corrección.
+
+
+def _cobro_del_turno(sesion: Session, turno_id: int) -> tuple[Turno, Pago, str, str]:
+    """El turno cobrado, su pago (los dos bloqueados), su placa y en palabras qué cobro era."""
+    turno = datos.bloquear_turno(sesion, turno_id)
+    fila = sesion.get(Fila, turno.fila_id)
+    numero = reglas.numero_de_turno(fila.prefijo, turno.consecutivo)
+    pago = sesion.scalars(
+        select(Pago)
+        .where(Pago.turno_id == turno.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if turno.estado != EstadoTurno.PAGADO or pago is None:
+        raise CobroNoCorregible(f"El turno {numero} no tiene un cobro que corregir.")
+    placa = sesion.scalar(select(Vehiculo.placa).where(Vehiculo.id == turno.vehiculo_id))
+    if not placa:
+        raise CobroNoCorregible(f"El vehículo del turno {numero} no tiene placa: escríbela antes.")
+    servicio = sesion.get(Servicio, turno.servicio_id) if turno.servicio_id else None
+    detalle = f"Turno {numero}" + (f" · {servicio.nombre}" if servicio else "")
+    return turno, pago, placa, detalle
+
+
+def corregir_cobro(
+    sesion: Session,
+    turno_id: int,
+    *,
+    precio_cobrado: int,
+    medio_pago: MedioPago | str | None,
+    motivo: str,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> CorreccionCobro:
+    """Cambia el valor o el medio de pago de un turno ya cobrado (era Nequi y no efectivo, se
+    escribió $400.000 y eran $40.000). Si el valor queda distinto al del menú, el motivo de la
+    corrección queda como el motivo del ajuste."""
+    ahora = ahora or tiempo.ahora()
+    limpio = cajas.motivo_de_la_correccion(motivo)
+    turno, pago, placa, detalle = _cobro_del_turno(sesion, turno_id)
+    caja = caja_del_lavadero.caja_del_cobro(sesion, pago.caja_id, ahora)
+    if precio_cobrado < 0:
+        raise ValorInvalido("El valor no puede ser negativo.")
+    if not medio_pago:
+        raise ValorInvalido("Elige el medio de pago.")
+    medio = MedioPago(medio_pago)
+    antes = (pago.precio_cobrado, pago.medio_pago)
+    if (precio_cobrado, medio) == antes:
+        raise ValorInvalido(
+            f"No hay nada que cambiar: ya está en {pesos(antes[0])} {como_se_pago(antes[1])}."
+        )
+    correccion = CorreccionCobro(
+        tipo=TipoCorreccion.CORREGIDO,
+        caja_id=caja.id,
+        turno_id=turno.id,
+        pago_id=pago.id,
+        placa=placa,
+        valor_antes=antes[0],
+        valor_despues=precio_cobrado,
+        medio_antes=antes[1],
+        medio_despues=medio,
+        detalle=detalle,
+        motivo=limpio,
+        administrador_id=administrador_id,
+        fecha_hora=ahora,
+    )
+    pago.precio_cobrado = precio_cobrado
+    pago.medio_pago = medio
+    pago.motivo_ajuste = None if precio_cobrado == pago.precio_menu else limpio
+    cajas.anotar_en_la_caja(correccion, caja)
+    _registrar(
+        sesion,
+        turno,
+        EstadoTurno.PAGADO,
+        EstadoTurno.PAGADO,
+        actor=Actor.ADMINISTRADOR,
+        ahora=ahora,
+        administrador_id=administrador_id,
+        detalle=(
+            f"Cobro corregido: {pesos(antes[0])} {como_se_pago(antes[1])} → "
+            f"{pesos(precio_cobrado)} {como_se_pago(medio)}. Motivo: {limpio}"
+        ),
+    )
+    sesion.add(correccion)
+    sesion.flush()
+    return correccion
+
+
+def deshacer_cobro(
+    sesion: Session,
+    turno_id: int,
+    *,
+    motivo: str,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> CorreccionCobro:
+    """Quita el cobro de un turno (se cobró el que no era, o dos veces): el pago se borra, el
+    turno vuelve a quedar Listo, por cobrar, y la corrección queda con lo que se había cobrado."""
+    ahora = ahora or tiempo.ahora()
+    limpio = cajas.motivo_de_la_correccion(motivo)
+    turno, pago, placa, detalle = _cobro_del_turno(sesion, turno_id)
+    caja = caja_del_lavadero.caja_del_cobro(sesion, pago.caja_id, ahora)
+    correccion = CorreccionCobro(
+        tipo=TipoCorreccion.COBRO_DESHECHO,
+        caja_id=caja.id,
+        turno_id=turno.id,
+        pago_id=pago.id,
+        placa=placa,
+        valor_antes=pago.precio_cobrado,
+        valor_despues=0,
+        medio_antes=pago.medio_pago,
+        medio_despues=None,
+        detalle=detalle,
+        motivo=limpio,
+        administrador_id=administrador_id,
+        fecha_hora=ahora,
+    )
+    cajas.anotar_en_la_caja(correccion, caja)
+    _registrar(
+        sesion,
+        turno,
+        EstadoTurno.PAGADO,
+        EstadoTurno.LISTO,
+        actor=Actor.ADMINISTRADOR,
+        ahora=ahora,
+        administrador_id=administrador_id,
+        detalle=(
+            f"Cobro deshecho ({pesos(pago.precio_cobrado)} {como_se_pago(pago.medio_pago)}). "
+            f"Motivo: {limpio}"
+        ),
+    )
+    turno.estado = EstadoTurno.LISTO
+    sesion.delete(pago)
+    sesion.add(correccion)
+    sesion.flush()
+    return correccion
 
 
 # --- Puestos -----------------------------------------------------------------------------

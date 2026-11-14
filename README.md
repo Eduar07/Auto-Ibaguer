@@ -640,7 +640,8 @@ app/
 ├── turnos/         la fila: turnos, llamados, avisos, puestos, historial y cobro
 ├── bot/            conversación de WhatsApp: pasos, botones, textos, avisos y la pausa
 ├── comentarios/    quejas, felicitaciones y preguntas para el administrador, y responderle al cliente
-├── parqueadero/    entradas y salidas, cobro por hora, mensualidades, su caja, sus tarifas, el balance y el reporte diario
+├── caja/           la caja de cada negocio (abrirla, cerrarla, cuadrarla, corregirla y los cierres con filtros): una tabla, una caja por negocio
+├── parqueadero/    entradas y salidas, cobro por hora, mensualidades, lo que entra a su caja, sus tarifas, el balance y el reporte diario
 ├── integraciones/  mensajes que entran y salen de WhatsApp (bandejas y reintentos) y el correo del reporte
 ├── web/            dashboard: pantallas, sesión, fila en vivo y administradores
 ├── reloj/          lo que pasa solo cada 30 segundos (gracias, sesiones del bot, avisos)
@@ -704,8 +705,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 ## Cambiar una tabla
 
 1. Cambia el modelo en el `tablas.py` del módulo.
-2. Crea la migración con el siguiente número (la última es la 0011):
-   `uv run alembic revision --autogenerate --rev-id 0012 -m "que cambio"`
+2. Crea la migración con el siguiente número (la última es la 0012):
+   `uv run alembic revision --autogenerate --rev-id 0013 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
 4. Aplícala: `uv run auto-ibaguer preparar-base` (o solo las tablas: `uv run auto-ibaguer actualizar-tablas`)
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.

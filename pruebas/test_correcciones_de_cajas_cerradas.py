@@ -23,7 +23,7 @@ from app.parqueadero import consultas, reporte
 from app.parqueadero.balance import balance, periodo
 from app.parqueadero.errores import CajaNoCorregible, ValorInvalido
 from app.parqueadero.estados import DatoDeCaja, EstadoParqueo
-from app.parqueadero.tablas import CajaParqueadero, CorreccionDeCaja, Parqueo
+from app.parqueadero.tablas import Caja, CorreccionDeCaja, Parqueo
 from pruebas.fabricas import LUNES_8AM, debe_rechazar, minutos
 from pruebas.navegador import HTMX, aviso, error, eventos
 from pruebas.test_correcciones_de_cobros import (
@@ -38,11 +38,11 @@ CIERRE = LUNES_8AM + minutos(600)  # las 6:00 p.m. del lunes
 MARTES = CIERRE + timedelta(hours=16)  # el martes a las 10:00 a.m., cuando se corrige
 
 
-def esperado_por_los_cobros(sesion: Session, caja: CajaParqueadero) -> int:
+def esperado_por_los_cobros(sesion: Session, caja: Caja) -> int:
     return casos.cuadre_de_caja(sesion, caja).efectivo_esperado
 
 
-def cerrada(sesion: Session, *, base: int = 0, contado: int) -> tuple[CajaParqueadero, Parqueo]:
+def cerrada(sesion: Session, *, base: int = 0, contado: int) -> tuple[Caja, Parqueo]:
     """Una caja con un carro que pagó $3.000 en efectivo, cerrada el lunes a las 6:00 p.m."""
     caja = con_caja(sesion, base=base)
     parqueo = cobrado(sesion)
@@ -286,7 +286,7 @@ def base(motor: Engine) -> Iterator[Engine]:
         conexion.execute(
             text(
                 "TRUNCATE correccion_cobro, correccion_de_caja, parqueo, pago_mensualidad, "
-                "mensualidad, caja_parqueadero CASCADE"
+                "mensualidad, caja CASCADE"
             )
         )
 
@@ -315,7 +315,7 @@ def test_dos_correcciones_a_la_vez_en_una_caja_cerrada_no_se_pisan(base: Engine)
 
     assert len(segunda) == 1 and isinstance(segunda[0], int), segunda
     with Session(base) as sesion:
-        caja = sesion.get(CajaParqueadero, caja_id)
+        caja = sesion.get(Caja, caja_id)
         # Los $9.000 que se contaron eran por Nequi: en el cajón no debía haber nada.
         assert caja.efectivo_esperado == esperado_por_los_cobros(sesion, caja) == 0
 
@@ -329,14 +329,14 @@ def en_la_caja(caja_id: int) -> dict[str, str]:
 
 
 @pytest.fixture
-def caja_cerrada(adentro: TestClient, sesion: Session, reloj: dict) -> CajaParqueadero:
+def caja_cerrada(adentro: TestClient, sesion: Session, reloj: dict) -> Caja:
     """Base $10.000, ABC123 pagó $3.000 en efectivo y al cerrar contaron $10.000."""
     adentro.post("/parqueadero/caja/abrir", data={"base": "10.000"}, headers=HTMX)
     adentro.post("/parqueadero/entradas", data={"placa": "ABC123", "tipo": "carro"}, headers=HTMX)
     reloj["ahora"] += minutos(60)
     parqueo = sesion.scalars(select(Parqueo).where(Parqueo.placa == "ABC123")).one()
     adentro.post(f"/parqueadero/{parqueo.id}/salida", data={"medio_pago": "efectivo"}, headers=HTMX)
-    caja = sesion.scalars(select(CajaParqueadero)).one()
+    caja = sesion.scalars(select(Caja)).one()
     adentro.post(
         "/parqueadero/caja/cerrar",
         data={"caja_id": caja.id, "efectivo_contado": "10.000"},
@@ -348,7 +348,7 @@ def caja_cerrada(adentro: TestClient, sesion: Session, reloj: dict) -> CajaParqu
 
 
 def test_la_caja_cerrada_se_puede_corregir_desde_su_pagina(
-    adentro: TestClient, sesion: Session, caja_cerrada: CajaParqueadero
+    adentro: TestClient, sesion: Session, caja_cerrada: Caja
 ):
     pagina = adentro.get(f"/parqueadero/caja/{caja_cerrada.id}").text
 
@@ -361,7 +361,7 @@ def test_la_caja_cerrada_se_puede_corregir_desde_su_pagina(
 
 
 def test_corregir_un_cobro_desde_la_caja_cerrada(
-    adentro: TestClient, sesion: Session, caja_cerrada: CajaParqueadero
+    adentro: TestClient, sesion: Session, caja_cerrada: Caja
 ):
     ticket = sesion.scalars(select(Parqueo)).one().id
     dialogo = adentro.get(f"/parqueadero/{ticket}/corregir", headers=en_la_caja(caja_cerrada.id))
@@ -381,7 +381,7 @@ def test_corregir_un_cobro_desde_la_caja_cerrada(
 
 
 def test_corregir_el_conteo_desde_la_caja_cerrada(
-    adentro: TestClient, sesion: Session, caja_cerrada: CajaParqueadero
+    adentro: TestClient, sesion: Session, caja_cerrada: Caja
 ):
     dialogo = adentro.get(
         f"/parqueadero/caja/{caja_cerrada.id}/corregir", headers=en_la_caja(caja_cerrada.id)
@@ -415,7 +415,7 @@ def test_corregir_el_conteo_desde_la_caja_cerrada(
 
 def test_corregir_la_base_desde_la_caja_del_dia(adentro: TestClient, sesion: Session, reloj):
     adentro.post("/parqueadero/caja/abrir", data={"base": "50.000"}, headers=HTMX)
-    caja = sesion.scalars(select(CajaParqueadero)).one()
+    caja = sesion.scalars(select(Caja)).one()
 
     dialogo = adentro.get(f"/parqueadero/caja/{caja.id}/corregir", headers=HTMX).text
     respuesta = adentro.post(
@@ -431,7 +431,7 @@ def test_corregir_la_base_desde_la_caja_del_dia(adentro: TestClient, sesion: Ses
 
 
 def test_el_balance_del_dia_siguiente_muestra_la_correccion(
-    adentro: TestClient, sesion: Session, caja_cerrada: CajaParqueadero, reloj: dict
+    adentro: TestClient, sesion: Session, caja_cerrada: Caja, reloj: dict
 ):
     reloj["ahora"] += timedelta(days=1)
     adentro.post(
@@ -448,7 +448,7 @@ def test_el_balance_del_dia_siguiente_muestra_la_correccion(
 
 
 def test_pasados_30_dias_la_pagina_lo_dice_y_no_deja_corregir(
-    adentro: TestClient, sesion: Session, caja_cerrada: CajaParqueadero, reloj: dict
+    adentro: TestClient, sesion: Session, caja_cerrada: Caja, reloj: dict
 ):
     reloj["ahora"] += timedelta(days=31)
 

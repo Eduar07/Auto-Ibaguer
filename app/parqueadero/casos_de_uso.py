@@ -16,23 +16,21 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import formato, tiempo
+from app.caja import casos_de_uso as cajas
+from app.caja.estados import Negocio
 from app.clientes.errores import NombreInvalido, TelefonoInvalido
 from app.clientes.reglas import nombre_bonito, normalizar_telefono
-from app.errores import ReglaDelNegocio
 from app.parqueadero import reglas
 from app.parqueadero.errores import (
-    CajaNoCorregible,
-    CajaYaAbierta,
     CobroNoCorregible,
     MensualidadInvalida,
     NoEstaAdentro,
-    SinCajaAbierta,
     ValorInvalido,
     YaEstaAdentro,
 )
-from app.parqueadero.estados import DatoDeCaja, EstadoParqueo, TipoCorreccion, TipoParqueo
+from app.parqueadero.estados import EstadoParqueo, TipoCorreccion, TipoParqueo
 from app.parqueadero.tablas import (
-    CajaParqueadero,
+    Caja,
     CorreccionCobro,
     CorreccionDeCaja,
     Mensualidad,
@@ -45,9 +43,9 @@ from app.turnos.estados import MedioPago
 # --- Candados ---------------------------------------------------------------------------
 
 
-def _candado(sesion: Session, nombre: str) -> None:
-    """Un candado de PostgreSQL con nombre, que se suelta solo al terminar la transacción."""
-    sesion.execute(select(func.pg_advisory_xact_lock(func.hashtext(nombre))))
+# Las cajas del parqueadero son las de este negocio: la del lavadero va aparte.
+NEGOCIO = Negocio.PARQUEADERO
+_candado = cajas.candado
 
 
 def _bloquear_parqueo(sesion: Session, parqueo_id: int) -> Parqueo:
@@ -77,8 +75,14 @@ def _hoy(ahora: datetime) -> date:
 # --- Caja -------------------------------------------------------------------------------
 
 
-def caja_abierta(sesion: Session) -> CajaParqueadero | None:
-    return sesion.scalars(select(CajaParqueadero).where(CajaParqueadero.abierta)).one_or_none()
+def caja_abierta(sesion: Session) -> Caja | None:
+    return cajas.caja_abierta(sesion, NEGOCIO)
+
+
+def caja_del_parqueadero(sesion: Session, caja_id: int) -> Caja | None:
+    """La caja con ese número, si es del parqueadero: la del lavadero no se ve desde aquí."""
+    caja = sesion.get(Caja, caja_id)
+    return caja if caja is not None and caja.negocio == NEGOCIO else None
 
 
 def abrir_caja(
@@ -88,27 +92,14 @@ def abrir_caja(
     nota: str | None = None,
     administrador_id: int | None = None,
     ahora: datetime | None = None,
-) -> CajaParqueadero:
-    """Abre la caja con la plata que queda en el cajón para dar vueltos (la base)."""
-    ahora = ahora or tiempo.ahora()
-    if base < 0:
-        raise ValorInvalido("La base no puede ser negativa.")
-    _candado(sesion, "parqueadero:caja")
-    abierta = caja_abierta(sesion)
-    if abierta is not None:
-        raise CajaYaAbierta(f"Ya hay una caja abierta desde las {_hora(abierta.abierta_en)}.")
-    caja = CajaParqueadero(
-        base=base,
-        abierta_en=ahora,
-        abierta_por=administrador_id,
-        nota_apertura=(nota or "").strip() or None,
+) -> Caja:
+    """Abre la caja del parqueadero con la plata que queda en el cajón para dar vueltos."""
+    return cajas.abrir_caja(
+        sesion, NEGOCIO, base=base, nota=nota, administrador_id=administrador_id, ahora=ahora
     )
-    sesion.add(caja)
-    sesion.flush()
-    return caja
 
 
-def cuadre_de_caja(sesion: Session, caja: CajaParqueadero) -> reglas.Cuadre:
+def cuadre_de_caja(sesion: Session, caja: Caja) -> reglas.Cuadre:
     """Lo que entró a la caja por cada medio: salidas cobradas y pagos de mensualidad."""
     parqueos = sesion.execute(
         select(Parqueo.medio_pago, func.sum(Parqueo.valor_cobrado))
@@ -139,51 +130,27 @@ def cerrar_caja(
     nota: str | None = None,
     administrador_id: int | None = None,
     ahora: datetime | None = None,
-) -> CajaParqueadero:
+) -> Caja:
     """Cierra la caja con lo que se contó en el cajón. Guarda lo que esperaba el sistema
-    (base + efectivo) para que la diferencia quede escrita."""
-    ahora = ahora or tiempo.ahora()
-    if efectivo_contado < 0:
-        raise ValorInvalido("El efectivo contado no puede ser negativo.")
-    _candado(sesion, "parqueadero:caja")
-    caja = sesion.execute(
-        select(CajaParqueadero)
-        .where(CajaParqueadero.id == caja_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    ).scalar_one_or_none()
-    if caja is None or not caja.abierta:
-        raise SinCajaAbierta("Esa caja ya está cerrada.")
-    caja.efectivo_esperado = cuadre_de_caja(sesion, caja).efectivo_esperado
-    caja.efectivo_contado = efectivo_contado
-    caja.nota_cierre = (nota or "").strip() or None
-    caja.cerrada_en = ahora
-    caja.cerrada_por = administrador_id
-    caja.abierta = False
-    sesion.flush()
-    return caja
+    (base + efectivo de las salidas y las mensualidades) para que la diferencia quede escrita."""
+    return cajas.cerrar_caja(
+        sesion,
+        NEGOCIO,
+        caja_id,
+        efectivo_esperado=lambda sesion, caja: cuadre_de_caja(sesion, caja).efectivo_esperado,
+        efectivo_contado=efectivo_contado,
+        nota=nota,
+        administrador_id=administrador_id,
+        ahora=ahora,
+    )
 
 
-def _caja_abierta_bloqueada(sesion: Session) -> CajaParqueadero | None:
-    """La caja abierta, con un candado compartido hasta el final de la transacción.
-
-    Mientras alguien cobra o corrige en ella, nadie la puede cerrar: el cierre espera y cuenta
-    también ese cobro. Y si el cierre llegó primero, quien cobra espera y ve la caja cerrada
-    (sin el candado, el cobro podía quedar en una caja ya contada, por fuera de su cuadre).
-    """
-    return sesion.execute(
-        select(CajaParqueadero)
-        .where(CajaParqueadero.abierta)
-        .with_for_update(read=True)
-        .execution_options(populate_existing=True)
-    ).scalar_one_or_none()
+def _caja_abierta_bloqueada(sesion: Session) -> Caja | None:
+    return cajas.caja_abierta_bloqueada(sesion, NEGOCIO)
 
 
-def _caja_para_cobrar(sesion: Session) -> CajaParqueadero:
-    caja = _caja_abierta_bloqueada(sesion)
-    if caja is None:
-        raise SinCajaAbierta("Abre la caja para poder cobrar.")
-    return caja
+def _caja_para_cobrar(sesion: Session) -> Caja:
+    return cajas.caja_para_cobrar(sesion, NEGOCIO)
 
 
 # --- Entradas y salidas -----------------------------------------------------------------
@@ -641,64 +608,12 @@ def pagar_mensualidad(
 # el balance y el reporte a los jefes la muestran.
 
 
-def _motivo_de_la_correccion(motivo: str | None) -> str:
-    limpio = " ".join((motivo or "").split())
-    if not limpio:
-        raise ValorInvalido(
-            "Escribe por qué se corrige: queda anotado en la caja y en el reporte a los jefes."
-        )
-    return limpio[:200]
+_motivo_de_la_correccion = cajas.motivo_de_la_correccion
+_anotar_en_la_caja = cajas.anotar_en_la_caja
 
 
-def _bloquear_caja(sesion: Session, caja_id: int) -> CajaParqueadero | None:
-    return sesion.execute(
-        select(CajaParqueadero)
-        .where(CajaParqueadero.id == caja_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    ).scalar_one_or_none()
-
-
-def _que_no_este_vencida(
-    caja: CajaParqueadero, ahora: datetime, error: type[ReglaDelNegocio]
-) -> None:
-    if not reglas.caja_corregible(caja.cerrada_en, ahora):
-        raise error(
-            f"La caja {caja.id} se cerró hace más de {reglas.DIAS_PARA_CORREGIR_UNA_CAJA_CERRADA} "
-            "días: sus cuentas ya se entregaron y no se corrigen. Si hay que devolver plata, "
-            "sácala de la caja de hoy y escríbelo en la nota del cierre."
-        )
-
-
-def _caja_del_cobro(sesion: Session, caja_id: int | None, ahora: datetime) -> CajaParqueadero:
-    """La caja del cobro, bloqueada hasta terminar la corrección.
-
-    Si es la abierta, con un candado compartido: nadie la cierra a mitad (el cierre espera y
-    cuenta el cobro ya corregido). Si ya se cerró (hasta 30 días antes), con uno exclusivo: lo
-    que debía haber en el cajón cambia con la corrección, y dos correcciones al mismo tiempo
-    no se pisan esa cuenta.
-    """
-    if caja_id is None:
-        raise CobroNoCorregible("Ese cobro no entró a ninguna caja: no hay plata que corregir.")
-    abierta = _caja_abierta_bloqueada(sesion)
-    if abierta is not None and abierta.id == caja_id:
-        return abierta
-    caja = _bloquear_caja(sesion, caja_id)
-    if caja is None:  # la llave foránea no lo deja pasar; por si acaso
-        raise CobroNoCorregible("La caja de ese cobro no existe.")
-    _que_no_este_vencida(caja, ahora, CobroNoCorregible)
-    return caja
-
-
-def _anotar_en_la_caja(
-    correccion: CorreccionCobro | CorreccionDeCaja, caja: CajaParqueadero
-) -> None:
-    """Si la caja ya se había cerrado, la corrección queda marcada como hecha después del
-    cierre y lo que debía haber en el cajón se pone al día: la diferencia cambia con ella.
-    En la abierta no hay nada que poner al día: el cierre cuenta lo que haya."""
-    correccion.despues_del_cierre = not caja.abierta
-    if not caja.abierta:
-        caja.efectivo_esperado = (caja.efectivo_esperado or 0) + correccion.cambio_en_efectivo
+def _caja_del_cobro(sesion: Session, caja_id: int | None, ahora: datetime) -> Caja:
+    return cajas.caja_del_cobro(sesion, NEGOCIO, caja_id, ahora)
 
 
 def _salida_cobrada(sesion: Session, parqueo_id: int) -> Parqueo:
@@ -929,16 +844,6 @@ def anular_pago(
 # --- Corregir la caja misma: la base o el conteo ---------------------------------------------
 
 
-def _caja_para_corregir(sesion: Session, caja_id: int, ahora: datetime) -> CajaParqueadero:
-    """La caja, con candado exclusivo hasta terminar: ni se cierra ni se cobra en ella a mitad
-    de la corrección (el cobro que llega espera y después cuenta con la base nueva)."""
-    caja = _bloquear_caja(sesion, caja_id)
-    if caja is None:
-        raise CajaNoCorregible("Esa caja no existe.")
-    _que_no_este_vencida(caja, ahora, CajaNoCorregible)
-    return caja
-
-
 def corregir_base(
     sesion: Session,
     caja_id: int,
@@ -948,29 +853,16 @@ def corregir_base(
     administrador_id: int | None = None,
     ahora: datetime | None = None,
 ) -> CorreccionDeCaja:
-    """Cambia la base con que se abrió la caja (se escribió $50.000 y eran $5.000). Si ya se
-    cerró, cambia también lo que debía haber en el cajón y, con eso, la diferencia."""
-    ahora = ahora or tiempo.ahora()
-    limpio = _motivo_de_la_correccion(motivo)
-    if base < 0:
-        raise ValorInvalido("La base no puede ser negativa.")
-    caja = _caja_para_corregir(sesion, caja_id, ahora)
-    if base == caja.base:
-        raise ValorInvalido(f"No hay nada que cambiar: la base ya es {formato.pesos(base)}.")
-    correccion = CorreccionDeCaja(
-        dato=DatoDeCaja.BASE,
-        caja_id=caja.id,
-        valor_antes=caja.base,
-        valor_despues=base,
-        motivo=limpio,
+    """Cambia la base con que se abrió una caja del parqueadero (app.caja: corregir_base)."""
+    return cajas.corregir_base(
+        sesion,
+        NEGOCIO,
+        caja_id,
+        base=base,
+        motivo=motivo,
         administrador_id=administrador_id,
-        fecha_hora=ahora,
+        ahora=ahora,
     )
-    _anotar_en_la_caja(correccion, caja)
-    caja.base = base
-    sesion.add(correccion)
-    sesion.flush()
-    return correccion
 
 
 def corregir_conteo(
@@ -982,30 +874,13 @@ def corregir_conteo(
     administrador_id: int | None = None,
     ahora: datetime | None = None,
 ) -> CorreccionDeCaja:
-    """Cambia el efectivo que se contó al cerrar (se escribió mal, o se volvió a contar y era
-    otro): la diferencia del cierre cambia con él."""
-    ahora = ahora or tiempo.ahora()
-    limpio = _motivo_de_la_correccion(motivo)
-    if efectivo_contado < 0:
-        raise ValorInvalido("El efectivo contado no puede ser negativo.")
-    caja = _caja_para_corregir(sesion, caja_id, ahora)
-    if caja.abierta:
-        raise CajaNoCorregible("Esa caja sigue abierta: el efectivo se cuenta al cerrarla.")
-    if efectivo_contado == caja.efectivo_contado:
-        raise ValorInvalido(
-            f"No hay nada que cambiar: el conteo ya es {formato.pesos(efectivo_contado)}."
-        )
-    correccion = CorreccionDeCaja(
-        dato=DatoDeCaja.CONTEO,
-        caja_id=caja.id,
-        valor_antes=caja.efectivo_contado or 0,
-        valor_despues=efectivo_contado,
-        motivo=limpio,
+    """Cambia el efectivo que se contó al cerrar una caja del parqueadero (app.caja)."""
+    return cajas.corregir_conteo(
+        sesion,
+        NEGOCIO,
+        caja_id,
+        efectivo_contado=efectivo_contado,
+        motivo=motivo,
         administrador_id=administrador_id,
-        fecha_hora=ahora,
+        ahora=ahora,
     )
-    _anotar_en_la_caja(correccion, caja)
-    caja.efectivo_contado = efectivo_contado
-    sesion.add(correccion)
-    sesion.flush()
-    return correccion

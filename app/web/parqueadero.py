@@ -40,7 +40,7 @@ from app.parqueadero.balance import periodo as periodo_de
 from app.parqueadero.errores import CajaNoCorregible, CobroNoCorregible, ValorInvalido
 from app.parqueadero.estados import NOMBRE_DEL_TIPO, EstadoParqueo, TipoParqueo
 from app.parqueadero.tablas import (
-    CajaParqueadero,
+    Caja,
     CorreccionCobro,
     Mensualidad,
     PagoMensualidad,
@@ -94,7 +94,7 @@ def _hoy() -> date:
     return tiempo.hora_local(tiempo.ahora()).date()
 
 
-def _caja_de_otro_dia(caja: CajaParqueadero | None) -> bool:
+def _caja_de_otro_dia(caja: Caja | None) -> bool:
     """La caja abierta viene de un día anterior: alguien olvidó cerrarla al final del día."""
     return caja is not None and tiempo.hora_local(caja.abierta_en).date() < _hoy()
 
@@ -385,7 +385,7 @@ def _consulta_de_cierres(filtro: consultas.FiltroDeCierres, **mas: Any) -> str:
 
 def _contexto_caja(
     sesion: Session,
-    caja: CajaParqueadero | None,
+    caja: Caja | None,
     filtro: consultas.FiltroDeCierres | None = None,
     pagina_de_cierres: int = 1,
 ) -> dict[str, Any]:
@@ -517,8 +517,8 @@ def abrir_caja(
     return Response(status_code=200, headers={"HX-Refresh": "true"})
 
 
-def _caja_o_404(sesion: Session, caja_id: int) -> CajaParqueadero:
-    caja = sesion.get(CajaParqueadero, caja_id)
+def _caja_o_404(sesion: Session, caja_id: int) -> Caja:
+    caja = casos.caja_del_parqueadero(sesion, caja_id)
     if caja is None:
         raise HTTPException(status_code=404, detail="Esa caja no existe.")
     return caja
@@ -563,7 +563,7 @@ def cerrar_caja(
         sesion.commit()
     except ReglaDelNegocio as error:
         sesion.rollback()
-        caja = sesion.get(CajaParqueadero, caja_id)
+        caja = casos.caja_del_parqueadero(sesion, caja_id)
         if caja is None or not caja.abierta:
             return sin_cambios(cerrar_dialogo=True, error=str(error))
         contexto = {
@@ -581,7 +581,7 @@ def cerrar_caja(
     )
 
 
-def _contexto_de_una_caja(sesion: Session, caja: CajaParqueadero) -> dict[str, Any]:
+def _contexto_de_una_caja(sesion: Session, caja: Caja) -> dict[str, Any]:
     cerrada_en = caja.cerrada_en
     return {
         "resumen": consultas.resumen_de_caja(sesion, caja),
@@ -623,7 +623,7 @@ def ticket_de_caja(request: Request, sesion: SesionBD, _: Admin, caja_id: int) -
 def _dialogo_corregir_caja(
     request: Request,
     sesion: Session,
-    caja: CajaParqueadero,
+    caja: Caja,
     *,
     formulario: dict[str, Any] | None = None,
     accion: str = "",
@@ -1348,7 +1348,7 @@ def _dialogo_corregir(
     accion: str = "",
     error: str | None = None,
 ) -> Response:
-    caja = sesion.get(CajaParqueadero, cobro.caja_id) if cobro.caja_id else None
+    caja = casos.caja_del_parqueadero(sesion, cobro.caja_id) if cobro.caja_id else None
     contexto = {
         "cobro": cobro,
         "caja_cerrada": caja is not None and caja.cerrada_en is not None,
@@ -1378,7 +1378,7 @@ def _caja_de_la_pantalla(request: Request, sesion: Session, **eventos: Any) -> R
     una caja (/parqueadero/caja/12, abierta o cerrada) o, si no, la caja del día. Dónde está
     la pantalla lo dice htmx en cada pedido."""
     numero = re.fullmatch(r"/parqueadero/caja/(\d+)", pagina_actual(request))
-    caja = sesion.get(CajaParqueadero, int(numero.group(1))) if numero else None
+    caja = casos.caja_del_parqueadero(sesion, int(numero.group(1))) if numero else None
     if caja is None:
         return _caja_abierta(request, sesion, **eventos)
     respuesta = html(request, "_parqueadero_una_caja.html", _contexto_de_una_caja(sesion, caja))

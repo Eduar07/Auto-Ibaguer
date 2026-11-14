@@ -8,10 +8,17 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import Select, exists, func, or_, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app import formato, tiempo
+from app.caja import consultas as cajas
+from app.caja.consultas import (  # noqa: F401  (los filtros de cierres son comunes)
+    CIERRES_POR_PAGINA,
+    RESULTADOS,
+    Cierres,
+    FiltroDeCierres,
+)
 from app.parqueadero import casos_de_uso as casos
 from app.parqueadero import reglas
 from app.parqueadero.estados import (
@@ -22,7 +29,7 @@ from app.parqueadero.estados import (
     TipoParqueo,
 )
 from app.parqueadero.tablas import (
-    CajaParqueadero,
+    Caja,
     CorreccionCobro,
     CorreccionDeCaja,
     Mensualidad,
@@ -304,7 +311,7 @@ Correccion = FilaCorreccion | FilaCorreccionDeCaja
 
 @dataclass(frozen=True)
 class ResumenDeCaja:
-    caja: CajaParqueadero
+    caja: Caja
     cuadre: reglas.Cuadre
     salidas: int  # vehículos que salieron con esta caja abierta (cobrados o mensualistas)
     mensualidades: int  # pagos de mensualidad cobrados en esta caja
@@ -342,11 +349,11 @@ class ResumenDeCaja:
         return contado - esperado
 
 
-def resumen_de_caja(sesion: Session, caja: CajaParqueadero) -> ResumenDeCaja:
+def resumen_de_caja(sesion: Session, caja: Caja) -> ResumenDeCaja:
     return resumenes_de_cajas(sesion, [caja])[0]
 
 
-def resumenes_de_cajas(sesion: Session, cajas: Sequence[CajaParqueadero]) -> list[ResumenDeCaja]:
+def resumenes_de_cajas(sesion: Session, cajas: Sequence[Caja]) -> list[ResumenDeCaja]:
     """El cuadre de varias cajas con unas pocas consultas para todas (no cinco por caja): la
     lista de cierres y el balance del mes muestran decenas."""
     if not cajas:
@@ -452,8 +459,8 @@ def correcciones_a_cajas_de_antes(
     abrieron antes de `inicio`: alguien cambió un día que los jefes ya habían revisado, y el
     reporte de hoy se lo cuenta."""
     cajas_de_antes = (
-        select(CajaParqueadero.id, CajaParqueadero.abierta_en)
-        .where(CajaParqueadero.abierta_en < inicio)
+        select(Caja.id, Caja.abierta_en)
+        .where(Caja.negocio == casos.NEGOCIO, Caja.abierta_en < inicio)
         .subquery()
     )
     de_cobros = sesion.execute(
@@ -485,162 +492,46 @@ def correcciones_a_cajas_de_antes(
     )
 
 
-# --- Los cierres anteriores, con filtros ---------------------------------------------------
-
-# Cómo cerró la caja: cuadró, sobró o faltó plata, o se corrigió después del cierre.
-RESULTADOS = {
-    "todos": "Todos",
-    "cuadro": "Cuadraron",
-    "sobro": "Sobró",
-    "falto": "Faltó",
-    "corregida": "Corregidas",
-}
-CIERRES_POR_PAGINA = 30
+# --- Los cierres anteriores, con filtros (app.caja.consultas) -------------------------------
 
 
-@dataclass(frozen=True)
-class FiltroDeCierres:
-    """Qué cierres ver. Los días son los de apertura, como en el Balance: cada caja es del día
-    en que se abrió, aunque se cierre pasada la medianoche."""
-
-    desde: date | None = None
-    hasta: date | None = None
-    resultado: str = "todos"
-    quien: int | None = None  # el administrador que cerró
-
-    @property
-    def filtra(self) -> bool:
-        return bool(self.desde or self.hasta or self.quien) or self.resultado != "todos"
-
-
-@dataclass(frozen=True)
-class Cierres:
-    """Una página de cierres y las cuentas de todos los que cumplen el filtro (no solo de la
-    página): cuántos son, lo que entró y lo que sobró y faltó, cada cosa aparte."""
-
-    filas: list[ResumenDeCaja]
-    cuantos: int
-    entro: int
-    cuadraron: int
-    sobrantes: int
-    cuantos_sobrantes: int
-    faltantes: int
-    cuantos_faltantes: int
-    pagina: int
-    paginas: int
-
-
-def _cajas_del_filtro(filtro: FiltroDeCierres) -> Select:
-    """Las cajas cerradas que cumplen el filtro, como una consulta para usar adentro de otras."""
-    consulta = select(CajaParqueadero.id).where(CajaParqueadero.cerrada_en.is_not(None))
-    zona = tiempo.zona_horaria()
-    if filtro.desde:
-        inicio = datetime.combine(filtro.desde, datetime.min.time(), zona)
-        consulta = consulta.where(CajaParqueadero.abierta_en >= inicio)
-    if filtro.hasta:
-        fin = datetime.combine(filtro.hasta + timedelta(days=1), datetime.min.time(), zona)
-        consulta = consulta.where(CajaParqueadero.abierta_en < fin)
-    if filtro.quien:
-        consulta = consulta.where(CajaParqueadero.cerrada_por == filtro.quien)
-    contado, esperado = CajaParqueadero.efectivo_contado, CajaParqueadero.efectivo_esperado
-    if filtro.resultado == "cuadro":
-        consulta = consulta.where(contado == esperado)
-    elif filtro.resultado == "sobro":
-        consulta = consulta.where(contado > esperado)
-    elif filtro.resultado == "falto":
-        consulta = consulta.where(contado < esperado)
-    elif filtro.resultado == "corregida":
-        consulta = consulta.where(
-            or_(
-                exists().where(
-                    CorreccionCobro.caja_id == CajaParqueadero.id,
-                    CorreccionCobro.despues_del_cierre,
-                ),
-                exists().where(
-                    CorreccionDeCaja.caja_id == CajaParqueadero.id,
-                    CorreccionDeCaja.despues_del_cierre,
-                ),
-            )
-        )
-    return consulta
-
-
-def cierres(sesion: Session, filtro: FiltroDeCierres, pagina: int = 1) -> Cierres:
-    """Los cierres que cumplen el filtro, del más reciente al más viejo, de a 30 por página.
-    Siempre las mismas pocas consultas, haya 10 cierres o mil."""
-    ids = _cajas_del_filtro(filtro).subquery()
-    contado, esperado = CajaParqueadero.efectivo_contado, CajaParqueadero.efectivo_esperado
-    cuentas = sesion.execute(
-        select(
-            func.count(),
-            func.count().filter(contado == esperado),
-            func.coalesce(func.sum(contado - esperado).filter(contado > esperado), 0),
-            func.count().filter(contado > esperado),
-            func.coalesce(func.sum(esperado - contado).filter(contado < esperado), 0),
-            func.count().filter(contado < esperado),
-        ).where(CajaParqueadero.id.in_(select(ids.c.id)))
-    ).one()
-    cuantos = cuentas[0]
-    paginas = max(1, -(-cuantos // CIERRES_POR_PAGINA))
-    pagina = min(max(1, pagina), paginas)
-    entro_salidas = sesion.scalar(
+def _lo_que_entro(sesion: Session, ids: Select) -> int:
+    """Lo que entró a esas cajas del parqueadero: salidas cobradas y pagos de mensualidad."""
+    salidas = sesion.scalar(
         select(func.coalesce(func.sum(Parqueo.valor_cobrado), 0)).where(
-            Parqueo.caja_id.in_(select(ids.c.id)),
+            Parqueo.caja_id.in_(ids),
             Parqueo.estado == EstadoParqueo.SALIO,
             Parqueo.valor_cobrado > 0,
         )
     )
-    entro_mensualidades = sesion.scalar(
+    mensualidades = sesion.scalar(
         select(func.coalesce(func.sum(PagoMensualidad.valor), 0)).where(
-            PagoMensualidad.caja_id.in_(select(ids.c.id))
+            PagoMensualidad.caja_id.in_(ids)
         )
     )
-    cajas = sesion.scalars(
-        select(CajaParqueadero)
-        .where(CajaParqueadero.id.in_(select(ids.c.id)))
-        .order_by(CajaParqueadero.cerrada_en.desc(), CajaParqueadero.id.desc())
-        .offset((pagina - 1) * CIERRES_POR_PAGINA)
-        .limit(CIERRES_POR_PAGINA)
-    ).all()
-    return Cierres(
-        filas=resumenes_de_cajas(sesion, cajas),
-        cuantos=cuantos,
-        entro=int(entro_salidas) + int(entro_mensualidades),
-        cuadraron=cuentas[1],
-        sobrantes=int(cuentas[2]),
-        cuantos_sobrantes=cuentas[3],
-        faltantes=int(cuentas[4]),
-        cuantos_faltantes=cuentas[5],
-        pagina=pagina,
-        paginas=paginas,
+    return int(salidas) + int(mensualidades)
+
+
+def cierres(sesion: Session, filtro: FiltroDeCierres, pagina: int = 1) -> Cierres[ResumenDeCaja]:
+    """Los cierres del parqueadero que cumplen el filtro, de a 30 por página."""
+    return cajas.cierres(
+        sesion,
+        casos.NEGOCIO,
+        filtro,
+        pagina,
+        entro=_lo_que_entro,
+        resumir=resumenes_de_cajas,
     )
 
 
 def todos_los_cierres(sesion: Session, filtro: FiltroDeCierres) -> list[ResumenDeCaja]:
     """Todos los que cumplen el filtro (para el archivo de Excel), del más viejo al más nuevo."""
-    cajas = sesion.scalars(
-        select(CajaParqueadero)
-        .where(CajaParqueadero.id.in_(_cajas_del_filtro(filtro)))
-        .order_by(CajaParqueadero.abierta_en, CajaParqueadero.id)
-    ).all()
-    return resumenes_de_cajas(sesion, cajas)
+    return cajas.todos_los_cierres(sesion, casos.NEGOCIO, filtro, resumir=resumenes_de_cajas)
 
 
 def quienes_cerraron(sesion: Session) -> list[tuple[int, str]]:
-    """Los administradores que han cerrado alguna caja, para filtrar por quién cerró."""
-    return [
-        (id_, usuario)
-        for id_, usuario in sesion.execute(
-            select(Administrador.id, Administrador.usuario)
-            .where(
-                exists().where(
-                    CajaParqueadero.cerrada_por == Administrador.id,
-                    CajaParqueadero.cerrada_en.is_not(None),
-                )
-            )
-            .order_by(Administrador.usuario)
-        )
-    ]
+    """Los administradores que han cerrado alguna caja del parqueadero."""
+    return cajas.quienes_cerraron(sesion, casos.NEGOCIO)
 
 
 # --- Mensualidades ----------------------------------------------------------------------

@@ -5,6 +5,7 @@ Cuando un módulo nuevo agregue tablas (Fase 2 y 3), se importa aquí.
 """
 
 from app.bot import tablas as bot  # noqa: F401
+from app.caja import tablas as caja  # noqa: F401
 from app.catalogo import tablas as catalogo  # noqa: F401
 from app.clientes import tablas as clientes  # noqa: F401
 from app.comentarios import tablas as comentarios  # noqa: F401

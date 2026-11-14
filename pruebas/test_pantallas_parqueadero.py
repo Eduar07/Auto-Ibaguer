@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.parqueadero.estados import EstadoParqueo
-from app.parqueadero.tablas import CajaParqueadero, Mensualidad, PagoMensualidad, Parqueo
+from app.parqueadero.tablas import Caja, Mensualidad, PagoMensualidad, Parqueo
 from app.parqueadero.tarifas import leer_ajustes
 from pruebas.fabricas import minutos
 from pruebas.navegador import HTMX, aviso, error, eventos
@@ -162,7 +162,7 @@ def test_cerrar_la_caja_lleva_al_resumen_que_se_imprime_solo(adentro: TestClient
     adentro.post(
         f"/parqueadero/{parqueo(sesion).id}/salida", data={"medio_pago": "efectivo"}, headers=HTMX
     )
-    caja = sesion.scalars(select(CajaParqueadero)).one()
+    caja = sesion.scalars(select(Caja)).one()
 
     dialogo = adentro.get("/parqueadero/caja/cerrar", headers=HTMX)
     assert "$53.000" in dialogo.text  # 50.000 de base + 3.000
@@ -183,7 +183,7 @@ def test_cerrar_la_caja_lleva_al_resumen_que_se_imprime_solo(adentro: TestClient
 
 def test_cerrar_la_caja_pide_lo_contado(adentro: TestClient, sesion: Session):
     abrir_caja(adentro)
-    caja = sesion.scalars(select(CajaParqueadero)).one()
+    caja = sesion.scalars(select(Caja)).one()
 
     respuesta = adentro.post(
         "/parqueadero/caja/cerrar", data={"caja_id": caja.id, "efectivo_contado": ""}, headers=HTMX

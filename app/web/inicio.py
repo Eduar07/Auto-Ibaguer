@@ -20,7 +20,7 @@ from app.comentarios.consultas import por_atender as comentarios_por_atender
 from app.parqueadero import balance
 from app.parqueadero.casos_de_uso import caja_abierta
 from app.parqueadero.estados import EstadoParqueo
-from app.parqueadero.tablas import CajaParqueadero, Parqueo
+from app.parqueadero.tablas import Caja, Parqueo
 from app.turnos.estados import ESTADOS_ACTIVOS, ESTADOS_EN_ESPERA, EstadoTurno
 from app.turnos.tablas import Pago, Turno
 from app.web.comun import Admin, SesionBD, pagina, verificar_origen
@@ -46,7 +46,7 @@ class HoyEnElParqueadero:
     adentro: int
     salidas: int
     recogido: int  # salidas y mensualidades, como en el Balance
-    caja: CajaParqueadero | None
+    caja: Caja | None
     caja_de_otro_dia: bool  # alguien la dejó abierta desde un día anterior
 
 

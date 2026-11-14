@@ -13,6 +13,8 @@ from sqlalchemy import String, func, literal, select
 from sqlalchemy.orm import Session
 
 from app import formato, tiempo
+from app.caja.consultas import cajas_abiertas_entre
+from app.parqueadero.casos_de_uso import NEGOCIO
 from app.parqueadero.consultas import (
     Correccion,
     ResumenDeCaja,
@@ -20,7 +22,7 @@ from app.parqueadero.consultas import (
     resumenes_de_cajas,
 )
 from app.parqueadero.estados import EstadoParqueo, TipoParqueo
-from app.parqueadero.tablas import CajaParqueadero, Mensualidad, PagoMensualidad, Parqueo
+from app.parqueadero.tablas import Mensualidad, PagoMensualidad, Parqueo
 from app.turnos.estados import MedioPago
 
 TIPOS_DE_PERIODO = ("dia", "semana", "mes")
@@ -388,11 +390,7 @@ def balance(sesion: Session, p: Periodo) -> Balance:
     ]
     # Cada caja es del día en que se abrió: la que se cierra pasada la medianoche sigue siendo
     # la del día anterior, y así cada caja sale en un solo día, una sola semana y un solo mes.
-    cajas = sesion.scalars(
-        select(CajaParqueadero)
-        .where(CajaParqueadero.abierta_en >= inicio, CajaParqueadero.abierta_en < fin)
-        .order_by(CajaParqueadero.abierta_en)
-    ).all()
+    cajas = cajas_abiertas_entre(sesion, NEGOCIO, inicio, fin)
 
     return Balance(
         periodo=p,

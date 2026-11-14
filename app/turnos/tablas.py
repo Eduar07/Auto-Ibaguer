@@ -154,6 +154,9 @@ class Pago(Base):
     precio_cobrado: Mapped[int] = mapped_column(Integer)
     motivo_ajuste: Mapped[str | None] = mapped_column(Text)
     medio_pago: Mapped[MedioPago] = mapped_column(lista_cerrada(MedioPago, "medio_pago"))
+    # La caja del lavadero a la que entró. Los cobros de antes de que el lavadero tuviera caja
+    # no tienen.
+    caja_id: Mapped[int | None] = mapped_column(ForeignKey("caja.id"), index=True)
     administrador_id: Mapped[int | None] = mapped_column(ForeignKey("administrador.id"))
     fecha_hora: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True

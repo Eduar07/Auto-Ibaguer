@@ -21,7 +21,7 @@ from app.parqueadero import casos_de_uso as casos
 from app.parqueadero import consultas
 from app.parqueadero.consultas import FiltroDeCierres
 from app.parqueadero.estados import TipoParqueo
-from app.parqueadero.tablas import CajaParqueadero
+from app.parqueadero.tablas import Caja
 from app.turnos.estados import MedioPago
 from app.web.administradores import guardar_administrador
 from app.web.tablas import Administrador
@@ -34,9 +34,7 @@ def a_las(dia: int, hora: int) -> datetime:
     return datetime(2026, OCTUBRE, dia, hora, tzinfo=BOGOTA)
 
 
-def cerrada_el(
-    sesion: Session, dia: int, contado: int, por: Administrador | None = None
-) -> CajaParqueadero:
+def cerrada_el(sesion: Session, dia: int, contado: int, por: Administrador | None = None) -> Caja:
     """La caja de ese día de octubre: un carro pagó $3.000 en efectivo (sin base) y al cerrar
     se contó `contado`. Cuadra con $3.000."""
     caja = casos.abrir_caja(sesion, base=0, ahora=a_las(dia, 6))
@@ -62,7 +60,7 @@ def dos(sesion: Session) -> tuple[Administrador, Administrador]:
 
 
 @pytest.fixture
-def octubre(sesion: Session, dos) -> dict[str, CajaParqueadero]:
+def octubre(sesion: Session, dos) -> dict[str, Caja]:
     """Cinco cierres: el 1 y el 2 cuadraron, el 3 sobraron $1.000, el 4 faltaron $500 y el 5
     faltaron $2.000. Ana cerró el 4 y el 5."""
     eduar, ana = dos

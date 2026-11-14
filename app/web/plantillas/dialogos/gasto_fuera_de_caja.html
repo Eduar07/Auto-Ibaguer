@@ -1,0 +1,51 @@
+{#- Anotar un gasto pagado por fuera del cajón: no toca la caja, sí el resultado del mes. -#}
+{% import "_iconos.html" as iconos %}
+{% set f = formulario or {} %}
+<form class="dialogo__caja" hx-post="/resultados/gastos" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <input type="hidden" name="mes" value="{{ clave_del_mes }}">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Anotar un gasto</h2>
+    <p>Pagado por fuera de la caja: transferencia, Nequi, tarjeta.</p>
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <fieldset>
+      <legend>¿De qué negocio?</legend>
+      <div class="opciones opciones--2">
+        {% for clave, nombre in negocios %}
+        <label class="opcion opcion--centrada opcion--corta">
+          <input type="radio" name="negocio" value="{{ clave }}" required {% if f.negocio == clave %}checked{% endif %}>
+          <span>{{ nombre }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="dos-columnas">
+      <div class="campo">
+        <label for="gasto-fecha">Día en que se pagó</label>
+        <input id="gasto-fecha" name="fecha" type="date" required max="{{ hoy }}" value="{{ f.fecha or '' }}">
+      </div>
+      <div class="campo">
+        <label for="gasto-categoria">¿En qué?</label>
+        <select id="gasto-categoria" name="categoria" required>
+          <option value="">Elige…</option>
+          {% for clave, nombre in categorias %}<option value="{{ clave }}" {% if f.categoria == clave %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="campo">
+      <label for="gasto-descripcion">Descripción</label>
+      <input id="gasto-descripcion" name="descripcion" required maxlength="120" value="{{ f.descripcion or '' }}" placeholder="Arriendo de noviembre">
+    </div>
+    <div class="campo campo--corto">
+      <label for="gasto-valor">Valor</label>
+      <input id="gasto-valor" name="valor" inputmode="numeric" class="monto" required maxlength="12" value="{{ f.valor or '' }}" placeholder="1.200.000">
+    </div>
+  </div>
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande">Anotar el gasto</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

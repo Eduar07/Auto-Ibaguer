@@ -47,6 +47,8 @@ TODAS_LAS_TABLAS |= {"parqueo", "mensualidad", "pago_mensualidad", "caja"}
 TODAS_LAS_TABLAS |= {"correccion_cobro", "correccion_de_caja"}
 # Salidas de caja (0013): gastos, retiros y consignaciones, de los dos negocios.
 TODAS_LAS_TABLAS |= {"salida_de_caja"}
+# El resultado del mes (0014): gastos por fuera de la caja y meses cerrados.
+TODAS_LAS_TABLAS |= {"gasto_fuera_de_caja", "cierre_de_mes"}
 
 MENU_ESPERADO = {
     ("Básico", "Automóvil"): 40_000,

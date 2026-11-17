@@ -16,6 +16,7 @@ class Seccion:
     nombre: str  # en el encabezado del computador
     corto: str  # en la barra de abajo del celular, donde cabe poco
     icono: str
+    solo_administrador: bool = False  # el cajero no la ve (app.web.permisos)
 
 
 @dataclass(frozen=True)
@@ -42,11 +43,18 @@ LAVADERO = Negocio(
     secciones=(
         Seccion("fila", "/fila", "Fila en vivo", "Fila", "fila"),
         Seccion("caja", "/caja", "Caja", "Caja", "caja"),
-        Seccion("balance", "/balance", "Balance", "Balance", "grafica"),
+        Seccion("balance", "/balance", "Balance", "Balance", "grafica", solo_administrador=True),
         Seccion("clientes", "/clientes", "Clientes", "Clientes", "cliente"),
         # En la barra del celular caben seis si los nombres son cortos: "Buzón" de comentarios.
         Seccion("comentarios", "/comentarios", "Comentarios", "Buzón", "actividad"),
-        Seccion("configuracion", "/configuracion", "Configuración", "Ajustes", "ajustes"),
+        Seccion(
+            "configuracion",
+            "/configuracion",
+            "Configuración",
+            "Ajustes",
+            "ajustes",
+            solo_administrador=True,
+        ),
     ),
 )
 
@@ -65,8 +73,22 @@ PARQUEADERO = Negocio(
             "Mensuales",
             "calendario",
         ),
-        Seccion("balance", "/parqueadero/balance", "Balance", "Balance", "grafica"),
-        Seccion("tarifas", "/parqueadero/tarifas", "Tarifas y ticket", "Tarifas", "ajustes"),
+        Seccion(
+            "balance",
+            "/parqueadero/balance",
+            "Balance",
+            "Balance",
+            "grafica",
+            solo_administrador=True,
+        ),
+        Seccion(
+            "tarifas",
+            "/parqueadero/tarifas",
+            "Tarifas y ticket",
+            "Tarifas",
+            "ajustes",
+            solo_administrador=True,
+        ),
     ),
 )
 
@@ -80,7 +102,7 @@ def de_la_seccion(seccion: str) -> tuple[Negocio | None, str]:
     Una sección que no existe (un error al escribirla en una pantalla) se avisa de una vez,
     en vez de mostrar esa pantalla sin menú: las pruebas abren todas las pantallas.
     """
-    if seccion in ("inicio", "resultados"):  # las de los dos negocios juntos
+    if seccion in ("inicio", "resultados", "usuarios"):  # las de los dos negocios juntos
         return None, seccion
     clave_del_negocio, _, clave = seccion.partition("/")
     negocio = NEGOCIOS.get(clave_del_negocio)

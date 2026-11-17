@@ -157,6 +157,17 @@ Lo que debe haber al cerrar es la base, más lo cobrado en efectivo, **menos las
 
 Las salidas salen en el cierre y en su ticket, en el **Balance** (los gastos por categoría, y aparte los retiros y las consignaciones), en el reporte a los jefes y en **Descargar las salidas** (Excel).
 
+### Usuarios: administradores y cajeros
+
+En **Elegir negocio**, abajo, **Usuarios** (solo la ve un administrador):
+
+- **Administrador**: todo, en los dos negocios.
+- **Cajero**: trabaja en su negocio, o en los dos. Hace la fila o las entradas, cobra (también las mensualidades), abre y cierra la caja y anota salidas. No cambia precios, tarifas ni configuración, no crea ni cambia mensualidades, no corrige cobros ni cajas, no anula salidas y no ve el Balance, los archivos para Excel ni el resultado del mes.
+- Quien entra a un solo negocio va derecho a él al entrar, sin pantalla de elegir.
+- Lo que el cajero no ve en el menú tampoco lo abre escribiendo la dirección: el servidor revisa cada pedido (`app/web/permisos.py`).
+- Un usuario no se borra: se **desactiva** y su historia se conserva. Nadie se quita a sí mismo el acceso, y siempre queda al menos un administrador activo. Cambiarle la contraseña cierra sus sesiones abiertas.
+- `uv run auto-ibaguer crear-admin` sigue creando administradores desde la terminal (por ejemplo, si se olvida la contraseña).
+
 ### Resultado y cierre del mes (los dos negocios juntos)
 
 En **Elegir negocio**, abajo, **Los dos juntos: resultado del mes** (o <http://localhost:8000/resultados>):
@@ -737,8 +748,8 @@ En `web/` está el dashboard. Las páginas se arman en el servidor con plantilla
 ## Cambiar una tabla
 
 1. Cambia el modelo en el `tablas.py` del módulo.
-2. Crea la migración con el siguiente número (la última es la 0014):
-   `uv run alembic revision --autogenerate --rev-id 0015 -m "que cambio"`
+2. Crea la migración con el siguiente número (la última es la 0015):
+   `uv run alembic revision --autogenerate --rev-id 0016 -m "que cambio"`
 3. Revisa el archivo nuevo en `migraciones/versions/`: Alembic adivina bien casi siempre, pero no siempre.
 4. Aplícala: `uv run auto-ibaguer preparar-base` (o solo las tablas: `uv run auto-ibaguer actualizar-tablas`)
 5. `uv run pytest`: una prueba falla si el modelo y las migraciones no coinciden.
@@ -793,6 +804,7 @@ En la nube se aplica sola: al unir el cambio, Render publica la versión nueva y
 - La sesión del dashboard vive en una cookie firmada con `CLAVE_SECRETA`. Vence tras `SESION_HORAS` (12) sin usar el dashboard, y se cierra sola si cambian la contraseña o desactivan al usuario.
 - En producción, `CLAVE_SECRETA` es obligatoria: el servidor no arranca sin una clave larga y aleatoria. `.env.example` dice cómo generarla.
 - Después de 5 contraseñas equivocadas, ese usuario queda bloqueado 15 minutos.
+- Cada usuario es administrador o cajero, de uno o de los dos negocios, y el servidor revisa en cada pedido si puede abrir esa pantalla (ver *Usuarios*).
 - Ninguna otra página puede enviar formularios al dashboard: el servidor revisa de dónde viene cada envío.
 - Un número absurdo en un formulario o en la dirección (un cero de más, miles de cifras, un "²") no tumba el servidor: la plata tiene tope, y lo que no cabe en la base de datos se responde con "Ese valor no es posible" en vez de una falla. El registro anota dónde pasó, nunca los datos.
 - Lo que el reloj escribe en la terminal no lleva nombres ni celulares: en la nube, esos registros los pueden ver otras personas. El registro de peticiones tampoco guarda lo que va después del `?` en cada dirección: ahí viajan las búsquedas del dashboard y la palabra secreta del webhook.

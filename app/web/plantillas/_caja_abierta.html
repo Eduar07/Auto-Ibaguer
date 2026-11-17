@@ -16,16 +16,16 @@
     <button type="button" class="boton boton--oscuro" hx-get="{{ rutas.caja }}/cerrar" hx-target="#dialogo-contenido">Cerrar caja</button>
     <button type="button" class="boton boton--borde" hx-get="{{ rutas.caja }}/salidas/nueva" hx-target="#dialogo-contenido">Registrar salida</button>
     <button type="button" class="boton boton--borde" data-imprimir="{{ rutas.caja }}/{{ caja.id }}/ticket">{{ iconos.icono("imprimir", 18) }}Imprimir cómo va</button>
-    <button type="button" class="boton-texto" hx-get="{{ rutas.caja }}/{{ caja.id }}/corregir" hx-target="#dialogo-contenido">Corregir la base</button>
+    {% if es_administrador %}<button type="button" class="boton-texto" hx-get="{{ rutas.caja }}/{{ caja.id }}/corregir" hx-target="#dialogo-contenido">Corregir la base</button>{% endif %}
   </div>
 </section>
 
 <section class="lista" aria-labelledby="t-movimientos">
   <div class="lista__cabeza"><h3 id="t-movimientos">Cobros de esta caja</h3></div>
-  {{ movimientos_de_caja(movimientos, corregir=True) }}
-  {% if movimientos %}<p class="ayuda">¿Un cobro quedó mal? Tócalo en <strong>Corregir</strong>. Después del cierre también se puede, hasta {{ dias_para_corregir }} días, desde la caja en <strong>Cierres anteriores</strong>.</p>{% endif %}
+  {{ movimientos_de_caja(movimientos, corregir=es_administrador) }}
+  {% if movimientos and es_administrador %}<p class="ayuda">¿Un cobro quedó mal? Tócalo en <strong>Corregir</strong>. Después del cierre también se puede, hasta {{ dias_para_corregir }} días, desde la caja en <strong>Cierres anteriores</strong>.</p>{% endif %}
 </section>
-{{ salidas_de_caja(salidas, rutas, anular=True, registrar=True) }}
+{{ salidas_de_caja(salidas, rutas, anular=es_administrador, registrar=True) }}
 {% if resumen.correcciones %}{{ correcciones_de_caja(resumen.correcciones) }}{% endif %}
 {% else %}
 <section class="panel" aria-labelledby="t-abrir">

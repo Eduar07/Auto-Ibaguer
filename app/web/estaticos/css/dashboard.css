@@ -1329,4 +1329,5 @@ form:not(:has(input[name="tipo"][value="gasto"]:checked)) .solo-si-es-gasto { di
 .resultados { display: flex; flex-direction: column; gap: 16px; }
 .resultados__negocios { align-items: start; }
 .tabla-caja__total th, .tabla-caja__total td { border-top: 2px solid var(--linea); }
-.elegir__juntos { display: flex; justify-content: center; margin: 8px 0 0; }
+.elegir__juntos { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 8px 0 0; }
+form:not(:has(input[name="rol"][value="cajero"]:checked)) .solo-si-es-cajero { display: none; }

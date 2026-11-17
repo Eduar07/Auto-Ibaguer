@@ -1,0 +1,14 @@
+{% extends "pagina.html" %}
+{#- Quién entra al dashboard, con qué rol y a qué negocio. -#}
+{% block titulo %}Usuarios · Auto Ibaguer{% endblock %}
+{% block contenido %}
+<main class="principal pantalla parqueadero">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Usuarios</h1>
+      <p>El <strong>administrador</strong> hace todo en los dos negocios. El <strong>cajero</strong> trabaja en su negocio (o en los dos): la fila o las entradas, cobrar, abrir y cerrar la caja y anotar salidas. No cambia precios, tarifas ni configuración, no corrige cobros ni cajas, y no ve el Balance ni el resultado del mes.</p>
+    </div>
+  </div>
+  {% include "_usuarios.html" %}
+</main>
+{% endblock %}

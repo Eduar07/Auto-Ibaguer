@@ -22,7 +22,7 @@
     {% include "_caja_abierta.html" %}
   </div>
 
-  {% include "_cobros_para_excel.html" %}
+  {% if es_administrador %}{% include "_cobros_para_excel.html" %}{% endif %}
 
   {% include "_cierres_anteriores.html" %}
 </main>

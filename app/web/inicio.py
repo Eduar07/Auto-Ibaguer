@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -121,6 +121,10 @@ def saludo(ahora: datetime) -> str:
 
 @router.get("/inicio", response_class=HTMLResponse)
 def pagina_inicio(request: Request, sesion: SesionBD, administrador: Admin) -> Response:
+    if administrador.negocio is not None:
+        # Quien entra a un solo negocio no tiene nada que elegir: va derecho al suyo.
+        negocio = LAVADERO if administrador.negocio.value == LAVADERO.clave else PARQUEADERO
+        return RedirectResponse(negocio.inicio, status_code=303)
     ahora = tiempo.ahora()
     contexto = {
         "saludo": saludo(ahora),

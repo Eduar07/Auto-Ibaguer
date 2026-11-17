@@ -43,6 +43,7 @@ class Intencion(StrEnum):
     HABLAR_CON_PERSONA = "hablar_con_persona"  # quiere que le responda alguien, no el bot
     # Lo que decide el dueño, no el bot: una flota, un convenio, un precio especial.
     PEDIDO_ESPECIAL = "pedido_especial"
+    LO_PIENSO = "lo_pienso"  # lo va a pensar, después mira: el bot ofrece escribirle
     PREGUNTA = "pregunta"  # sobre el negocio: horarios, pagos, dirección, sus datos...
     CHARLA = "charla"  # no pide nada: cuenta cómo está, bromea, habla de otro tema
     CRISIS = "crisis"  # dice en serio que quiere morir o hacerse daño: un texto fijo de ayuda

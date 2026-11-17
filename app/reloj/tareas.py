@@ -12,6 +12,7 @@ from datetime import datetime
 
 from app.bot import pausa as pausa_del_bot
 from app.bot import sesiones as sesiones_del_bot
+from app.comentarios import avisos as avisos_al_dueno
 from app.db.sesion import AbrirSesion
 from app.integraciones import bandeja_entrada, bandeja_salida
 from app.integraciones.bandeja_salida import Enviador, Resultado
@@ -68,6 +69,23 @@ def _vencer_sesiones_del_bot(abrir: AbrirSesion, ahora: datetime) -> list[str]:
 
 
 SESIONES_DEL_BOT = Tarea("las sesiones del bot", _vencer_sesiones_del_bot)
+
+
+# --- El aviso al dueño --------------------------------------------------------------------
+
+
+def _avisar_al_dueno(abrir: AbrirSesion, ahora: datetime) -> list[str]:
+    """Las quejas, los pedidos de hablar con alguien y los pedidos especiales recientes: un
+    correo al dueño con el resumen (app.comentarios.avisos). El correo sale después de
+    guardar: si el servidor de correo tarda, no deja nada bloqueado."""
+    with abrir() as sesion, sesion.begin():
+        aviso = avisos_al_dueno.preparar(sesion, ahora=ahora)
+    if aviso is None or not avisos_al_dueno.enviar(aviso):
+        return []
+    return ["Se le avisó al dueño por correo de clientes que esperan respuesta."]
+
+
+AVISO_AL_DUENO = Tarea("el aviso al dueño", _avisar_al_dueno)
 
 
 # --- WhatsApp: mensajes por atender y por enviar ----------------------------------------------
@@ -135,7 +153,7 @@ def del_servidor(enviador: Enviador | None) -> list[Tarea]:
     las otras tareas (por ejemplo, el aviso de "pasaste al final"). Sin WhatsApp conectado
     no se envía nada y los mensajes esperan en la bandeja de salida.
     """
-    tareas = [GRACIAS, SESIONES_DEL_BOT]
+    tareas = [GRACIAS, SESIONES_DEL_BOT, AVISO_AL_DUENO]
     if enviador is not None:
         tareas += [MENSAJES_OLVIDADOS, enviar_mensajes(enviador)]
     return tareas

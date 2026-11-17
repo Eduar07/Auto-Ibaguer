@@ -18,7 +18,7 @@ Las que traen `prueba` ("A", "B"...) son las pruebas obligatorias del documento 
 from dataclasses import dataclass
 
 from app.bot.conversacion import QUE_ESPERA, Paso
-from app.bot.interprete import CARRO, NO, OTRO_VEHICULO, SI, Anterior, Intencion
+from app.bot.interprete import CARRO, NO, OTRO_SERVICIO, OTRO_VEHICULO, SI, Anterior, Intencion
 
 Q = Intencion  # para que cada frase quepa en una línea
 MENU = ("Pedir turno", "Ver la fila", "Servicios y precios")
@@ -43,7 +43,7 @@ class FraseDePrueba:
     texto: str
     intencion: Intencion
     vehiculo: str | None = None  # si se espera que diga de qué vehículo habla
-    servicio: str | None = None
+    servicio: str | None = None  # OTRO_SERVICIO: uno que no está en el menú
     si_o_no: str | None = None  # si se espera que conteste la pregunta del bot
     antes: tuple[Anterior, ...] = ()  # lo que se venían diciendo, del más viejo al más nuevo
     en_que_va: str = ""  # lo que el bot está esperando
@@ -122,6 +122,25 @@ FRASES: tuple[FraseDePrueba, ...] = (
     FraseDePrueba("necesito hablar con el encargado", Q.HABLAR_CON_PERSONA),
     FraseDePrueba("me puede llamar alguien por favor?", Q.HABLAR_CON_PERSONA),
     FraseDePrueba("quiero hablar con una persona, no con un robot", Q.HABLAR_CON_PERSONA),
+    # --- Pedidos especiales: los decide el dueño, el bot no negocia ---
+    FraseDePrueba(
+        "buenas, tengo una empresa y necesito lavar 20 camionetas cada semana, me hacen precio?",
+        Q.PEDIDO_ESPECIAL,
+    ),
+    FraseDePrueba("manejan convenios para flotas de taxis?", Q.PEDIDO_ESPECIAL),
+    FraseDePrueba("si llevo 5 motos me hacen descuento?", Q.PEDIDO_ESPECIAL),
+    FraseDePrueba(
+        "necesito factura a nombre de mi empresa por los lavados del mes",
+        Q.PEDIDO_ESPECIAL,
+        tambien=(Q.PREGUNTA,),
+    ),
+    # --- Servicios que no están en el menú: no se inventa un precio ---
+    FraseDePrueba(
+        "cuánto vale el polichado?", Q.PRECIOS, servicio=OTRO_SERVICIO, tambien=(Q.PREGUNTA,)
+    ),
+    FraseDePrueba(
+        "hacen lavado de tapicería?", Q.PREGUNTA, servicio=OTRO_SERVICIO, tambien=(Q.PRECIOS,)
+    ),
     # --- Preguntas sobre el negocio (las contesta la ficha) ---
     FraseDePrueba("a qué hora abren el domingo?", Q.PREGUNTA),
     FraseDePrueba("reciben nequi?", Q.PREGUNTA),

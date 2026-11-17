@@ -23,6 +23,7 @@ from app.bot.frases_de_prueba import FRASES
 from app.bot.interprete import (
     CARRO,
     NO,
+    OTRO_SERVICIO,
     OTRO_VEHICULO,
     SI,
     Anterior,
@@ -186,6 +187,7 @@ def test_una_sola_consulta_entiende_y_escribe_con_formato_fijo():
         "si_o_no",
         "sabe",
         "lo_que_dice",  # de un audio o una foto
+        "resumen",  # para el administrador
         "respuesta",  # al final: escribe ya sabiendo qué entendió
     ]
     assert esquema["properties"]["intencion"]["enum"] == [i.value for i in Intencion]
@@ -905,7 +907,7 @@ def test_las_frases_de_prueba_hablan_del_menu_de_verdad(sesion: Session):
     catalogo = catalogo_del_bot(sesion)
     for frase in FRASES:
         assert frase.vehiculo in (None, CARRO, OTRO_VEHICULO, *catalogo.vehiculos), frase.texto
-        assert frase.servicio in (None, *catalogo.servicios), frase.texto
+        assert frase.servicio in (None, OTRO_SERVICIO, *catalogo.servicios), frase.texto
     assert {frase.intencion for frase in FRASES} == set(Intencion)  # todas tienen frases
     # Las pruebas obligatorias del documento del hito 7c (la J es la memoria, parte 3).
     assert {frase.prueba for frase in FRASES if frase.prueba} == set("ABCDEFGHI")
@@ -927,9 +929,10 @@ def test_el_comando_corre_las_frases_con_una_consulta_cada_una(
         f.texto: Interpretacion(
             f.intencion,
             f.vehiculo,
-            f.servicio,
+            None if f.servicio == OTRO_SERVICIO else f.servicio,
             si_o_no=f.si_o_no,
             respuesta=escribe.get(f.intencion, ""),
+            servicio_que_no_hay=f.servicio == OTRO_SERVICIO,
         )
         for f in FRASES
     }

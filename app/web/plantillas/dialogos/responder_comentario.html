@@ -7,6 +7,7 @@
   "felicitacion": "Felicitación",
   "quiere_hablar": "Quiere hablar con alguien",
   "pregunta": "Pregunta que el bot no supo",
+  "pedido_especial": "Pedido especial",
 } %}
 <form class="dialogo__caja" hx-post="/comentarios/{{ c.id }}/responder" hx-target="#dialogo-contenido"
       hx-disabled-elt="find button[type='submit']">
@@ -21,6 +22,7 @@
     <div class="responder">
       <figure class="responder__comentario">
         <figcaption>{{ tipos[c.tipo.value] }} · {{ cuando(c.creado_en) }}</figcaption>
+        {% if c.resumen %}<p class="comentario__resumen">{{ c.resumen }}</p>{% endif %}
         <blockquote class="comentario__cita">{{ c.texto }}</blockquote>
       </figure>
       {% include "_charla_con_el_cliente.html" %}

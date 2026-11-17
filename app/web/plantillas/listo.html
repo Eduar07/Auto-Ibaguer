@@ -1,0 +1,31 @@
+{% extends "pagina.html" %}
+{#- Lo que falta configurar antes de trabajar en serio con los dos negocios. -#}
+{% import "_iconos.html" as iconos %}
+{% block titulo %}Lista para abrir · Auto Ibaguer{% endblock %}
+{% block contenido %}
+<main class="principal pantalla parqueadero">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Lista para abrir</h1>
+      <p>{% if pendientes %}Faltan {{ pendientes }} cosa{{ "s" if pendientes != 1 }} por configurar antes de trabajar en serio.{% else %}Lo que el sistema puede revisar está listo. Repasa los recordatorios.{% endif %}</p>
+    </div>
+  </div>
+  {% for g in grupos %}
+  <section class="lista" aria-labelledby="t-{{ loop.index }}">
+    <div class="lista__cabeza"><h2 id="t-{{ loop.index }}">{{ g.nombre }}</h2></div>
+    <ul class="movimientos">
+      {% for p in g.puntos %}
+      <li>
+        <span class="insignia {{ 'insignia--verde' if p.listo else ('insignia--gris' if p.listo is none or not p.obligatorio else 'insignia--ambar') }}">{{ "Listo" if p.listo else ("Revisa" if p.listo is none else ("Opcional" if not p.obligatorio else "Falta")) }}</span>
+        <span class="movimientos__que">
+          <strong>{{ p.que }}</strong>
+          <span class="suave">{{ p.por_que }}</span>
+        </span>
+        <span class="movimientos__valor">{% if p.donde and not p.listo %}<a class="boton-texto" href="{{ p.donde }}">Ir</a>{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+</main>
+{% endblock %}

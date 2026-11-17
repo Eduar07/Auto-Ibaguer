@@ -528,6 +528,19 @@ Si hay un puesto libre, el turno queda **Llamado** y, si nadie lo marca, a los 1
 
 Para mirar algo sin que el reloj mueva la fila, pon `RELOJ_ACTIVO=false` en tu `.env` y vuelve a encender el servidor.
 
+## Antes de abrir: lista para abrir
+
+En **Elegir negocio**, abajo, **Lista para abrir** (solo administradores). Revisa lo que el sistema puede saber y marca lo que falta, con el enlace para arreglarlo:
+
+- **Parqueadero**: las tarifas guardadas; el NIT, la dirección y el teléfono del ticket; las mensualidades que ya tenías.
+- **Lavadero**: el teléfono del negocio (mientras sea el de ejemplo, falta); el NIT y la dirección del recibo; el menú, los precios y los puestos.
+- **Los dos**: los correos de los jefes; el correo del sistema; los usuarios de los cajeros.
+- **El servidor**: modo producción, WhatsApp conectado y Gemini en plan de pago.
+
+Lo que el sistema no puede saber va como recordatorio: Render en plan de pago (antes del 12 de diciembre), las copias en verde en GitHub y la impresora.
+
+El lavadero funciona sin WhatsApp: los turnos se dan en el local con **Nuevo turno**. El bot entra cuando la cuenta nueva de Meta esté verificada y los datos `WHATSAPP_` estén en Render (ver *Conectar WhatsApp*).
+
 ## Poner el sistema en la nube
 
 En la nube el sistema vive en [Render](https://render.com): el servidor y la base de datos quedan encendidos todo el día, con una dirección fija y con HTTPS (`https://….onrender.com`) a la que entran el dashboard, desde cualquier celular, y los mensajes de WhatsApp. Todo está escrito en archivos del repositorio, así Render lo arma igual cada vez:

@@ -1,0 +1,52 @@
+{#- Crear un usuario o cambiar uno: rol, negocio, si está activo y, si se escribe, la clave. -#}
+{% import "_iconos.html" as iconos %}
+<form class="dialogo__caja" hx-post="/usuarios{% if u %}/{{ u.id }}{% endif %}" hx-target="#dialogo-contenido"
+      hx-disabled-elt="#dialogo-contenido button" autocomplete="off">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">{{ "Cambiar a " ~ u.usuario if u else "Nuevo usuario" }}</h2>
+  </div>
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    {% if not u %}
+    <div class="campo">
+      <label for="usuario-nombre">Usuario</label>
+      <input id="usuario-nombre" name="usuario" required maxlength="40" value="{{ f.usuario or '' }}" placeholder="camilo" autocapitalize="off" spellcheck="false">
+      <span class="ayuda">Minúsculas, números, punto o guion.</span>
+    </div>
+    {% endif %}
+    <div class="campo">
+      <label for="usuario-clave">{{ "Contraseña nueva (opcional)" if u else "Contraseña" }}</label>
+      <input id="usuario-clave" name="clave" type="password" minlength="10" {% if not u %}required{% endif %} autocomplete="new-password">
+      <span class="ayuda">Al menos 10 caracteres.{% if u %} Si la cambias, se cierran sus sesiones abiertas.{% endif %}</span>
+    </div>
+    <fieldset>
+      <legend>Rol</legend>
+      <div class="opciones opciones--2">
+        {% for clave, nombre, ayuda in roles %}
+        <label class="opcion opcion--centrada">
+          <input type="radio" name="rol" value="{{ clave }}" required {% if f.rol == clave %}checked{% endif %}>
+          <span><strong>{{ nombre }}</strong><small class="suave">{{ ayuda }}</small></span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="campo solo-si-es-cajero">
+      <label for="usuario-negocio">Entra a</label>
+      <select id="usuario-negocio" name="negocio">
+        {% for clave, nombre in negocios %}<option value="{{ clave }}" {% if f.negocio == clave %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+      </select>
+    </div>
+    {% if u %}
+    <label class="interruptor">
+      <span><strong>Activo</strong><span class="ayuda">Desactivado no puede entrar; su historia se conserva.</span></span>
+      <input type="checkbox" role="switch" name="activo" value="si" {% if f.activo %}checked{% endif %}>
+      <span class="interruptor__control" aria-hidden="true"></span>
+    </label>
+    {% endif %}
+  </div>
+  <div class="dialogo__pie">
+    <button type="submit" class="boton boton--grande">{{ "Guardar" if u else "Crear el usuario" }}</button>
+    <button type="button" class="boton-texto" data-cerrar-dialogo>Cancelar</button>
+  </div>
+</form>

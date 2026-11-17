@@ -5,6 +5,7 @@
 {% import "_iconos.html" as iconos %}
 {% from "_caja_resumen.html" import resumen_de_caja, movimientos_de_caja, correcciones_de_caja, salidas_de_caja %}
 {% set c = resumen.caja %}
+{% set se_puede_corregir = se_puede_corregir and es_administrador %}
 <section class="panel" aria-labelledby="t-caja">
   <div class="panel__cabeza">
     <h2 id="t-caja">{{ "Cierre de caja" if c.cerrada_en else "Caja abierta" }}</h2>

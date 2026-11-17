@@ -37,6 +37,7 @@ from app.web import (
     probar_bot,
     resultados,
     textos_del_bot,
+    usuarios,
     webhook,
 )
 from app.web.cabeceras import CabecerasDeSeguridad
@@ -99,12 +100,14 @@ for modulo in (
     resultados,
     configuracion,
     textos_del_bot,
+    usuarios,
     mensajes,
     probar_bot,
     webhook,
 ):
     app.include_router(modulo.router)
 app.add_exception_handler(comun.NecesitaEntrar, comun.responder_sin_sesion)
+app.add_exception_handler(comun.SinPermiso, comun.responder_sin_permiso)
 # Un valor que no cabe en la base de datos (un id de 20 cifras en la dirección, por ejemplo) es
 # un error de quien lo escribió: se explica, no se responde como una falla del servidor.
 app.add_exception_handler(DataError, comun.responder_dato_imposible)

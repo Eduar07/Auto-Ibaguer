@@ -28,7 +28,7 @@ from app.comentarios.consultas import por_atender as comentarios_por_atender
 from app.config import obtener_entorno
 from app.db.sesion import obtener_sesion
 from app.turnos.estados import NOMBRE_DEL_ESTADO, EstadoTurno, MedioPago
-from app.web import sesiones
+from app.web import permisos, sesiones
 from app.web.negocios import LAVADERO, de_la_seccion
 from app.web.tablas import Administrador
 
@@ -187,13 +187,33 @@ def administrador_de_la_cookie(request: Request, sesion: Session) -> Administrad
     return administrador
 
 
+class SinPermiso(Exception):
+    """El usuario entró, pero esa pantalla no es para su rol o su negocio."""
+
+
 def administrador_actual(request: Request, sesion: SesionBD) -> Administrador:
     administrador = administrador_de_la_cookie(request, sesion)
     if administrador is None:
         raise NecesitaEntrar()
     # Cada vez que usa el dashboard, la sesión se renueva por otras SESION_HORAS.
     request.state.cookie_de_sesion = valor_de_cookie(administrador)
+    request.state.administrador = administrador
+    por_que_no = permisos.revisar(administrador, request.method, request.url.path)
+    if por_que_no:
+        raise SinPermiso(por_que_no)
     return administrador
+
+
+def responder_sin_permiso(request: Request, error: Exception) -> Response:
+    """Lo que no es para su rol o su negocio: con HTMX, un aviso; si escribió la dirección,
+    una página que lo dice y lo lleva a elegir negocio."""
+    if request.headers.get("hx-request"):
+        return sin_cambios(cerrar_dialogo=True, error=str(error))
+    return HTMLResponse(
+        f"<!doctype html><meta charset='utf-8'><title>Sin permiso</title>"
+        f"<p>{escape(str(error))}</p><p><a href='/inicio'>Volver a elegir negocio</a></p>",
+        status_code=403,
+    )
 
 
 Admin = Annotated[Administrador, Depends(administrador_actual)]
@@ -227,7 +247,13 @@ def responder_sin_sesion(request: Request, _: Exception) -> Response:
 def html(
     request: Request, plantilla: str, contexto: dict[str, Any] | None = None, *, status: int = 200
 ) -> HTMLResponse:
-    respuesta = plantillas.TemplateResponse(request, plantilla, contexto or {}, status_code=status)
+    usuario = getattr(request.state, "administrador", None)
+    contexto = {
+        "usuario": usuario,
+        # Lo que solo hace un administrador (corregir, las cuentas) no se le muestra al cajero.
+        "es_administrador": usuario is None or usuario.es_administrador,
+    } | (contexto or {})
+    respuesta = plantillas.TemplateResponse(request, plantilla, contexto, status_code=status)
     valor = getattr(request.state, "cookie_de_sesion", None)
     if valor:
         poner_cookie(respuesta, valor)

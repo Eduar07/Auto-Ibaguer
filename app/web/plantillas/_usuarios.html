@@ -1,0 +1,19 @@
+<section id="usuarios" class="lista" aria-labelledby="t-usuarios">
+  <div class="lista__cabeza">
+    <h2 id="t-usuarios">Quién entra</h2>
+    <button type="button" class="boton boton--borde boton--pequeno" hx-get="/usuarios/nuevo" hx-target="#dialogo-contenido">Nuevo usuario</button>
+  </div>
+  <ul class="movimientos">
+    {% for u in usuarios %}
+    <li{% if not u.activo %} class="movimientos--anulado"{% endif %}>
+      <span class="movimientos__que">
+        <strong>{{ u.usuario }}{% if u.id == yo %} <span class="suave">(tú)</span>{% endif %}</strong>
+        <span class="suave">{{ nombre_del_rol[u.rol] }} · {{ nombre_del_negocio[u.negocio] if u.negocio else "Los dos negocios" }}{% if not u.activo %} · Desactivado{% endif %}</span>
+      </span>
+      <span class="movimientos__valor">
+        <button type="button" class="boton-texto movimientos__corregir" hx-get="/usuarios/{{ u.id }}" hx-target="#dialogo-contenido">Cambiar</button>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>

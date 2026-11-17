@@ -102,7 +102,7 @@ def de_la_seccion(seccion: str) -> tuple[Negocio | None, str]:
     Una sección que no existe (un error al escribirla en una pantalla) se avisa de una vez,
     en vez de mostrar esa pantalla sin menú: las pruebas abren todas las pantallas.
     """
-    if seccion in ("inicio", "resultados", "usuarios"):  # las de los dos negocios juntos
+    if seccion in ("inicio", "resultados", "usuarios", "listo"):  # las de los dos negocios juntos
         return None, seccion
     clave_del_negocio, _, clave = seccion.partition("/")
     negocio = NEGOCIOS.get(clave_del_negocio)

@@ -24,6 +24,7 @@ SOLO_ADMINISTRADOR = tuple(
         r"^/parqueadero/tarifas(/|$)",
         r"^/resultados(/|$)",
         r"^/usuarios(/|$)",
+        r"^/listo(/|$)",
         r"^/(parqueadero/)?caja/\d+/corregir",
         r"^/(parqueadero/)?caja/salidas/\d+/anular",
         r"^/(parqueadero/)?caja/exportar",

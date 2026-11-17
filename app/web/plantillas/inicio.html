@@ -66,6 +66,7 @@
   <p class="elegir__juntos">
     <a class="boton boton--borde" href="/resultados">Los dos juntos: resultado del mes</a>
     <a class="boton boton--borde" href="/usuarios">Usuarios</a>
+    <a class="boton {{ 'boton--oscuro' if pendientes_para_abrir else 'boton--borde' }}" href="/listo">Lista para abrir{% if pendientes_para_abrir %} ({{ pendientes_para_abrir }} pendientes){% endif %}</a>
   </p>
   {% endif %}
 </main>

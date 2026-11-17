@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import tiempo
+from app import listo, tiempo
 from app.catalogo.parametros import leer_parametros
 from app.comentarios.consultas import por_atender as comentarios_por_atender
 from app.parqueadero import balance
@@ -133,5 +133,8 @@ def pagina_inicio(request: Request, sesion: SesionBD, administrador: Admin) -> R
         "parqueadero": PARQUEADERO,
         "hoy_lavadero": hoy_en_el_lavadero(sesion, ahora),
         "hoy_parqueadero": hoy_en_el_parqueadero(sesion, ahora),
+        "pendientes_para_abrir": (
+            listo.pendientes(listo.revisar(sesion)) if administrador.es_administrador else 0
+        ),
     }
     return pagina(request, sesion, "inicio.html", contexto, seccion="inicio")

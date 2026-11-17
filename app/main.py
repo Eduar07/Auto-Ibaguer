@@ -32,6 +32,7 @@ from app.web import (
     entrar,
     fila,
     inicio,
+    listo,
     mensajes,
     parqueadero,
     probar_bot,
@@ -91,6 +92,7 @@ app.include_router(caja_del_lavadero.router_de_la_caja)
 for modulo in (
     entrar,
     inicio,
+    listo,
     fila,
     caja_del_lavadero,
     balance_del_lavadero,

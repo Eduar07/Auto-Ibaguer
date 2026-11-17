@@ -44,6 +44,7 @@ respondido. Si contesta horas después, el bot sabe dónde iba; si pasó más de
 (se cambia en Configuración), vuelve a empezar.
 """
 
+import dataclasses
 import logging
 import re
 import time
@@ -307,6 +308,84 @@ QUEJAS = (
     "no me gusto",
 )
 # Lo que se escribe para cerrar, sin contar nada más: "ok", "gracias", "eso es todo".
+# Sin Gemini (no está o no respondió), unas frases alcanzan para entender lo más común: así
+# "¿lavan motos?" o "cuánto vale lavar la camioneta" no reciben un "no te entendí".
+POR_PALABRAS: tuple[tuple[Intencion, tuple[str, ...]], ...] = (
+    (
+        Intencion.PEDIDO_ESPECIAL,
+        ("empresa", "flota", "convenio", "precio especial", "por cantidad", "al por mayor"),
+    ),
+    (
+        Intencion.PEDIR_TURNO,
+        (
+            "quiero lavar",
+            "pedir turno",
+            "pedir un turno",
+            "sacar turno",
+            "un turno",
+            "hay cupo",
+            "separar",
+            "separa",
+            "agendar",
+            "reservar",
+            "apartar",
+        ),
+    ),
+    (
+        Intencion.PRECIOS,
+        (
+            "cuanto vale",
+            "cuanto cuesta",
+            "cuanto cobran",
+            "cuanto sale",
+            "cuanto me",
+            "precio",
+            "valor",
+            "tarifa",
+            "servicios",
+            "que incluye",
+        ),
+    ),
+    (
+        Intencion.VER_FILA,
+        (
+            "la fila",
+            "hay fila",
+            "lleno",
+            "mucha gente",
+            "cuanto se demora",
+            "cuanto demora",
+            "cuanto hay que esperar",
+            "hay espera",
+        ),
+    ),
+)
+# "¿lavan motos?": nombra un vehículo y pregunta si lo lavan (se le muestran los precios).
+LAVAN = ("lavan", "atienden", "reciben")
+# Lo que se dice de cada vehículo: "camionetica", "la nave", "auto"...
+VEHICULOS_POR_PALABRAS = (
+    ("moto", ("moto", "motos", "motico", "motocicleta")),
+    ("camioneta", ("camioneta", "camionetas", "camionetica", "campero", "suv")),
+    ("automovil", ("automovil", "automoviles", "sedan")),
+    (CARRO, ("carro", "carros", "auto", "autos", "carrito")),
+)
+HORARIO = ("horario", "a que hora", "que horas", "hasta que hora", "abren", "cierran")
+
+
+def por_palabras(normal: str) -> Interpretacion | None:
+    """Lo que el bot entiende solo, sin Gemini, de un mensaje del menú. None si nada."""
+    palabras = set(normal.split())
+    vehiculo = next(
+        (cual for cual, formas in VEHICULOS_POR_PALABRAS if palabras & set(formas)), None
+    )
+    for intencion, frases in POR_PALABRAS:
+        if any(frase in normal for frase in frases):
+            return Interpretacion(intencion, vehiculo=vehiculo)
+    if vehiculo is not None and palabras & set(LAVAN):
+        return Interpretacion(Intencion.PRECIOS, vehiculo=vehiculo)
+    return None
+
+
 # "Lo pienso": el bot ofrece escribirle después (app.bot.seguimiento).
 LO_PIENSO = (
     "lo pienso",
@@ -896,6 +975,15 @@ class _Atencion:
             if _dice(normal, QUEJAS):
                 # A quien se queja no se le contesta "no te entendí".
                 return self._queja(escrito)
+            if any(frase in normal for frase in HORARIO):
+                self.traza.notas.append("Entendió por unas palabras que pregunta el horario.")
+                return self._menu_con("horario", horario=self._horario())
+            entendido = por_palabras(normal)
+            if entendido is not None:
+                entendido = self._con_el_catalogo(entendido)
+                lo_que = _lo_que_entendio(entendido)
+                self.traza.notas.append(f"Entendió por unas palabras: {lo_que}.")
+                return self._hacer(entendido, escrito)
             palabras = normal.split()
             saluda = (
                 self.empieza
@@ -1244,6 +1332,20 @@ class _Atencion:
 
     def _mensaje_del_menu(self, nombre_del_texto: str, **datos: object) -> Mensaje:
         return _con_el_menu(self.texto(nombre_del_texto, **datos))
+
+    def _menu_con(self, nombre_del_texto: str, **datos: object) -> list[Mensaje]:
+        self._volver_al_menu()
+        return [self._mensaje_del_menu(nombre_del_texto, **datos)]
+
+    def _con_el_catalogo(self, entendido: Interpretacion) -> Interpretacion:
+        """El vehículo que reconoció por palabras, con su nombre del catálogo ("moto" ->
+        "Moto"). "carro" queda así: el bot pregunta si es automóvil o camioneta."""
+        if entendido.vehiculo in (None, CARRO):
+            return entendido
+        nombre = next(
+            (v for v in self._catalogo().vehiculos if normalizar(v) == entendido.vehiculo), None
+        )
+        return dataclasses.replace(entendido, vehiculo=nombre)
 
     def _menu(self, nombre_del_texto: str) -> list[Mensaje]:
         self._volver_al_menu()

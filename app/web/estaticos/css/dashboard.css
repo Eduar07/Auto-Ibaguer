@@ -643,6 +643,8 @@ legend { padding: 0; margin-bottom: 8px; }
 .ficha__cifras strong { font-size: 17px; font-weight: 700; }
 .ficha__cifras .numero { font-size: 22px; white-space: nowrap; }
 .ficha__bloque { display: flex; flex-direction: column; gap: 8px; }
+.ficha__whatsapp p { font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
+.ficha__pendientes { display: flex; flex-direction: column; gap: 6px; padding-left: 18px; font-size: 15px; line-height: 1.4; }
 .ficha__bloque h3 { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta-suave); }
 .ficha__vehiculos, .ficha__visitas { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 15px; }
 .ficha__vehiculos li { display: flex; align-items: center; gap: 8px; }

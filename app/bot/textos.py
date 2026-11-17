@@ -36,8 +36,9 @@ TEXTOS: dict[str, str] = {
     "¿En qué te ayudamos?",
     "saludo_cliente": "¡Hola, {nombre}! Qué bueno saludarte de nuevo. ¿En qué te ayudamos?",
     "menu": "¿En qué más te ayudamos?",
-    "no_entendi": "No te entendí bien. Puedes tocar una opción, escribir *mi turno* o "
-    "*cancelar*, o pedir *hablar con una persona*.",
+    "no_entendi": "Perdona, no te entendí bien. ¿Me lo dices de otra forma? También puedes "
+    "tocar una opción o escribir *hablar con una persona*.",
+    "horario": "Por WhatsApp damos turnos {horario}. ¿Te ayudo con algo más?",
     "solo_texto": "Uy, eso no lo alcancé a ver por aquí. ¿Me lo cuentas escribiendo?",
     "boton_vencido": "Ese botón ya no está vigente. ¿En qué te ayudamos?",
     "toca_una_opcion": "Toca una de las opciones, por favor.",

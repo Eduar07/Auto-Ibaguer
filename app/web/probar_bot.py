@@ -14,14 +14,14 @@ import secrets
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot import conversacion
-from app.bot.mensajes import Entrada, Mensaje
+from app.bot.mensajes import AUDIO, Adjunto, Entrada, Mensaje, tipo_de_archivo
 from app.catalogo.parametros import leer_parametros
 from app.clientes import servicio as clientes
 from app.clientes.errores import TelefonoInvalido
@@ -30,7 +30,7 @@ from app.config import obtener_entorno
 from app.integraciones import bandeja_salida, gemini
 from app.integraciones.bandeja_salida import TIPO_DEL_ADMINISTRADOR
 from app.integraciones.tablas import EstadoMensaje, MensajeEntrante, MensajeSaliente
-from app.integraciones.whatsapp import mensaje_del_bot
+from app.integraciones.whatsapp import PESO_MAXIMO, mensaje_del_bot
 from app.turnos.estados import TipoAviso
 from app.web.comun import Admin, SesionBD, html, pagina, verificar_origen
 
@@ -83,12 +83,20 @@ def escribirle_al_bot(
     texto: Annotated[str, Form()] = "",
     opcion: Annotated[str, Form()] = "",
     titulo: Annotated[str, Form()] = "",
+    archivo: Annotated[UploadFile | None, File()] = None,
 ) -> Response:
     try:
         telefono = normalizar_telefono(telefono)
     except TelefonoInvalido as invalido:
         raise HTTPException(status_code=400, detail=str(invalido)) from invalido
-    entrada = Entrada(telefono=telefono, texto=texto or None, opcion=opcion or None)
+    adjunto = _el_adjunto(archivo)
+    entrada = Entrada(
+        telefono=telefono,
+        texto=texto or None,
+        opcion=opcion or None,
+        otro=adjunto is not None,
+        adjunto=adjunto,
+    )
     ahora = tiempo.ahora()
     # Igual que por WhatsApp: si Gemini está conectado, entiende lo que escribes y contesta
     # las preguntas y la charla con la ficha del negocio. Aquí, además, se ve cómo decidió
@@ -97,24 +105,61 @@ def escribirle_al_bot(
     respuestas, traza = conversacion.atender_con_traza(
         sesion, entrada, ahora=ahora, interprete=con_gemini
     )
-    _anotar(sesion, entrada, titulo, respuestas, ahora)
+    _anotar(sesion, entrada, titulo, respuestas, ahora, lo_que_dice=traza.lo_que_dice)
     sesion.commit()
     contexto = {
         "telefono": telefono,
         "escrito": titulo or texto,
+        "adjunto": _que_mando(adjunto),
+        # Lo que Gemini oyó en el audio o vio en la foto: aquí se muestra, para probar.
+        "lo_que_dice": traza.lo_que_dice,
         "respuestas": respuestas,
         "traza": traza.texto(),
     }
     return html(request, "_charla_del_bot.html", contexto)
 
 
+def _el_adjunto(archivo: UploadFile | None) -> Adjunto | None:
+    """La foto o el audio que se mandó para probar, revisado como por WhatsApp."""
+    if archivo is None or not archivo.filename:
+        return None
+    mime = archivo.content_type or ""
+    if tipo_de_archivo(mime) is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Manda una foto (JPG, PNG o WebP) o un audio (OGG, MP3, AAC o WAV).",
+        )
+    datos = archivo.file.read(PESO_MAXIMO + 1)
+    if len(datos) > PESO_MAXIMO:
+        raise HTTPException(status_code=400, detail="El archivo pesa más de 5 MB.")
+    return Adjunto(mime, datos)
+
+
+def _que_mando(adjunto: Adjunto | None) -> str:
+    if adjunto is None:
+        return ""
+    return "Audio" if adjunto.tipo == AUDIO else "Foto"
+
+
 def _anotar(
-    sesion: Session, entrada: Entrada, titulo: str, respuestas: list[Mensaje], ahora: datetime
+    sesion: Session,
+    entrada: Entrada,
+    titulo: str,
+    respuestas: list[Mensaje],
+    ahora: datetime,
+    *,
+    lo_que_dice: str = "",
 ) -> None:
     """Lo que se dijeron queda en las bandejas como si fuera por WhatsApp, pero ya atendido
-    y ya enviado (aquí mismo): el reloj no lo vuelve a atender ni lo manda."""
+    y ya enviado (aquí mismo): el reloj no lo vuelve a atender ni lo manda. De una foto o
+    un audio, como por WhatsApp, queda solo lo que entendió Gemini."""
     if entrada.opcion:
         tipo, contenido = "interactive", {"opcion": entrada.opcion, "titulo": titulo or None}
+    elif entrada.adjunto is not None:
+        tipo = "audio" if entrada.adjunto.tipo == AUDIO else "image"
+        contenido = {"texto": entrada.texto} if entrada.texto else {}
+        if lo_que_dice:
+            contenido["lo_que_dice"] = lo_que_dice
     else:
         tipo, contenido = "text", {"texto": entrada.texto or ""}
     sesion.add(

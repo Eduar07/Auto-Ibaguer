@@ -25,6 +25,12 @@ administrador en el dashboard (Comentarios, app.comentarios). De quien no es cli
 se guarda el número sin su permiso. Mientras el administrador le responde a un cliente,
 el bot no se mete en la conversación (app.bot.pausa), pero sí atiende lo de la fila.
 
+Las fotos y los audios los ve y los oye Gemini, en la misma consulta: un audio vale como
+si lo hubiera escrito (lo que dice sigue el mismo camino que un texto) y de una foto se
+entiende para qué la manda (¿cuánto me sale lavar esto?, un rayón, un comprobante). Lo que
+se ve en la foto va en lo que le llega al administrador. Sin Gemini, el bot dice que no lo
+alcanzó a ver y pide que lo escriba.
+
 `atender` recibe lo que el cliente escribió o tocó y devuelve los mensajes para
 contestarle. No los envía ni confirma nada: quien lo llama (WhatsApp, o la página
 "Probar el bot") hace el commit y después envía las respuestas. `atender_con_traza`
@@ -62,7 +68,7 @@ from app.bot.interprete import (
     Interpretacion,
     Interprete,
 )
-from app.bot.mensajes import Entrada, Lista, Mensaje, Opcion, recortar
+from app.bot.mensajes import AUDIO, IMAGEN, Entrada, Lista, Mensaje, Opcion, recortar
 from app.bot.redactor import ficha_completa, pide_ayuda_urgente, revisar_con_motivo
 from app.bot.sesiones import PASO_INICIAL
 from app.bot.tablas import PausaDelBot, SesionBot
@@ -503,6 +509,9 @@ class Traza:
 
     como: str = ""
     notas: list[str] = field(default_factory=list)
+    # De un audio, lo que dice; de una foto, qué se ve (lo escribió Gemini). Quien atiende
+    # el mensaje lo guarda como si el cliente lo hubiera escrito. No sale en `texto`.
+    lo_que_dice: str = ""
 
     def texto(self) -> str:
         return " ".join(parte for parte in (self.como, *self.notas) if parte)
@@ -648,6 +657,9 @@ class _Atencion:
         # Lo que entendió Gemini de este mensaje: se le pregunta una sola vez.
         self._ya_le_pregunto = False
         self._lo_entendido: Interpretacion | None = None
+        # Qué se ve en la foto que mandó (lo dijo Gemini): va en lo que le llega al
+        # administrador. "" si no mandó foto o no se pudo ver.
+        self.foto = ""
 
     def guardar(self) -> None:
         self.conversacion.paso_actual = self.paso
@@ -679,6 +691,8 @@ class _Atencion:
             self.traza.como = "Tocó un botón: el bot no le preguntó a Gemini."
             return self._boton(self.entrada.opcion)
         escrito = (self.entrada.texto or "").strip()
+        if self.entrada.adjunto is not None:
+            escrito = self._ver_o_oir(escrito)
         normal = normalizar(escrito)
         pausa_vigente = pausa.pausa_de(self.sesion, self.telefono, self.ahora)
         if normal and pide_ayuda_urgente(normal):
@@ -691,8 +705,12 @@ class _Atencion:
             return self._mientras_responde_una_persona(pausa_vigente, normal)
         if self.paso == Paso.DETALLE:
             return self._detalle(escrito, normal)
-        if self.entrada.otro or not escrito:
-            self.traza.como = "Mandó algo que no es texto (una foto, un audio...): no lo lee nadie."
+        if not escrito and not self.foto:
+            if not self.traza.como:
+                self.traza.como = (
+                    "Mandó algo que no es texto (una foto, un audio...) y Gemini no está: "
+                    "no lo vio nadie."
+                )
             if self.paso == Paso.PERMISO_CONTACTO:
                 return [_con_nota(self.texto("detalle_solo_texto"), self._pregunta())]
             return self._menu("solo_texto")
@@ -709,6 +727,32 @@ class _Atencion:
         if entendido is not None:
             return self._con_lo_entendido(entendido, escrito)
         return self._sin_gemini(normal, escrito)
+
+    def _ver_o_oir(self, escrito: str) -> str:
+        """Mandó una foto o un audio: Gemini lo ve o lo oye (en la misma consulta que entiende
+        qué quiere). Un audio queda como si lo hubiera escrito; de una foto se anota qué se
+        ve, para el administrador. Devuelve el texto con el que sigue la conversación."""
+        adjunto = self.entrada.adjunto
+        entendido = self._entender(escrito) if self.interprete is not None else None
+        if entendido is None or adjunto is None:
+            if self.interprete is None:
+                self.traza.como = "Mandó una foto o un audio y Gemini no está: no lo vio nadie."
+            return escrito
+        self.traza.lo_que_dice = entendido.lo_que_dice
+        if adjunto.tipo == AUDIO:
+            self.traza.notas.append("Mandó un audio: Gemini lo oyó y vale como si lo escribiera.")
+            return escrito or entendido.lo_que_dice
+        if adjunto.tipo == IMAGEN:
+            self.traza.notas.append("Mandó una foto: Gemini la vio.")
+            self.foto = entendido.lo_que_dice or "sin descripción"
+        return escrito
+
+    def _con_la_foto(self, escrito: str) -> str:
+        """Lo que le llega al administrador: lo que escribió y, si mandó una foto, qué se ve
+        en ella (él no la puede ver)."""
+        if not self.foto:
+            return escrito
+        return f"{escrito}\n(Mandó una foto: {self.foto})".strip()
 
     def _orden_corta(self, normal: str, escrito: str) -> list[Mensaje] | None:
         """ "mi turno", "cancelar", "ya llegué", "un asesor": se hace sin preguntarle a
@@ -903,6 +947,7 @@ class _Atencion:
             antes=self._antes(),
             en_que_va=self._en_que_va(),
             guias=self._guias(),
+            adjunto=self.entrada.adjunto,
         )
         inicio = time.perf_counter()
         try:
@@ -1908,7 +1953,11 @@ class _Atencion:
         """Se queja de algo que pasó. La queja le llega de una vez al administrador
         (Comentarios, en el dashboard); el bot pide perdón y le deja contar más."""
         comentario = comentarios.registrar(
-            self.sesion, TipoComentario.QUEJA, escrito, cliente=self.cliente, ahora=self.ahora
+            self.sesion,
+            TipoComentario.QUEJA,
+            self._con_la_foto(escrito),
+            cliente=self.cliente,
+            ahora=self.ahora,
         )
         self._volver_al_menu()
         self.datos = {"comentario": comentario.id, "tipo": TipoComentario.QUEJA.value}
@@ -1925,12 +1974,12 @@ class _Atencion:
         if self.cliente is None:
             # Se guarda solo si acepta que guardemos su número: sin él no hay a quién responder.
             self.paso = Paso.PERMISO_CONTACTO
-            self.datos = {"pide_persona": _sin_pasarse(escrito)}
+            self.datos = {"pide_persona": _sin_pasarse(self._con_la_foto(escrito))}
             return [self._pregunta()]
         comentario = comentarios.registrar(
             self.sesion,
             TipoComentario.QUIERE_HABLAR,
-            escrito,
+            self._con_la_foto(escrito),
             cliente=self.cliente,
             ahora=self.ahora,
         )
@@ -1982,11 +2031,12 @@ class _Atencion:
         self.datos = {"comentario": comentario_id, "tipo": tipo.value}
         return [Mensaje(self.texto("contacto_si"))]
 
-    def _anotar(self, escrito: str) -> None:
+    def _anotar(self, escrito_sin_foto: str) -> None:
         """Agrega lo que escribió al comentario que está contando (o a lo que pidió, si
         todavía no ha dado permiso para guardarlo). Si el comentario ya no existe (lo
         borraron en el dashboard mientras tanto), se guarda uno nuevo: sus palabras no se
         pierden."""
+        escrito = self._con_la_foto(escrito_sin_foto)
         if "pide_persona" in self.datos:
             self.datos["pide_persona"] = _sin_pasarse(f"{self.datos['pide_persona']}\n{escrito}")
             return
@@ -2005,14 +2055,14 @@ class _Atencion:
         """Lo que escribe después de quejarse o de pedir hablar con alguien: es para el
         administrador, con sus palabras, y se agrega al comentario. Si además pide algo
         que el bot sabe hacer (cancelar, ver su turno...), también se hace."""
-        if self.entrada.otro or not escrito:
+        if not escrito and not self.foto:
             return [Mensaje(self.texto("detalle_solo_texto"))]
         entendido = self._entender(escrito)
         if entendido is not None and entendido.intencion == Intencion.SALUDO:
             return self._saludo(entendido)  # "hola": empieza otra conversación
         if entendido is None and normal and set(normal.split()) <= SOLO_SALUDO:
             return self._saludo()
-        if not _solo_para_cerrar(normal):
+        if self.foto or not _solo_para_cerrar(normal):
             self._anotar(escrito)
         self._volver_al_menu()
         dicho = self._de_gemini(entendido) or self._fijo("detalle_recibido")
@@ -2058,7 +2108,7 @@ class _Atencion:
         comentarios.registrar(
             self.sesion,
             TipoComentario.FELICITACION,
-            escrito,
+            self._con_la_foto(escrito),
             cliente=self.cliente,
             ahora=self.ahora,
         )
@@ -2123,7 +2173,7 @@ class _Atencion:
             comentario = comentarios.registrar(
                 self.sesion,
                 TipoComentario.PREGUNTA,
-                escrito,
+                self._con_la_foto(escrito),
                 cliente=self.cliente,
                 ahora=self.ahora,
             )

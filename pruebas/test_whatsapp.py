@@ -58,10 +58,22 @@ class MetaDeMentira:
     def __init__(self) -> None:
         self.enviados: list[dict[str, Any]] = []
         self.respuestas: list[httpx.Response | Exception] = []
+        self.leidos: list[str] = []  # los mensajes a los que les mostró "escribiendo…"
+        self.archivos: dict[str, tuple[str, bytes]] = {}  # las fotos y audios que tiene
+        self.descargados: list[str] = []
+        self.falla_el_leido = False
 
     def __call__(self, peticion: httpx.Request) -> httpx.Response:
         assert peticion.headers["Authorization"] == "Bearer token-de-prueba"
+        if peticion.method == "GET":
+            return self._archivo(peticion)
         assert peticion.url.path == f"/v26.0/{ID_DEL_NUMERO}/messages"
+        cuerpo = json.loads(peticion.content)
+        if cuerpo.get("status") == "read":
+            self.leidos.append(cuerpo["message_id"])
+            if self.falla_el_leido:
+                return httpx.Response(500, json={"error": {"code": 1}})
+            return httpx.Response(200, json={"success": True})
         if self.respuestas:
             respuesta = self.respuestas.pop(0)
             if isinstance(respuesta, Exception):
@@ -73,6 +85,21 @@ class MetaDeMentira:
     @property
     def textos(self) -> list[str]:
         return [_cuerpo(enviado) for enviado in self.enviados]
+
+    def _archivo(self, peticion: httpx.Request) -> httpx.Response:
+        """Primero el enlace del archivo (por su id) y después el archivo."""
+        if peticion.url.host == "lookaside.fbsbx.com":
+            media_id = peticion.url.params["mid"]
+            self.descargados.append(media_id)
+            mime, datos = self.archivos[media_id]
+            return httpx.Response(200, content=datos, headers={"Content-Type": mime})
+        media_id = peticion.url.path.rsplit("/", 1)[-1]
+        if media_id not in self.archivos:
+            return httpx.Response(404, json={"error": {"code": 100}})
+        mime, datos = self.archivos[media_id]
+        enlace = f"https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid={media_id}"
+        info = {"url": enlace, "mime_type": mime, "file_size": len(datos), "id": media_id}
+        return httpx.Response(200, json=info)
 
 
 def _cuerpo(enviado: dict[str, Any]) -> str:
@@ -332,7 +359,7 @@ def test_dos_mensajes_seguidos_se_contestan_en_orden(
     ]
 
 
-def test_una_foto_recibe_el_menu_y_no_se_guarda_nada_de_ella(
+def test_sin_gemini_una_foto_no_se_descarga_y_se_le_pide_escribir(
     webhook_listo: TestClient, sesion: Session, meta: MetaDeMentira
 ):
     foto = {
@@ -345,8 +372,13 @@ def test_una_foto_recibe_el_menu_y_no_se_guarda_nada_de_ella(
     mandar(webhook_listo, aviso_de_meta(foto))
 
     [recibido] = entrantes(sesion)
-    assert (recibido.tipo, recibido.contenido) == ("image", {})
-    assert "solo entiendo mensajes escritos y los botones" in meta.textos[0]
+    # Solo el id para descargarla: la foto no se guarda en ninguna parte.
+    assert (recibido.tipo, recibido.contenido) == (
+        "image",
+        {"archivo": {"id": "media-123", "mime": "image/jpeg"}},
+    )
+    assert meta.descargados == []  # sin Gemini nadie la vería: no se descarga
+    assert "no lo alcancé a ver por aquí" in meta.textos[0]
 
 
 def test_una_reaccion_no_se_contesta(webhook_listo: TestClient, sesion: Session, meta):
@@ -362,7 +394,7 @@ def test_una_reaccion_no_se_contesta(webhook_listo: TestClient, sesion: Session,
 def test_un_mensaje_que_hace_fallar_al_bot_no_se_queda_atascado(
     webhook_listo: TestClient, sesion: Session, meta: MetaDeMentira, monkeypatch, caplog
 ):
-    atender_de_verdad = conversacion.atender
+    atender_de_verdad = conversacion.atender_con_traza
     llamadas = itertools.count()
 
     def falla_la_primera(*argumentos, **opciones):
@@ -370,7 +402,7 @@ def test_un_mensaje_que_hace_fallar_al_bot_no_se_queda_atascado(
             raise RuntimeError("se rompió algo")
         return atender_de_verdad(*argumentos, **opciones)
 
-    monkeypatch.setattr(conversacion, "atender", falla_la_primera)
+    monkeypatch.setattr(conversacion, "atender_con_traza", falla_la_primera)
 
     mandar(webhook_listo, aviso_de_meta(escribe("hola"), escribe("mi turno")))
 

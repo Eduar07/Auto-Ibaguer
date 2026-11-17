@@ -4,7 +4,11 @@
   (app.integraciones.bandeja_salida). Arma cada uno como lo pide Meta (texto, botones o
   lista) y lo envía por HTTPS. Si Meta no lo acepta, dice si vale la pena reintentar.
 - Entrada: `leer_aviso_de_meta` convierte lo que Meta manda al webhook (app.web.webhook)
-  en mensajes de clientes y en avisos de mensajes que no se pudieron entregar.
+  en mensajes de clientes y en avisos de mensajes que no se pudieron entregar. De una
+  foto o un audio llega solo el id: `descargar` la trae de Meta para que Gemini la vea o
+  la oiga, y no se guarda.
+- Mientras el bot piensa, `avisar_que_escribe` le muestra al cliente el chulito azul de
+  leído y el "escribiendo…", como cuando contesta una persona.
 
 Los datos de conexión (token, número, clave de la app) vienen del .env (app.config).
 """
@@ -24,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot.avisos import mensaje_del_aviso
-from app.bot.mensajes import Mensaje
+from app.bot.mensajes import Adjunto, Mensaje, tipo_de_archivo
 from app.catalogo.parametros import leer_parametros
 from app.clientes.reglas import es_de_prueba
 from app.config import ConfiguracionEntorno, obtener_entorno
@@ -76,6 +80,9 @@ class Recibido:
     opcion: str | None = None  # el id del botón o de la opción de la lista que tocó
     titulo: str | None = None  # lo que decía ese botón
     ignorar: bool = False  # reacciones y avisos del sistema: se guardan, pero no se contestan
+    # De una foto o un audio: el id para descargarlo de Meta y su tipo ("image/jpeg").
+    archivo: str | None = None
+    mime: str | None = None
 
 
 @dataclass(frozen=True)
@@ -86,9 +93,14 @@ class NoEntregado:
     motivo: str
 
 
-# Lo que llega y no merece respuesta: una reacción (👍) a un mensaje del bot, o un aviso
-# del sistema (por ejemplo, que el cliente cambió de número).
-_IGNORADOS = frozenset({"reaction", "system", "unsupported", "ephemeral", "request_welcome"})
+# Lo que llega y no merece respuesta: una reacción (👍) o un sticker después de un mensaje
+# del bot (una persona tampoco le contesta un sticker), o un aviso del sistema (por
+# ejemplo, que el cliente cambió de número).
+_IGNORADOS = frozenset(
+    {"reaction", "sticker", "system", "unsupported", "ephemeral", "request_welcome"}
+)
+# Lo que puede traer un texto debajo (el pie de foto).
+_CON_PIE = frozenset({"image", "video", "document"})
 _TELEFONO = re.compile(r"[0-9]{8,15}")
 
 
@@ -136,7 +148,22 @@ def _leer_mensaje(mensaje: dict[str, Any]) -> Recibido | None:
         )
     if tipo == "button":  # el botón de una plantilla: se entiende como si lo escribiera
         return Recibido(id_meta, telefono, tipo, texto=(mensaje.get("button") or {}).get("text"))
-    return Recibido(id_meta, telefono, tipo, ignorar=tipo in _IGNORADOS)
+    archivo = mensaje.get(tipo) if isinstance(mensaje.get(tipo), dict) else {}
+    pie = archivo.get("caption") if tipo in _CON_PIE else None
+    mime = archivo.get("mime_type")
+    media_id = archivo.get("id")
+    se_puede_ver = (
+        tipo not in _IGNORADOS and isinstance(media_id, str) and tipo_de_archivo(mime) is not None
+    )
+    return Recibido(
+        id_meta,
+        telefono,
+        tipo,
+        texto=pie if isinstance(pie, str) and pie.strip() else None,
+        ignorar=tipo in _IGNORADOS,
+        archivo=media_id if se_puede_ver else None,
+        mime=mime if se_puede_ver else None,
+    )
 
 
 def _motivo(estado: dict[str, Any]) -> str:
@@ -207,13 +234,17 @@ def le_escribio_hace_poco(sesion: Session, telefono: str) -> bool:
     return ultimo is not None and ultimo >= tiempo.ahora() - VENTANA_PARA_ESCRIBIR
 
 
+# Lo más pesado que se le muestra a Gemini: una foto de WhatsApp pesa menos de 5 MB, y una
+# nota de voz de unos minutos, mucho menos. Más que eso no se descarga.
+PESO_MAXIMO = 5 * 1024 * 1024
+
+
 class WhatsApp:
     """El que envía los mensajes de la bandeja de salida por la Cloud API de Meta."""
 
     def __init__(self, entorno: ConfiguracionEntorno, http: httpx.Client | None = None) -> None:
-        self.url = (
-            f"{URL_DE_META}/{entorno.whatsapp_version_api}/{entorno.whatsapp_id_numero}/messages"
-        )
+        self.url_de_la_api = f"{URL_DE_META}/{entorno.whatsapp_version_api}"
+        self.url = f"{self.url_de_la_api}/{entorno.whatsapp_id_numero}/messages"
         self._encabezados = {"Authorization": f"Bearer {entorno.whatsapp_token}"}
         # Si Meta no contesta en 10 segundos, se deja para el próximo intento.
         self.http = http or httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0))
@@ -241,6 +272,52 @@ class WhatsApp:
         if respuesta.is_success:
             return _id_del_mensaje(respuesta)
         raise _por_que_no(respuesta)
+
+    def avisar_que_escribe(self, id_meta: str) -> None:
+        """El chulito azul de leído y el "escribiendo…" mientras el bot piensa la respuesta.
+        WhatsApp lo quita al llegar la respuesta (o a los 25 segundos). Si falla, no pasa
+        nada: es un detalle, no un mensaje."""
+        contenido = {
+            "messaging_product": "whatsapp",
+            "status": "read",
+            "message_id": id_meta,
+            "typing_indicator": {"type": "text"},
+        }
+        try:
+            respuesta = self.http.post(self.url, json=contenido, headers=self._encabezados)
+        except httpx.HTTPError as error:
+            logger.info("No se pudo mostrar el escribiendo (%s).", type(error).__name__)
+            return
+        if not respuesta.is_success:
+            logger.info("No se pudo mostrar el escribiendo (%s).", respuesta.status_code)
+
+    def descargar(self, media_id: str) -> Adjunto | None:
+        """La foto o el audio que mandó el cliente, para que Gemini lo vea o lo oiga. Meta
+        da primero un enlace (dura 5 minutos) y después el archivo, los dos con el token.
+        None si no se pudo o si pesa demasiado: el bot sigue como si no lo hubiera visto."""
+        try:
+            datos = self.http.get(f"{self.url_de_la_api}/{media_id}", headers=self._encabezados)
+            if not datos.is_success:
+                return _sin_archivo(f"Meta no dio el enlace ({datos.status_code})")
+            info = datos.json()
+            enlace, mime = info.get("url"), str(info.get("mime_type") or "")
+            if not isinstance(enlace, str) or tipo_de_archivo(mime) is None:
+                return _sin_archivo("Meta no dio un enlace o el tipo no se puede ver")
+            if int(info.get("file_size") or 0) > PESO_MAXIMO:
+                return _sin_archivo("pesa demasiado")
+            archivo = self.http.get(enlace, headers=self._encabezados, follow_redirects=True)
+        except (httpx.HTTPError, ValueError, TypeError, AttributeError) as error:
+            return _sin_archivo(type(error).__name__)
+        if not archivo.is_success:
+            return _sin_archivo(f"Meta no entregó el archivo ({archivo.status_code})")
+        if len(archivo.content) > PESO_MAXIMO:
+            return _sin_archivo("pesa demasiado")
+        return Adjunto(mime, archivo.content)
+
+
+def _sin_archivo(motivo: str) -> None:
+    logger.warning("No se pudo descargar una foto o un audio de WhatsApp: %s.", motivo)
+    return None
 
 
 def _id_del_mensaje(respuesta: httpx.Response) -> str:

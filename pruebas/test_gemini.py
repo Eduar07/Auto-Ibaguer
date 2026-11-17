@@ -185,6 +185,7 @@ def test_una_sola_consulta_entiende_y_escribe_con_formato_fijo():
         "servicio",
         "si_o_no",
         "sabe",
+        "lo_que_dice",  # de un audio o una foto
         "respuesta",  # al final: escribe ya sabiendo qué entendió
     ]
     assert esquema["properties"]["intencion"]["enum"] == [i.value for i in Intencion]

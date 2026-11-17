@@ -35,6 +35,7 @@ from app.web import (
     listo,
     mensajes,
     parqueadero,
+    privacidad,
     probar_bot,
     resultados,
     textos_del_bot,
@@ -106,6 +107,7 @@ for modulo in (
     mensajes,
     probar_bot,
     webhook,
+    privacidad,
 ):
     app.include_router(modulo.router)
 app.add_exception_handler(comun.NecesitaEntrar, comun.responder_sin_sesion)

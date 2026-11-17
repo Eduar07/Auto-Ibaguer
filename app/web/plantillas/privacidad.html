@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% import "_iconos.html" as iconos %}
+
+{% block titulo %}Política de privacidad · {{ negocio }}{% endblock %}
+
+{% block cuerpo %}
+<div class="pagina-entrar">
+  <header class="encabezado">
+    <div class="encabezado__contenido">
+      <span class="marca">{{ iconos.icono("gota", 28) }}<span class="marca__nombre">{{ negocio }}</span></span>
+    </div>
+  </header>
+
+  <main class="privacidad">
+    <h1>Política de privacidad y tratamiento de datos personales</h1>
+    <p class="suave">Según la Ley 1581 de 2012 y el Decreto 1377 de 2013 de Colombia.</p>
+
+    <section>
+      <h2>Quién trata tus datos</h2>
+      <p><strong>{{ negocio }}</strong>{% if nit %}, NIT {{ nit }}{% endif %}{% if direccion %}, {{ direccion }}{% endif %}. Es el responsable de tus datos. Para cualquier tema de tus datos escríbenos al WhatsApp del negocio{% if telefono %}, {{ telefono }}{% endif %}.</p>
+    </section>
+
+    <section>
+      <h2>Qué datos guardamos</h2>
+      <p>Solo si aceptas el aviso de datos que te muestra nuestro asistente de WhatsApp:</p>
+      <ul>
+        <li>Tu nombre y tu número de celular.</li>
+        <li>La placa y el tipo de tu vehículo.</li>
+        <li>Tus turnos, los servicios que tomaste y lo que pagaste.</li>
+        <li>Los mensajes que nos escribes por WhatsApp, para poder responderte, y tus comentarios (quejas, felicitaciones, preguntas).</li>
+      </ul>
+      <p>Si no aceptas el aviso, no guardamos tu nombre ni tu placa. De quien solo pregunta precios o cómo está la fila, guardamos únicamente cuántas preguntas hubo, sin saber quién las hizo.</p>
+    </section>
+
+    <section>
+      <h2>Para qué los usamos</h2>
+      <ul>
+        <li>Darte turno en la fila, avisarte cuando sea tu turno y cuando tu vehículo esté listo.</li>
+        <li>Responder tus preguntas, quejas y pedidos.</li>
+        <li>Si tú nos lo pides (por ejemplo, cuando dices "lo pienso" y aceptas que te escribamos), escribirte una sola vez dentro de las 24 horas siguientes.</li>
+        <li>Llevar las cuentas del negocio.</li>
+      </ul>
+      <p>No vendemos tus datos ni los usamos para publicidad, y no te escribimos sin que tú nos hayas escrito antes.</p>
+    </section>
+
+    <section>
+      <h2>Con quién se comparten</h2>
+      <ul>
+        <li><strong>WhatsApp (Meta)</strong>, por donde llegan y salen los mensajes.</li>
+        <li><strong>Google (Gemini)</strong>, que nos ayuda a entender lo que escribes o dices en un audio. Lo usamos en su plan de pago, en el que Google no usa los mensajes para entrenar sus modelos. Antes de enviárselos tapamos tu placa, tu número y tu correo.</li>
+        <li>El servidor donde funciona el sistema, que guarda los datos con acceso solo para el personal autorizado del negocio.</li>
+      </ul>
+    </section>
+
+    <section id="borrar">
+      <h2>Tus derechos y cómo borrar tus datos</h2>
+      <p>Puedes conocer, actualizar, corregir y pedir que borremos tus datos cuando quieras, y retirar tu autorización. Para hacerlo:</p>
+      <ol>
+        <li>Escríbenos al WhatsApp del negocio{% if telefono %} ({{ telefono }}){% endif %} diciendo que quieres borrar tus datos, o pídelo en el local.</li>
+        <li>Te respondemos en un máximo de 15 días hábiles.</li>
+        <li>Borramos tu nombre, tu celular y tus placas. Lo que pagaste queda en la contabilidad del negocio, como lo exige la ley, pero sin tus datos personales.</li>
+      </ol>
+      <p>Si no quedas conforme con la respuesta, puedes acudir a la Superintendencia de Industria y Comercio.</p>
+    </section>
+
+    <section>
+      <h2>Por cuánto tiempo</h2>
+      <p>Mientras seas cliente del negocio, o hasta que pidas que los borremos. Si dijiste "lo pienso" y aceptaste que te escribiéramos, tu número se guarda solo hasta mandarte ese mensaje.</p>
+    </section>
+
+    <p class="suave">Vigente desde el 17 de noviembre de 2026.</p>
+  </main>
+</div>
+{% endblock %}

@@ -124,6 +124,12 @@ CONFIGURACION_INICIAL: tuple[tuple[str, Any, str], ...] = (
         "Si está apagado, el bot entiende solo los botones y unas pocas palabras",
     ),
     (
+        "bot_ve_fotos",
+        False,
+        "Si está encendido, Gemini mira las fotos que mandan los clientes; si no, el bot "
+        "les pide que lo escriban (los audios los oye siempre que Gemini esté)",
+    ),
+    (
         "modelo_gemini",
         "gemini-3.5-flash-lite",
         "Modelo de Gemini que entiende lo que escriben los clientes",

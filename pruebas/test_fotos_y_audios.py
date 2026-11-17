@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.bot.interprete import Contexto, Intencion, Interpretacion
 from app.bot.mensajes import Adjunto, Entrada, tipo_de_archivo
 from app.catalogo.parametros import leer_parametros
+from app.catalogo.tablas import Configuracion
 from app.comentarios.tablas import Comentario
 from app.integraciones import gemini, historial, whatsapp
 from app.integraciones.tablas import MensajeEntrante
@@ -324,3 +325,65 @@ def test_un_sticker_no_recibe_respuesta(
 
     [recibido] = sesion.scalars(select(MensajeEntrante)).all()
     assert recibido.procesado_en is not None and meta.enviados == [] and meta.leidos == []
+
+
+# --- Las fotos se pueden apagar (vienen apagadas) -----------------------------------------------
+
+
+def ver_fotos(sesion: Session, si: bool) -> None:
+    sesion.merge(Configuracion(clave="bot_ve_fotos", valor=si, descripcion="Ver fotos"))
+    sesion.flush()
+
+
+def test_las_fotos_vienen_apagadas(sesion: Session):
+    assert leer_parametros(sesion).bot_ve_fotos is False
+
+
+def test_con_las_fotos_apagadas_no_se_descarga_ni_se_le_muestra_a_gemini(
+    webhook_listo: TestClient,  # noqa: F811
+    meta: MetaDeMentira,  # noqa: F811
+    con_gemini: GeminiDeMentira,
+):
+    meta.archivos["foto-1"] = ("image/jpeg", b"\xff\xd8")
+
+    mandar(webhook_listo, aviso_de_meta(foto()))
+
+    assert meta.descargados == [] and con_gemini.contextos == []
+    assert meta.textos == ["Uy, eso no lo alcancé a ver por aquí. ¿Me lo cuentas escribiendo?"]
+
+
+def test_con_las_fotos_encendidas_gemini_la_ve(
+    webhook_listo: TestClient,  # noqa: F811
+    sesion: Session,
+    meta: MetaDeMentira,  # noqa: F811
+    con_gemini: GeminiDeMentira,
+):
+    ver_fotos(sesion, True)
+    meta.archivos["foto-1"] = ("image/jpeg", b"\xff\xd8")
+    con_gemini.entendidos.append(
+        Interpretacion(Q.PRECIOS, vehiculo="Moto", lo_que_dice="Una moto con barro")
+    )
+
+    mandar(webhook_listo, aviso_de_meta(foto()))
+
+    assert meta.descargados == ["foto-1"]
+    assert meta.textos[0].startswith("Servicios para moto:")
+
+
+def test_con_las_fotos_apagadas_el_pie_de_foto_igual_se_lee(
+    webhook_listo: TestClient,  # noqa: F811
+    meta: MetaDeMentira,  # noqa: F811
+    con_gemini: GeminiDeMentira,
+):
+    con_gemini.entendidos.append(Interpretacion(Q.PRECIOS, vehiculo="Moto"))
+
+    mandar(webhook_listo, aviso_de_meta(foto(pie="cuánto por lavar la moto?")))
+
+    assert meta.descargados == []
+    assert con_gemini.contextos[0].adjunto is None  # leyó el texto, sin la foto
+    assert meta.textos[0].startswith("Servicios para moto:")
+
+
+def test_en_configuracion_se_enciende_y_se_apaga(adentro: TestClient, sesion: Session):
+    pagina = adentro.get("/configuracion").text
+    assert 'name="bot_ve_fotos"' in pagina and "Ver las fotos que mandan" in pagina

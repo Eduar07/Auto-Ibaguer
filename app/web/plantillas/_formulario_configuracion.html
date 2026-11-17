@@ -86,6 +86,14 @@
         <input type="checkbox" role="switch" name="gemini_activo" value="si" {% if valores.gemini_activo %}checked{% endif %}>
         <span class="interruptor__control" aria-hidden="true"></span>
       </label>
+      <label class="interruptor">
+        <span>
+          <strong>Ver las fotos que mandan</strong>
+          <span class="ayuda">Encendido, Gemini mira la foto (un carro sucio, un rayón) y el bot la entiende. Apagado, le pide que lo escriba. Los audios los oye igual.</span>
+        </span>
+        <input type="checkbox" role="switch" name="bot_ve_fotos" value="si" {% if valores.bot_ve_fotos %}checked{% endif %}>
+        <span class="interruptor__control" aria-hidden="true"></span>
+      </label>
       <div class="campo">
         <label for="modelo_gemini">Modelo de Gemini</label>
         <input id="modelo_gemini" name="modelo_gemini" value="{{ valores.modelo_gemini }}" maxlength="60" spellcheck="false" autocapitalize="off" {{ invalido("modelo_gemini") }}>

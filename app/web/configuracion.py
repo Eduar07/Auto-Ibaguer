@@ -132,6 +132,7 @@ def _valores_guardados(sesion: Session, filas: list[FilaEnConfiguracion]) -> dic
         "sesion_bot_minutos": str(int(parametros.sesion_bot.total_seconds() // 60)),
         "aviso_datos": parametros.aviso_datos,
         "gemini_activo": parametros.gemini_activo,
+        "bot_ve_fotos": parametros.bot_ve_fotos,
         "modelo_gemini": parametros.modelo_gemini,
         "ficha_negocio": parametros.ficha_negocio,
     }
@@ -153,6 +154,7 @@ def _valores_escritos(formulario: FormData) -> dict[str, Any]:
     ]
     valores["bot_activo"] = formulario.get("bot_activo") == "si"
     valores["gemini_activo"] = formulario.get("gemini_activo") == "si"
+    valores["bot_ve_fotos"] = formulario.get("bot_ve_fotos") == "si"
     for clave in list(valores):
         if clave.startswith("puesto-"):
             valores[clave] = valores[clave] == "si"
@@ -215,6 +217,7 @@ async def guardar(request: Request, sesion: SesionBD, _: Admin) -> Response:
     parametros["dias_atencion"] = formulario.getlist("dias_atencion")
     parametros["bot_activo"] = formulario.get("bot_activo") == "si"
     parametros["gemini_activo"] = formulario.get("gemini_activo") == "si"
+    parametros["bot_ve_fotos"] = formulario.get("bot_ve_fotos") == "si"
     try:
         configuracion.guardar_parametros(sesion, parametros)
     except configuracion.ConfiguracionInvalida as error:

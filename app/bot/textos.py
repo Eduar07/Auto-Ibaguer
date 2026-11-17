@@ -41,6 +41,8 @@ TEXTOS: dict[str, str] = {
     "toca_una_opcion": "Toca una de las opciones, por favor.",
     "toca_el_si": "Para eso, toca *{opcion}*, por favor.",
     "vehiculo_que_no_lava": "Por ahora lavamos {vehiculos}: para ese vehículo no tenemos servicio.",
+    "servicio_que_no_hay": "Ese servicio no lo tenemos en el menú. Lo que sí hacemos: "
+    "{servicios}. Toca *Servicios y precios* para ver qué incluye cada uno.",
     "sin_gemini": "Uy, no alcancé a leer bien tu mensaje. Intenta de nuevo en un momento o "
     "usa los botones; si es urgente, llama al {telefono}.",
     "despedida": "¡Con gusto! Que tengas un buen día.",
@@ -147,6 +149,13 @@ TEXTOS: dict[str, str] = {
     "antes posible. Si quieres, cuéntanos de qué se trata. Si es urgente, llama al {telefono}.",
     "persona_permiso": "Con gusto te comunicamos con el administrador. Para que te responda "
     "guardamos tu número de WhatsApp, solo para eso. ¿Estás de acuerdo?",
+    "pedido_especial": "¡Qué bien, {nombre}! Eso lo cuadra directamente el administrador, "
+    "que es quien decide los precios especiales. Ya le pasé tu mensaje y te escribe por aquí "
+    "lo antes posible. Si quieres, cuéntame más (cuántos vehículos, cada cuánto). Si es "
+    "urgente, llama al {telefono}.",
+    "pedido_especial_permiso": "¡Qué bien! Eso lo cuadra directamente el administrador, que "
+    "es quien decide los precios especiales. Para que te escriba guardamos tu número de "
+    "WhatsApp, solo para eso. ¿Estás de acuerdo?",
     "persona_sin_permiso": "Listo, sin problema. Si quieres hablar con el administrador, "
     "llama al {telefono}.",
     "contacto_si": "Listo, el administrador te responde lo antes posible. Si quieres, "

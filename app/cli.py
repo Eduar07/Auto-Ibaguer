@@ -27,7 +27,7 @@ from app import tiempo
 from app.bot import redactor
 from app.bot.conversacion import catalogo_del_bot, servicios_de_la_ficha
 from app.bot.frases_de_prueba import FRASES, FraseDePrueba
-from app.bot.interprete import SI, Contexto, Intencion, Interpretacion
+from app.bot.interprete import OTRO_SERVICIO, SI, Contexto, Intencion, Interpretacion
 from app.bot.textos import Textos
 from app.catalogo.datos_iniciales import cargar_datos_iniciales
 from app.catalogo.parametros import leer_parametros
@@ -290,7 +290,10 @@ def _como_salio(frase: FraseDePrueba, entendido: Interpretacion | None) -> str |
         faltas.append(f"intención {frase.intencion.value}")
     if frase.vehiculo and entendido.vehiculo != frase.vehiculo:
         faltas.append(f"vehículo {frase.vehiculo}")
-    if frase.servicio and entendido.servicio != frase.servicio:
+    if frase.servicio == OTRO_SERVICIO:
+        if not entendido.servicio_que_no_hay:
+            faltas.append("un servicio que no está en el menú")
+    elif frase.servicio and entendido.servicio != frase.servicio:
         faltas.append(f"servicio {frase.servicio}")
     if frase.si_o_no and entendido.si_o_no != frase.si_o_no:
         faltas.append(f"que conteste {'sí' if frase.si_o_no == SI else 'no'}")

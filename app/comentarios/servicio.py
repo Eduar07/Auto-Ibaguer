@@ -28,8 +28,9 @@ def registrar(
     *,
     cliente: Cliente | None = None,
     ahora: datetime | None = None,
+    resumen: str | None = None,
 ) -> Comentario:
-    """Guarda lo que escribió el cliente.
+    """Guarda lo que escribió el cliente. `resumen`: qué pide, en una línea (de Gemini).
 
     De un cliente que ya aceptó el aviso de datos se guarda su celular, para responderle.
     De alguien que no lo aceptó, nada que lo identifique, hasta que dé permiso
@@ -47,6 +48,7 @@ def registrar(
         telefono=cliente.telefono if cliente is not None else None,
         turno_id=ultimo_turno,
         creado_en=ahora or tiempo.ahora(),
+        resumen=(resumen or "").strip()[:200] or None,
     )
     sesion.add(comentario)
     sesion.flush()

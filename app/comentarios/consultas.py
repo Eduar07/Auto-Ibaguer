@@ -36,6 +36,7 @@ class ComentarioEnLista:
     atendido_por: str | None  # el usuario del administrador
     # Si el administrador le está respondiendo: hasta qué hora el bot no le contesta.
     pausa_hasta: datetime | None = None
+    resumen: str | None = None  # qué pide, en una línea (de Gemini)
 
     @property
     def atendido(self) -> bool:
@@ -117,4 +118,5 @@ def _en_lista(
         atendido_en=comentario.atendido_en,
         atendido_por=atendido_por,
         pausa_hasta=pausa_hasta,
+        resumen=comentario.resumen,
     )

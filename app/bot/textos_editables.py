@@ -393,6 +393,15 @@ GRUPOS: tuple[Grupo, ...] = (
                 maximo=300,
                 botones=(BOTONES["pedir"], BOTONES["fila"]),
             ),
+            Editable(
+                "servicio_que_no_hay",
+                "Un servicio que no tienes",
+                "Cuando pregunta por un servicio que no está en el menú (polichado, "
+                "tapicería...), si Gemini no está. Nunca se inventa un precio.",
+                opcionales=frozenset({"servicios"}),
+                maximo=300,
+                botones=(BOTONES["precios"], BOTONES["pedir"]),
+            ),
         ),
     ),
     Grupo(
@@ -432,6 +441,19 @@ GRUPOS: tuple[Grupo, ...] = (
             Editable(
                 "persona_permiso",
                 "Pide hablar con una persona, sin ser cliente",
+                "Se le pide permiso para guardar su número.",
+                botones=_PERMISO,
+            ),
+            Editable(
+                "pedido_especial",
+                "Pedido especial",
+                "Cuando pide algo que decides tú: una flota, un convenio, un precio especial. "
+                "Te llega en Comentarios con un resumen.",
+                opcionales=frozenset({"nombre", "telefono"}),
+            ),
+            Editable(
+                "pedido_especial_permiso",
+                "Pedido especial, sin ser cliente",
                 "Se le pide permiso para guardar su número.",
                 botones=_PERMISO,
             ),

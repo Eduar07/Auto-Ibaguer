@@ -21,7 +21,10 @@ turno, cancelar, marcar llegada...), así que lo que pasa en el chat se ve al in
 la fila y al revés.
 
 Las quejas, las felicitaciones y los pedidos de hablar con una persona le llegan al
-administrador en el dashboard (Comentarios, app.comentarios). De quien no es cliente no
+administrador en el dashboard (Comentarios, app.comentarios). Lo que decide el dueño y no
+el bot (una flota, un convenio, un precio especial) también: el bot no negocia, se lo
+pasa con un resumen. Si nombra un servicio que no está en el menú, el bot dice que no lo
+tiene y cuáles sí: nunca se inventa un precio. De quien no es cliente no
 se guarda el número sin su permiso. Mientras el administrador le responde a un cliente,
 el bot no se mete en la conversación (app.bot.pausa), pero sí atiende lo de la fila.
 
@@ -1024,6 +1027,8 @@ class _Atencion:
     def _hacer(self, entendido: Interpretacion, escrito: str) -> list[Mensaje]:
         """Lo que el cliente pidió con sus palabras, como si hubiera tocado el botón."""
         match entendido.intencion:
+            case Intencion.PEDIR_TURNO | Intencion.PRECIOS if entendido.servicio_que_no_hay:
+                return self._servicio_que_no_hay(entendido)
             case Intencion.PEDIR_TURNO if entendido.vehiculo == OTRO_VEHICULO:
                 return self._vehiculo_que_no_lava(entendido)
             case Intencion.PEDIR_TURNO:
@@ -1052,6 +1057,8 @@ class _Atencion:
                 return self._felicitacion(escrito, entendido)
             case Intencion.HABLAR_CON_PERSONA:
                 return self._hablar_con_una_persona(escrito)
+            case Intencion.PEDIDO_ESPECIAL:
+                return self._pedido_especial(escrito)
             case Intencion.SALUDO:
                 return self._saludo(entendido)
             case Intencion.DESPEDIDA:
@@ -1075,6 +1082,7 @@ class _Atencion:
             Intencion.MIS_LAVADAS,
             Intencion.QUEJA,
             Intencion.HABLAR_CON_PERSONA,
+            Intencion.PEDIDO_ESPECIAL,
             Intencion.CRISIS,
         )
         if entendido.intencion in otra_cosa:
@@ -1150,6 +1158,20 @@ class _Atencion:
                 botones=(Opcion("menu.precios", BOTONES["precios"]),),
             )
         ]
+
+    def _servicio_que_no_hay(self, entendido: Interpretacion) -> list[Mensaje]:
+        """Nombró un servicio que no está en el menú ("¿cuánto vale el polichado?"): se le
+        dice que ese no lo hay y cuáles sí. Nunca un precio inventado."""
+        self._volver_al_menu()
+        botones = (
+            Opcion("menu.precios", BOTONES["precios"]),
+            Opcion("menu.pedir", BOTONES["pedir"]),
+        )
+        dicho = self._de_gemini(entendido)
+        if dicho is not None:
+            return [Mensaje(dicho, botones=botones)]
+        servicios = _con_y([nombre.lower() for nombre in self._catalogo().servicios])
+        return [Mensaje(self._fijo("servicio_que_no_hay", servicios=servicios), botones=botones)]
 
     def _preguntar_cual_carro(self) -> list[Mensaje]:
         """Dijo "carro" para ver precios: ¿automóvil o camioneta? (cuestan distinto)."""
@@ -1958,6 +1980,7 @@ class _Atencion:
             self._con_la_foto(escrito),
             cliente=self.cliente,
             ahora=self.ahora,
+            resumen=self._para_el_administrador(),
         )
         self._volver_al_menu()
         self.datos = {"comentario": comentario.id, "tipo": TipoComentario.QUEJA.value}
@@ -1968,32 +1991,50 @@ class _Atencion:
         self.paso = Paso.DETALLE
         return [Mensaje(self.texto("queja_cliente", nombre=_primer_nombre(self.cliente)))]
 
-    def _hablar_con_una_persona(self, escrito: str) -> list[Mensaje]:
-        """Quiere que le responda alguien y no el bot: le llega al administrador."""
+    def _para_el_administrador(self) -> str | None:
+        """Qué pide, en una línea, si Gemini lo escribió (para el administrador)."""
+        return self._lo_entendido.resumen or None if self._lo_entendido is not None else None
+
+    def _hablar_con_una_persona(
+        self, escrito: str, tipo: TipoComentario = TipoComentario.QUIERE_HABLAR
+    ) -> list[Mensaje]:
+        """Quiere que le responda alguien y no el bot (o pide algo que decide el dueño, un
+        pedido especial): le llega al administrador, con el resumen de lo que pide."""
         self._volver_al_menu()
+        texto = "persona" if tipo == TipoComentario.QUIERE_HABLAR else "pedido_especial"
         if self.cliente is None:
             # Se guarda solo si acepta que guardemos su número: sin él no hay a quién responder.
             self.paso = Paso.PERMISO_CONTACTO
-            self.datos = {"pide_persona": _sin_pasarse(self._con_la_foto(escrito))}
+            self.datos = {
+                "pide_persona": _sin_pasarse(self._con_la_foto(escrito)),
+                "tipo": tipo.value,
+                "resumen": self._para_el_administrador(),
+            }
             return [self._pregunta()]
         comentario = comentarios.registrar(
             self.sesion,
-            TipoComentario.QUIERE_HABLAR,
+            tipo,
             self._con_la_foto(escrito),
             cliente=self.cliente,
             ahora=self.ahora,
+            resumen=self._para_el_administrador(),
         )
         self.paso = Paso.DETALLE
-        self.datos = {"comentario": comentario.id, "tipo": TipoComentario.QUIERE_HABLAR.value}
+        self.datos = {"comentario": comentario.id, "tipo": tipo.value}
         return [
             Mensaje(
                 self.texto(
-                    "persona",
+                    texto,
                     nombre=_primer_nombre(self.cliente),
                     telefono=self._telefono_del_negocio(),
                 )
             )
         ]
+
+    def _pedido_especial(self, escrito: str) -> list[Mensaje]:
+        """Una flota, un convenio, un precio especial: eso lo decide el dueño. El bot no
+        negocia: se lo pasa con un resumen y le dice al cliente que le escriben."""
+        return self._hablar_con_una_persona(escrito, TipoComentario.PEDIDO_ESPECIAL)
 
     def _con_botones_de_permiso(self, texto: str) -> Mensaje:
         return Mensaje(
@@ -2006,12 +2047,15 @@ class _Atencion:
 
     def _pregunta_permiso(self) -> Mensaje:
         nombre = "persona_permiso" if "pide_persona" in self.datos else "queja_permiso"
+        if self.datos.get("tipo") == TipoComentario.PEDIDO_ESPECIAL.value:
+            nombre = "pedido_especial_permiso"
         return self._con_botones_de_permiso(self.texto(nombre))
 
     def _permiso_para_responder(self, respuesta: str) -> list[Mensaje]:
         pide_persona = self.datos.get("pide_persona")
         comentario_id = self.datos.get("comentario")
         tipo = _tipo_de_comentario(self.datos.get("tipo"))
+        resumen = self.datos.get("resumen")
         self._volver_al_menu()
         if respuesta != "si":
             telefono = self._telefono_del_negocio()
@@ -2021,8 +2065,15 @@ class _Atencion:
                 return [Mensaje(self.texto("pregunta_anonima", telefono=telefono))]
             return [Mensaje(self.texto("queja_anonima"))]
         if pide_persona is not None:
-            tipo = TipoComentario.QUIERE_HABLAR
-            nuevo = comentarios.registrar(self.sesion, tipo, pide_persona, ahora=self.ahora)
+            if tipo != TipoComentario.PEDIDO_ESPECIAL:
+                tipo = TipoComentario.QUIERE_HABLAR
+            nuevo = comentarios.registrar(
+                self.sesion,
+                tipo,
+                pide_persona,
+                ahora=self.ahora,
+                resumen=resumen if isinstance(resumen, str) else None,
+            )
             comentario_id = nuevo.id
         if comentario_id is not None:
             # Aceptó: desde ahora el comentario lleva su número, para responderle.

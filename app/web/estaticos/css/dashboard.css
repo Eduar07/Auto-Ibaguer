@@ -774,6 +774,7 @@ form:not(:has(input[name="tipo"][value="gasto"]:checked)) .solo-si-es-gasto { di
 .comentario__cabeza {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; font-size: 14px;
 }
+.comentario__resumen { font-weight: 700; font-size: 16px; line-height: 1.4; }
 .comentario__texto { font-size: 16px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
 .comentario--atendido .comentario__texto { color: var(--tinta-gris); }
 .comentario__quien { font-size: 14px; line-height: 1.5; color: var(--tinta-suave); }

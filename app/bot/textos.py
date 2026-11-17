@@ -23,8 +23,10 @@ tabla `configuracion` y `Textos` lo usa en lugar del original.
 import logging
 import string
 from collections.abc import Mapping
+from typing import Any
 
 from app.bot.mensajes import Opcion
+from app.formato import duracion
 
 logger = logging.getLogger(__name__)
 
@@ -34,16 +36,27 @@ TEXTOS: dict[str, str] = {
     "¿En qué te ayudamos?",
     "saludo_cliente": "¡Hola, {nombre}! Qué bueno saludarte de nuevo. ¿En qué te ayudamos?",
     "menu": "¿En qué más te ayudamos?",
-    "no_entendi": "No te entendí bien. Puedes tocar una opción, escribir *mi turno* o "
-    "*cancelar*, o pedir *hablar con una persona*.",
+    "no_entendi": "Perdona, no te entendí bien. ¿Me lo dices de otra forma? También puedes "
+    "tocar una opción o escribir *hablar con una persona*.",
+    "horario": "Por WhatsApp damos turnos {horario}. ¿Te ayudo con algo más?",
     "solo_texto": "Uy, eso no lo alcancé a ver por aquí. ¿Me lo cuentas escribiendo?",
     "boton_vencido": "Ese botón ya no está vigente. ¿En qué te ayudamos?",
     "toca_una_opcion": "Toca una de las opciones, por favor.",
     "toca_el_si": "Para eso, toca *{opcion}*, por favor.",
     "vehiculo_que_no_lava": "Por ahora lavamos {vehiculos}: para ese vehículo no tenemos servicio.",
+    "servicio_que_no_hay": "Ese servicio no lo tenemos en el menú. Lo que sí hacemos: "
+    "{servicios}. Toca *Servicios y precios* para ver qué incluye cada uno.",
     "sin_gemini": "Uy, no alcancé a leer bien tu mensaje. Intenta de nuevo en un momento o "
     "usa los botones; si es urgente, llama al {telefono}.",
     "despedida": "¡Con gusto! Que tengas un buen día.",
+    # --- "Lo pienso": el seguimiento (app.bot.seguimiento) ---
+    "lo_piensa": "¡Listo, sin afán! ¿Quieres que {cuando} te escriba para contarte cómo va "
+    "la fila?",
+    "lo_piensa_sin_seguimiento": "¡Listo, sin afán! Aquí estamos cuando te animes.",
+    "seguimiento_si": "¡Hecho! {cuando} te escribo. Si te animas antes, aquí estoy.",
+    "seguimiento_no": "Listo, sin problema. Cuando quieras, aquí estamos.",
+    "seguimiento": "¡Hola{nombre}! Te escribo como quedamos. Así está la fila ahora:\n\n"
+    "{filas}\n\n¿Te aparto un turno?",
     "pico_y_placa": "Por ahora no damos información de pico y placa por aquí. ¿En qué más te "
     "ayudamos?",
     "error_interno": "Tuvimos un problema para atenderte. Intenta de nuevo en un momento o "
@@ -147,6 +160,13 @@ TEXTOS: dict[str, str] = {
     "antes posible. Si quieres, cuéntanos de qué se trata. Si es urgente, llama al {telefono}.",
     "persona_permiso": "Con gusto te comunicamos con el administrador. Para que te responda "
     "guardamos tu número de WhatsApp, solo para eso. ¿Estás de acuerdo?",
+    "pedido_especial": "¡Qué bien, {nombre}! Eso lo cuadra directamente el administrador, "
+    "que es quien decide los precios especiales. Ya le pasé tu mensaje y te escribe por aquí "
+    "lo antes posible. Si quieres, cuéntame más (cuántos vehículos, cada cuánto). Si es "
+    "urgente, llama al {telefono}.",
+    "pedido_especial_permiso": "¡Qué bien! Eso lo cuadra directamente el administrador, que "
+    "es quien decide los precios especiales. Para que te escriba guardamos tu número de "
+    "WhatsApp, solo para eso. ¿Estás de acuerdo?",
     "persona_sin_permiso": "Listo, sin problema. Si quieres hablar con el administrador, "
     "llama al {telefono}.",
     "contacto_si": "Listo, el administrador te responde lo antes posible. Si quieres, "
@@ -237,6 +257,7 @@ BOTONES: dict[str, str] = {
     "llegue": "Ya estoy aquí",
     "responder_si": "Sí, que me responda",
     "responder_no": "No, gracias",
+    "escribeme": "Sí, escríbeme",
 }
 
 
@@ -294,6 +315,20 @@ class Textos:
 
 # Los textos originales, para lo que no depende de lo que cambió el administrador.
 texto = Textos()
+
+
+def como_va(resumen: Any, texto: "Textos") -> str:
+    """Cómo va una fila (consultas.ResumenDeLaFila), solo con cantidades: el bot nunca
+    muestra nombres ni placas de otros clientes."""
+    espera = f"en aprox. {duracion(resumen.espera_min)}" if resumen.espera_min else "pronto"
+    if resumen.puestos_activos == 0:
+        return texto("fila_cerrada")
+    if resumen.puede_venir_ya:
+        return texto("fila_libre")
+    if resumen.en_espera == 0:
+        return texto("fila_sin_espera", espera=espera)
+    vehiculos = f"{resumen.en_espera} vehículo{'s' if resumen.en_espera != 1 else ''}"
+    return texto("fila_con_espera", vehiculos=vehiculos, espera=espera)
 
 
 def adelante(cantidad: int) -> str:

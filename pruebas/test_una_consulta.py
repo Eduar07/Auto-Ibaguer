@@ -169,7 +169,7 @@ def test_sin_gemini_la_traza_lo_dice(adentro: TestClient, monkeypatch: pytest.Mo
 
     respuesta = escribir(adentro, texto="lavan tractomulas?")
 
-    assert "No te entendí bien." in respuesta
+    assert "no te entendí bien." in respuesta
     assert "Gemini no está conectado (Configuración): el bot siguió solo." in respuesta
 
 

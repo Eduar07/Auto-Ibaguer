@@ -643,6 +643,8 @@ legend { padding: 0; margin-bottom: 8px; }
 .ficha__cifras strong { font-size: 17px; font-weight: 700; }
 .ficha__cifras .numero { font-size: 22px; white-space: nowrap; }
 .ficha__bloque { display: flex; flex-direction: column; gap: 8px; }
+.ficha__whatsapp p { font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
+.ficha__pendientes { display: flex; flex-direction: column; gap: 6px; padding-left: 18px; font-size: 15px; line-height: 1.4; }
 .ficha__bloque h3 { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta-suave); }
 .ficha__vehiculos, .ficha__visitas { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 15px; }
 .ficha__vehiculos li { display: flex; align-items: center; gap: 8px; }
@@ -774,6 +776,7 @@ form:not(:has(input[name="tipo"][value="gasto"]:checked)) .solo-si-es-gasto { di
 .comentario__cabeza {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; font-size: 14px;
 }
+.comentario__resumen { font-weight: 700; font-size: 16px; line-height: 1.4; }
 .comentario__texto { font-size: 16px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
 .comentario--atendido .comentario__texto { color: var(--tinta-gris); }
 .comentario__quien { font-size: 14px; line-height: 1.5; color: var(--tinta-suave); }

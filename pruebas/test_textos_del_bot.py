@@ -78,6 +78,7 @@ LARGO_DE_CADA_DATO = {
     "servicios": 600,  # si no cabe, el bot quita las descripciones o lo recorta
     "lavadas": 15,  # "1234 lavadas"
     "ultima": 30,  # "el 30 de septiembre de 2025"
+    "cuando": 20,  # "mañana temprano"
 }
 
 

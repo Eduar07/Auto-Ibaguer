@@ -7,6 +7,7 @@
   "felicitacion": ("Felicitación", "verde"),
   "quiere_hablar": ("Quiere hablar con alguien", "azul"),
   "pregunta": ("Pregunta que el bot no supo", "naranja"),
+  "pedido_especial": ("Pedido especial", "llamado"),
 } %}
 {% set nombre_del_tipo, color = tipos[c.tipo.value] %}
 <article class="panel comentario{% if c.atendido %} comentario--atendido{% endif %}" id="comentario-{{ c.id }}" aria-labelledby="comentario-{{ c.id }}-tipo"{% if oob %} hx-swap-oob="true"{% endif %}>
@@ -15,6 +16,7 @@
     <span class="suave">{{ cuando(c.creado_en) }}</span>
   </div>
 
+  {% if c.resumen %}<p class="comentario__resumen">{{ c.resumen }}</p>{% endif %}
   <p class="comentario__texto">{{ c.texto }}</p>
 
   <p class="comentario__quien">

@@ -41,6 +41,9 @@ class Intencion(StrEnum):
     QUEJA = "queja"  # se queja de algo que ya pasó
     FELICITACION = "felicitacion"
     HABLAR_CON_PERSONA = "hablar_con_persona"  # quiere que le responda alguien, no el bot
+    # Lo que decide el dueño, no el bot: una flota, un convenio, un precio especial.
+    PEDIDO_ESPECIAL = "pedido_especial"
+    LO_PIENSO = "lo_pienso"  # lo va a pensar, después mira: el bot ofrece escribirle
     PREGUNTA = "pregunta"  # sobre el negocio: horarios, pagos, dirección, sus datos...
     CHARLA = "charla"  # no pide nada: cuenta cómo está, bromea, habla de otro tema
     CRISIS = "crisis"  # dice en serio que quiere morir o hacerse daño: un texto fijo de ayuda
@@ -51,6 +54,9 @@ class Intencion(StrEnum):
 CARRO = "carro"  # dijo "carro" sin decir si es automóvil o camioneta: el bot pregunta
 OTRO_VEHICULO = "otro"  # un vehículo que el lavadero no tiene (un camión, una tractomula)
 NINGUNO = "ninguno"  # no nombra un vehículo, un servicio o un sí o un no
+# Lo que Gemini contesta en "servicio" si nombra uno que el lavadero no tiene (polichado,
+# tapicería...): no se inventa un precio, se dice que no está en el menú.
+OTRO_SERVICIO = "otro"
 
 # Lo que contesta a una pregunta de sí o no del bot.
 SI, NO = "si", "no"
@@ -101,6 +107,10 @@ class Interpretacion:
     sabe: bool = True  # en una pregunta: False si la ficha no tiene el dato
     # De un audio, lo que dice; de una foto, qué se ve. "" si mandó solo texto.
     lo_que_dice: str = ""
+    servicio_que_no_hay: bool = False  # nombró un servicio que no está en el menú
+    # Para el administrador, en una línea: qué pide (en un pedido especial, una queja o
+    # cuando pide hablar con una persona). "" si no aplica.
+    resumen: str = ""
 
 
 class Interprete(Protocol):
@@ -130,6 +140,7 @@ def leer_respuesta(datos: Any, catalogo: Catalogo) -> Interpretacion | None:
     respuesta = datos.get("respuesta")
     sabe = datos.get("sabe")
     lo_que_dice = datos.get("lo_que_dice")
+    resumen = datos.get("resumen")
     validos = (*catalogo.vehiculos, CARRO, OTRO_VEHICULO)
     return Interpretacion(
         intencion,
@@ -141,6 +152,8 @@ def leer_respuesta(datos: Any, catalogo: Catalogo) -> Interpretacion | None:
         lo_que_dice=" ".join(lo_que_dice.split())[:LARGO_MAXIMO]
         if isinstance(lo_que_dice, str)
         else "",
+        servicio_que_no_hay=servicio == OTRO_SERVICIO,
+        resumen=" ".join(resumen.split())[:LARGO_DEL_RESUMEN] if isinstance(resumen, str) else "",
     )
 
 
@@ -153,6 +166,7 @@ _PLACA = re.compile(r"\b[A-Za-z]{3}[\s-]?\d{2}[0-9A-Za-z]\b")
 # precios hasta 999.999 se dejan, porque no son de nadie.
 _NUMERO = re.compile(r"\+?\d[\d\s.\-]{6,}\d")
 LARGO_MAXIMO = 500  # un mensaje más largo se corta: para entender qué quiere, basta
+LARGO_DEL_RESUMEN = 200
 
 
 def ocultar_datos(mensaje: str) -> str:

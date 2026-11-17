@@ -28,6 +28,15 @@ class TipoComentario(StrEnum):
     FELICITACION = "felicitacion"
     QUIERE_HABLAR = "quiere_hablar"  # pidió hablar con una persona
     PREGUNTA = "pregunta"  # preguntó algo que la ficha del negocio no sabía
+    # Lo que decide el dueño y no el bot: una flota, un convenio, un precio especial.
+    PEDIDO_ESPECIAL = "pedido_especial"
+
+
+# Lo que le llega al dueño por correo apenas pasa (app.comentarios.avisos): alguien espera
+# que una persona le responda.
+TIPOS_QUE_SE_AVISAN = frozenset(
+    {TipoComentario.QUEJA, TipoComentario.QUIERE_HABLAR, TipoComentario.PEDIDO_ESPECIAL}
+)
 
 
 class Comentario(Base):
@@ -68,3 +77,8 @@ class Comentario(Base):
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     atendido_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     atendido_por: Mapped[int | None] = mapped_column(ForeignKey("administrador.id"))
+    # Qué pide, en una línea (lo escribió Gemini): se lee de un vistazo en Comentarios y en
+    # el correo. None si no hubo Gemini o no aplica.
+    resumen: Mapped[str | None] = mapped_column(String(200))
+    # Cuándo salió el correo que le avisa al dueño (TIPOS_QUE_SE_AVISAN). None: todavía no.
+    avisado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -58,3 +58,24 @@ class PausaDelBot(Base):
     )
     administrador_id: Mapped[int] = mapped_column(ForeignKey("administrador.id"))
     creada_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Seguimiento(Base):
+    """Volver a escribirle a quien dijo "lo pienso" y aceptó que le escribiéramos.
+
+    Solo con su sí ("Sí, escríbeme"), una sola vez y dentro de las 24 horas en que WhatsApp
+    deja escribir sin plantilla (app.bot.seguimiento). Se borra al mandarlo, o antes si
+    vuelve a escribir o pide turno: el celular no se guarda más de lo necesario.
+    """
+
+    __tablename__ = "seguimiento"
+    __table_args__ = (CheckConstraint("telefono ~ '^[0-9]{8,15}$'", name="telefono_solo_digitos"),)
+
+    telefono: Mapped[str] = mapped_column(String(15), primary_key=True)
+    cliente_id: Mapped[int | None] = mapped_column(ForeignKey("cliente.id", ondelete="CASCADE"))
+    # La fila que estaba mirando (los precios de moto...), para contarle cómo va esa.
+    tipo_vehiculo_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tipo_vehiculo.id", ondelete="SET NULL")
+    )
+    enviar_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

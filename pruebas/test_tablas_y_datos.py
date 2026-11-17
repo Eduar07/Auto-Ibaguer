@@ -32,6 +32,7 @@ TABLAS_DE_LA_FASE_1 = {
     "turno_historial",
     "pago",
     "sesion_bot",
+    "seguimiento",
     # Técnicas (3)
     "administrador",
     "mensaje_entrante",

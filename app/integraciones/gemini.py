@@ -34,6 +34,7 @@ from app.bot.interprete import (
     CARRO,
     NINGUNO,
     NO,
+    OTRO_SERVICIO,
     OTRO_VEHICULO,
     SI,
     Catalogo,
@@ -105,6 +106,14 @@ servicio, un precio o un vehículo.
 - felicitacion: felicita o agradece el servicio ("la moto quedó como nueva").
 - hablar_con_persona: quiere hablar con una persona (el administrador, el dueño, un \
 asesor) o que lo llamen.
+- pedido_especial: pide algo que no se resuelve con un turno y que decide el dueño: lavar \
+varios vehículos a la vez o cada semana (una flota, una empresa, un parqueadero), un \
+convenio, un precio especial o por cantidad, una cotización formal o una factura para \
+una empresa ("tengo 20 camionetas, me hacen precio?"). Es pedido_especial aunque nombre \
+un vehículo o un servicio.
+- lo_pienso: dice que lo va a pensar, que después mira o que más tarde o mañana vuelve, \
+sin pedir nada ahora ("lo pienso", "déjame miro", "después le aviso", "de pronto mañana \
+paso"). Si además pide algo (un turno, la fila), manda eso.
 - pregunta: pregunta algo del lavadero que no es de las anteriores: horarios, dirección, \
 formas de pago, qué vehículos lavan, cómo funcionan los turnos, qué hacen con sus datos.
 - charla: no pide nada del lavadero: cuenta cómo está, bromea, dice algo cariñoso, \
@@ -118,7 +127,9 @@ vehiculo: el vehículo del que habla, uno de: {vehiculos}. "carro" si dice carro
 cuál de esos es; "otro" si nombra uno que no está en esa lista (un camión, una \
 tractomula, un bus); "ninguno" si no habla de un vehículo.
 
-servicio: el servicio que nombra, uno de: {servicios}; "ninguno" si no nombra ninguno.
+servicio: el servicio que nombra, uno de: {servicios}; "otro" si nombra uno que no está \
+en esa lista (polichado, tapicería, lavado de motor, pintura...); "ninguno" si no nombra \
+ninguno.
 
 si_o_no: si el bot le acaba de hacer una pregunta de sí o no (mira EN QUÉ VA) y el \
 mensaje la contesta, "si" o "no". Si no la contesta, "ninguno".
@@ -131,10 +142,14 @@ manda una foto, qué se ve en una frase corta, lo que le importa al lavadero (qu
 si está sucio, un daño, un comprobante). Sin placas, nombres ni números de documento: si \
 los ves, no los escribas. Si solo escribió, va vacío.
 
+resumen: si la intención es pedido_especial, queja o hablar_con_persona, en una línea y \
+para el dueño del lavadero, qué pide o qué pasó ("Empresa pide precio para lavar 20 \
+camionetas cada semana"), sin nombres, placas ni números de celular. Si no, va vacío.
+
 respuesta: lo que el bot le contesta.
 - Escríbela cuando la intención es saludo, despedida, felicitacion, pregunta, charla u \
-otro, y cuando el vehículo es "otro". En lo demás va vacía: el bot contesta con los datos \
-del sistema, como si el cliente hubiera tocado un botón.
+otro, y cuando el vehículo o el servicio es "otro". En lo demás va vacía: el bot contesta \
+con los datos del sistema, como si el cliente hubiera tocado un botón.
 - saludo, despedida y felicitacion: di con tus palabras la idea de su GUÍA, sin quitarle \
 ni agregarle datos.
 - pregunta: contéstala solo con la FICHA. Si la ficha no la responde, sabe es false: di \
@@ -146,6 +161,10 @@ larga, noticias, el clima o datos de hoy, consejos de salud, de leyes o de plata
 con amabilidad y sin sermones que eso no lo puedes hacer por aquí.
 - otro: pídele en una frase corta que te lo explique.
 - vehículo "otro": dile qué vehículos sí lava el lavadero, según la FICHA.
+- servicio "otro": salvo que la FICHA diga que sí lo hacen, dile con amabilidad que ese \
+no está en el menú y cuáles servicios sí hay, según la FICHA (sin precios). Eso sí lo \
+sabes: sabe es true.
+- pedido_especial: la respuesta va vacía: el bot le dice que se lo pasa al dueño.
 - Si EN QUÉ VA te pide una respuesta, escríbela aunque la intención sea otra.
 - Si el bot está esperando una respuesta (EN QUÉ VA), no repitas su pregunta: el bot la \
 vuelve a hacer después de tu respuesta.
@@ -190,10 +209,14 @@ def esquema(catalogo: Catalogo) -> dict[str, Any]:
                 "type": "string",
                 "enum": [*catalogo.vehiculos, CARRO, OTRO_VEHICULO, NINGUNO],
             },
-            "servicio": {"type": "string", "enum": [*catalogo.servicios, NINGUNO]},
+            "servicio": {
+                "type": "string",
+                "enum": [*catalogo.servicios, OTRO_SERVICIO, NINGUNO],
+            },
             "si_o_no": {"type": "string", "enum": [SI, NO, NINGUNO]},
             "sabe": {"type": "boolean"},
             "lo_que_dice": {"type": "string"},
+            "resumen": {"type": "string"},
             "respuesta": {"type": "string"},
         },
         "required": [
@@ -203,6 +226,7 @@ def esquema(catalogo: Catalogo) -> dict[str, Any]:
             "si_o_no",
             "sabe",
             "lo_que_dice",
+            "resumen",
             "respuesta",
         ],
         "additionalProperties": False,

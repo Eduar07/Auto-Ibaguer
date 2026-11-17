@@ -22,6 +22,20 @@
     <div><span>Pide casi siempre</span><strong>{{ f.servicio_frecuente or "—" }}</strong></div>
   </div>
 
+  {% if whatsapp %}
+  <div class="ficha__bloque ficha__whatsapp">
+    <h3>Por WhatsApp</h3>
+    {% if whatsapp.ultimo_mensaje %}
+    <p><span class="suave">Último mensaje, {{ cuando_paso(whatsapp.ultimo_en) }}:</span> «{{ whatsapp.ultimo_mensaje }}»</p>
+    {% endif %}
+    {% if whatsapp.cosas %}
+    <ul class="ficha__pendientes">
+      {% for cosa in whatsapp.cosas %}<li>{{ cosa }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <div class="ficha__bloque">
     <h3>Vehículos</h3>
     {% if f.vehiculos %}

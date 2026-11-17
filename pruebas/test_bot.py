@@ -122,9 +122,9 @@ def test_a_un_cliente_conocido_lo_saluda_por_su_nombre(sesion: Session):
 def test_lo_que_no_entiende_muestra_el_menu(sesion: Session):
     chat = Chat(sesion).escribe("hola")
 
-    chat.escribe("quiero saber si atienden motos grandes")
-    assert chat.texto.startswith("No te entendí bien.")
-    assert "pedir *hablar con una persona*" in chat.texto  # la salida que siempre tiene
+    chat.escribe("necesito saber si es seguro dejar las llaves")
+    assert chat.texto.startswith("Perdona, no te entendí bien.")
+    assert "escribir *hablar con una persona*" in chat.texto  # la salida que siempre tiene
     assert chat.opciones == MENU
 
     chat.manda_un_audio()

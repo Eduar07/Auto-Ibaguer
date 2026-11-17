@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
+from app import tiempo
+from app.bot.en_que_quedo import en_que_quedo
 from app.clientes import consultas
 from app.clientes import servicio as clientes
 from app.clientes.errores import NoExiste
@@ -29,6 +31,12 @@ def _ficha(sesion: Session, cliente_id: int) -> consultas.FichaDelCliente:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
+def _ficha_con_whatsapp(sesion: Session, cliente_id: int) -> dict[str, Any]:
+    """La ficha y en qué quedó con el bot (app.bot.en_que_quedo)."""
+    ficha = _ficha(sesion, cliente_id)
+    return {"ficha": ficha, "whatsapp": en_que_quedo(sesion, ficha.id, ahora=tiempo.ahora())}
+
+
 @router.get("/clientes", response_class=HTMLResponse)
 def pagina_clientes(
     request: Request,
@@ -38,15 +46,15 @@ def pagina_clientes(
     numero: int = 1,
     cliente: int | None = None,
 ) -> Response:
-    ficha = None
+    de_la_ficha: dict[str, Any] = {"ficha": None}
     if cliente is not None:
         try:
-            ficha = consultas.ficha_del_cliente(sesion, cliente)
-        except NoExiste:
-            ficha = None
+            de_la_ficha = _ficha_con_whatsapp(sesion, cliente)
+        except HTTPException:
+            de_la_ficha = {"ficha": None}
     contexto = {
         "total": consultas.contar_clientes(sesion),
-        "ficha": ficha,
+        **de_la_ficha,
         **_lista(sesion, q, numero),
     }
     return pagina(request, sesion, "clientes.html", contexto, seccion="lavadero/clientes")
@@ -61,12 +69,12 @@ def lista_de_clientes(
 
 @router.get("/clientes/{cliente_id}/ficha", response_class=HTMLResponse)
 def ficha_del_cliente(request: Request, sesion: SesionBD, _: Admin, cliente_id: int) -> Response:
-    return html(request, "_ficha_cliente.html", {"ficha": _ficha(sesion, cliente_id)})
+    return html(request, "_ficha_cliente.html", _ficha_con_whatsapp(sesion, cliente_id))
 
 
 def _ficha_actualizada(request: Request, sesion: Session, cliente_id: int, aviso: str) -> Response:
     """Tras guardar: la ficha nueva en su lugar, el diálogo cerrado y la lista al día."""
-    respuesta = html(request, "_ficha_cliente.html", {"ficha": _ficha(sesion, cliente_id)})
+    respuesta = html(request, "_ficha_cliente.html", _ficha_con_whatsapp(sesion, cliente_id))
     respuesta.headers["HX-Retarget"] = "#ficha-cliente"
     respuesta.headers["HX-Reswap"] = "innerHTML"
     return con_eventos(

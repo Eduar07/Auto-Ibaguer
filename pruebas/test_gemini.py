@@ -546,20 +546,21 @@ def test_si_gemini_no_responde_no_le_dice_no_te_entendi(sesion: Session, caplog)
 
     cliente.escribe("reciben nequi?")
     assert cliente.texto.startswith("¡Hola! Bienvenido a Auto Ibaguer.")  # primer mensaje
-    cliente.escribe("y a qué hora abren?")
+    cliente.escribe("y dónde quedan?")
     assert cliente.texto.startswith("Uy, no alcancé a leer bien tu mensaje.")
     assert "llama al 322 755 6850" in cliente.texto
     assert "No te entendí" not in cliente.texto  # el mensaje estaba bien escrito
     assert cliente.opciones == MENU
-    cliente.escribe("y dónde quedan?")
-    assert cliente.texto.startswith("Uy, no alcancé a leer bien tu mensaje.")
+    # Lo más común lo entiende solo, aunque Gemini no responda.
+    cliente.escribe("y a qué hora abren?")
+    assert cliente.texto.startswith("Por WhatsApp damos turnos todos los días de 5:30 a.m.")
     assert "Gemini falló; el bot siguió sin él." in caplog.text
 
 
 def test_sin_gemini_conectado_si_dice_no_te_entendi(sesion: Session):
     cliente = Chat(sesion).escribe("hola")
 
-    assert cliente.escribe("reciben nequi?").texto.startswith("No te entendí bien.")
+    assert cliente.escribe("reciben nequi?").texto.startswith("Perdona, no te entendí bien.")
 
 
 def test_si_no_se_entiende_gemini_pide_que_lo_explique(sesion: Session):
@@ -571,7 +572,7 @@ def test_si_no_se_entiende_gemini_pide_que_lo_explique(sesion: Session):
     assert cliente.texto == explica
     assert cliente.opciones == MENU  # sin entender qué quiere, los botones ayudan
     cliente.escribe("kjsdhfk")  # y si no escribió nada, el texto fijo
-    assert cliente.texto.startswith("No te entendí bien.")
+    assert cliente.texto.startswith("Perdona, no te entendí bien.")
 
 
 def test_un_saludo_va_a_gemini_y_las_ordenes_cortas_no(sesion: Session):

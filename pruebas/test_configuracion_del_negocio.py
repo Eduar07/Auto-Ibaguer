@@ -228,3 +228,11 @@ def test_la_duracion_real_va_del_puesto_a_listo(sesion: Session):
 
     assert reales[encerado] == (50, 2)
     assert consultas.duracion_real_por_servicio(sesion, desde=LUNES_8AM + timedelta(days=1)) == {}
+
+
+def test_ver_las_fotos_se_guarda_aunque_la_clave_no_existiera(sesion: Session):
+    configuracion.guardar_parametros(sesion, {**FORMULARIO, "bot_ve_fotos": True})
+    assert leer_parametros(sesion).bot_ve_fotos is True
+
+    configuracion.guardar_parametros(sesion, {**FORMULARIO, "bot_ve_fotos": False})
+    assert leer_parametros(sesion).bot_ve_fotos is False

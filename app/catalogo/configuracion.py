@@ -100,6 +100,7 @@ def validar_parametros(formulario: Mapping[str, Any]) -> dict[str, Any]:
 
     limpios["bot_activo"] = bool(formulario.get("bot_activo"))
     limpios["gemini_activo"] = bool(formulario.get("gemini_activo"))
+    limpios["bot_ve_fotos"] = bool(formulario.get("bot_ve_fotos"))
 
     modelo = str(formulario.get("modelo_gemini", "")).strip().lower()
     if not MODELO_GEMINI.fullmatch(modelo):

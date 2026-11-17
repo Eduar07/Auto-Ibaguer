@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot import conversacion
-from app.bot.mensajes import Adjunto, Entrada, Mensaje
+from app.bot.mensajes import AUDIO, Adjunto, Entrada, Mensaje, tipo_de_archivo
 from app.bot.textos import texto
 from app.catalogo.parametros import leer_parametros
 from app.clientes import servicio as clientes
@@ -87,7 +87,7 @@ def descargar(media_id: str) -> Adjunto | None:
     return conectado.descargar(media_id) if conectado is not None else None
 
 
-def _entrada(mensaje: MensajeEntrante, *, con_gemini: bool) -> Entrada:
+def _entrada(mensaje: MensajeEntrante, *, con_gemini: bool, ve_fotos: bool) -> Entrada:
     contenido = mensaje.contenido or {}
     if contenido.get("opcion"):
         return Entrada(mensaje.telefono, opcion=contenido["opcion"])
@@ -96,8 +96,10 @@ def _entrada(mensaje: MensajeEntrante, *, con_gemini: bool) -> Entrada:
         if contenido.get("texto"):
             return Entrada(mensaje.telefono, texto=contenido["texto"])
         return Entrada(mensaje.telefono, otro=True)
-    # Sin Gemini nadie la vería: no se descarga.
-    adjunto = descargar(str(archivo.get("id"))) if con_gemini else None
+    # Sin Gemini nadie la vería, y las fotos solo si están encendidas en Configuración: si
+    # no, no se descarga.
+    se_mira = con_gemini and (ve_fotos or tipo_de_archivo(archivo.get("mime")) == AUDIO)
+    adjunto = descargar(str(archivo.get("id"))) if se_mira else None
     return Entrada(mensaje.telefono, texto=contenido.get("texto"), otro=True, adjunto=adjunto)
 
 
@@ -153,8 +155,11 @@ def atender_pendientes(abrir: AbrirSesion, telefono: str, *, ahora: datetime | N
                 mensaje_id = mensaje.id
                 # Gemini lee lo que el cliente escribe con sus palabras, si está: entiende
                 # qué quiere y escribe la conversación, en una sola consulta.
-                con_gemini = gemini.para_el_bot(leer_parametros(sesion))
-                entrada = _entrada(mensaje, con_gemini=con_gemini is not None)
+                parametros = leer_parametros(sesion)
+                con_gemini = gemini.para_el_bot(parametros)
+                entrada = _entrada(
+                    mensaje, con_gemini=con_gemini is not None, ve_fotos=parametros.bot_ve_fotos
+                )
                 respuestas, traza = conversacion.atender_con_traza(
                     sesion, entrada, ahora=momento, interprete=con_gemini
                 )

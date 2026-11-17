@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot import conversacion
-from app.bot.mensajes import AUDIO, Adjunto, Entrada, Mensaje, tipo_de_archivo
+from app.bot.mensajes import AUDIO, IMAGEN, Adjunto, Entrada, Mensaje, tipo_de_archivo
 from app.catalogo.parametros import leer_parametros
 from app.clientes import servicio as clientes
 from app.clientes.errores import TelefonoInvalido
@@ -90,11 +90,15 @@ def escribirle_al_bot(
     except TelefonoInvalido as invalido:
         raise HTTPException(status_code=400, detail=str(invalido)) from invalido
     adjunto = _el_adjunto(archivo)
+    que_mando = _que_mando(adjunto)
+    if adjunto is not None and adjunto.tipo == IMAGEN and not leer_parametros(sesion).bot_ve_fotos:
+        # Las fotos están apagadas en Configuración: como por WhatsApp, nadie la mira.
+        adjunto = None
     entrada = Entrada(
         telefono=telefono,
         texto=texto or None,
         opcion=opcion or None,
-        otro=adjunto is not None,
+        otro=bool(que_mando),
         adjunto=adjunto,
     )
     ahora = tiempo.ahora()
@@ -110,7 +114,7 @@ def escribirle_al_bot(
     contexto = {
         "telefono": telefono,
         "escrito": titulo or texto,
-        "adjunto": _que_mando(adjunto),
+        "adjunto": que_mando,
         # Lo que Gemini oyó en el audio o vio en la foto: aquí se muestra, para probar.
         "lo_que_dice": traza.lo_que_dice,
         "respuestas": respuestas,
@@ -155,8 +159,9 @@ def _anotar(
     un audio, como por WhatsApp, queda solo lo que entendió Gemini."""
     if entrada.opcion:
         tipo, contenido = "interactive", {"opcion": entrada.opcion, "titulo": titulo or None}
-    elif entrada.adjunto is not None:
-        tipo = "audio" if entrada.adjunto.tipo == AUDIO else "image"
+    elif entrada.otro:
+        es_audio = entrada.adjunto is not None and entrada.adjunto.tipo == AUDIO
+        tipo = "audio" if es_audio else "image"
         contenido = {"texto": entrada.texto} if entrada.texto else {}
         if lo_que_dice:
             contenido["lo_que_dice"] = lo_que_dice

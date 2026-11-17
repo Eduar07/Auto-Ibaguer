@@ -38,6 +38,7 @@ class Parametros:
     bot_activo: bool
     aviso_datos: str
     gemini_activo: bool
+    bot_ve_fotos: bool  # apagado: las fotos no se descargan ni se le muestran a Gemini
     modelo_gemini: str
     # Lo que el bot puede contar del negocio, escrito por el administrador (app.bot.redactor).
     ficha_negocio: str
@@ -71,6 +72,7 @@ def leer_parametros(sesion: Session) -> Parametros:
         bot_activo=bool(valor("bot_activo")),
         aviso_datos=str(valor("aviso_datos")),
         gemini_activo=bool(valor("gemini_activo")),
+        bot_ve_fotos=bool(valor("bot_ve_fotos")),
         modelo_gemini=str(valor("modelo_gemini")),
         ficha_negocio=str(valor("ficha_negocio")),
         textos_bot=textos_bot,

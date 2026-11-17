@@ -81,10 +81,26 @@ def conversacion(
     return lineas[-cuantos:]
 
 
+def lo_que_vio_gemini(tipo: str, contenido: dict) -> str | None:
+    """Una foto o un audio que Gemini vio u oyó, como se le cuenta al administrador (y a
+    Gemini en la memoria): "(audio) quiero lavar la moto" o "(foto: una moto con barro)
+    ¿cuánto?". None si no es eso."""
+    lo_que_dice = contenido.get("lo_que_dice")
+    if not lo_que_dice:
+        return None
+    if tipo == "audio":
+        return f"(audio) {lo_que_dice}"
+    texto = contenido.get("texto")
+    return f"(foto: {lo_que_dice}) {texto}" if texto else f"(foto: {lo_que_dice})"
+
+
 def _lo_que_llego(mensaje: MensajeEntrante) -> Linea:
     contenido = mensaje.contenido or {}
+    visto = lo_que_vio_gemini(mensaje.tipo, contenido)
     if contenido.get("titulo") or contenido.get("opcion"):
         dice = f"Tocó «{contenido.get('titulo') or contenido.get('opcion')}»"
+    elif visto is not None:
+        dice = recortar(visto, LARGO_MAXIMO)
     elif contenido.get("texto"):
         dice = recortar(str(contenido["texto"]), LARGO_MAXIMO)
     elif mensaje.tipo == "reaction":

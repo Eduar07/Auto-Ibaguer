@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol
 
+from app.bot.mensajes import Adjunto
+
 
 class Intencion(StrEnum):
     SALUDO = "saludo"  # solo saluda
@@ -83,6 +85,8 @@ class Contexto:
     # Lo que el bot diría con un texto fijo ("saludo", "despedida", "felicitacion"):
     # Gemini lo dice con sus palabras, con la misma idea (app.bot.textos.CON_SUS_PALABRAS).
     guias: tuple[tuple[str, str], ...] = ()
+    # La foto o el audio que mandó con el mensaje: Gemini lo ve o lo oye.
+    adjunto: Adjunto | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +99,8 @@ class Interpretacion:
     si_o_no: str | None = None  # SI o NO, si contesta una pregunta de sí o no del bot
     respuesta: str = ""  # lo que escribió para el cliente; "" si contesta el sistema
     sabe: bool = True  # en una pregunta: False si la ficha no tiene el dato
+    # De un audio, lo que dice; de una foto, qué se ve. "" si mandó solo texto.
+    lo_que_dice: str = ""
 
 
 class Interprete(Protocol):
@@ -123,6 +129,7 @@ def leer_respuesta(datos: Any, catalogo: Catalogo) -> Interpretacion | None:
     si_o_no = datos.get("si_o_no")
     respuesta = datos.get("respuesta")
     sabe = datos.get("sabe")
+    lo_que_dice = datos.get("lo_que_dice")
     validos = (*catalogo.vehiculos, CARRO, OTRO_VEHICULO)
     return Interpretacion(
         intencion,
@@ -131,6 +138,9 @@ def leer_respuesta(datos: Any, catalogo: Catalogo) -> Interpretacion | None:
         si_o_no=si_o_no if si_o_no in (SI, NO) else None,
         respuesta=respuesta.strip() if isinstance(respuesta, str) else "",
         sabe=sabe if isinstance(sabe, bool) else True,
+        lo_que_dice=" ".join(lo_que_dice.split())[:LARGO_MAXIMO]
+        if isinstance(lo_que_dice, str)
+        else "",
     )
 
 

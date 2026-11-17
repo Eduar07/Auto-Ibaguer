@@ -128,7 +128,7 @@ def test_lo_que_no_entiende_muestra_el_menu(sesion: Session):
     assert chat.opciones == MENU
 
     chat.manda_un_audio()
-    assert "solo entiendo mensajes escritos y los botones" in chat.texto
+    assert "no lo alcancé a ver por aquí" in chat.texto
     assert chat.opciones == MENU
 
 

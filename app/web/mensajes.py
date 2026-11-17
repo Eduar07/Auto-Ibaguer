@@ -12,6 +12,7 @@ from app import tiempo
 from app.bot.mensajes import recortar
 from app.config import obtener_entorno
 from app.integraciones.bandeja_salida import TIPO_DEL_ADMINISTRADOR, TIPO_RESPUESTA
+from app.integraciones.historial import lo_que_vio_gemini
 from app.integraciones.tablas import EstadoMensaje, MensajeEntrante, MensajeSaliente
 from app.web.comun import Admin, SesionBD, pagina, verificar_origen
 
@@ -95,6 +96,9 @@ def _lo_que_dijo(mensaje: MensajeEntrante) -> str:
     contenido = mensaje.contenido or {}
     if contenido.get("titulo") or contenido.get("opcion"):
         return f"Tocó «{contenido.get('titulo') or contenido.get('opcion')}»"
+    visto = lo_que_vio_gemini(mensaje.tipo, contenido)
+    if visto is not None:
+        return recortar(visto, 120)
     if contenido.get("texto"):
         return recortar(contenido["texto"], 120)
     return f"Mandó {QUE_MANDO.get(mensaje.tipo, 'algo que no es texto')}"

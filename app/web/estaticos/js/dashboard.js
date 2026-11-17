@@ -473,7 +473,19 @@
     const formulario = evento.detail.elt;
     if (!evento.detail.successful || !formulario.matches("form[data-chat-bot]")) return;
     formulario.reset();
+    marcarAdjunto(formulario.querySelector("[data-adjunto-del-bot]"));
     formulario.querySelector("input[name='texto']").focus();
+  });
+
+  // Con una foto o un audio, el texto es opcional (como el pie de foto en WhatsApp).
+  function marcarAdjunto(archivo) {
+    if (!archivo) return;
+    const hay = archivo.files.length > 0;
+    archivo.closest("label").classList.toggle("con-archivo", hay);
+    archivo.form.querySelector("input[name='texto']").required = !hay;
+  }
+  document.body.addEventListener("change", (evento) => {
+    if (evento.target.matches("[data-adjunto-del-bot]")) marcarAdjunto(evento.target);
   });
 
   // --- Textos del bot ----------------------------------------------------------------------

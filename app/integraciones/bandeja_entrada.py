@@ -8,6 +8,11 @@
 
 Los de un mismo teléfono se atienden en orden y de a uno: si el cliente toca dos botones
 seguidos, el segundo espera a que el primero termine.
+
+De una foto o un audio se guarda solo el id que da Meta. Al atenderlo, si Gemini está, se
+descarga, Gemini lo ve o lo oye, y se guarda lo que entendió (lo que dice el audio, qué
+se ve en la foto) como si el cliente lo hubiera escrito: así lo ve el administrador en la
+conversación y el bot lo recuerda. El archivo no se guarda en ninguna parte.
 """
 
 import logging
@@ -21,13 +26,13 @@ from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot import conversacion
-from app.bot.mensajes import Entrada, Mensaje
+from app.bot.mensajes import Adjunto, Entrada, Mensaje
 from app.bot.textos import texto
 from app.catalogo.parametros import leer_parametros
 from app.clientes import servicio as clientes
 from app.db.sesion import AbrirSesion
 from app.formato import telefono as telefono_legible
-from app.integraciones import bandeja_salida, gemini
+from app.integraciones import bandeja_salida, gemini, whatsapp
 from app.integraciones.bandeja_salida import Enviador
 from app.integraciones.tablas import MensajeEntrante
 from app.integraciones.whatsapp import Recibido
@@ -64,21 +69,36 @@ def guardar(sesion: Session, recibidos: Iterable[Recibido], *, ahora: datetime) 
 
 
 def _lo_que_dice(recibido: Recibido) -> dict[str, Any]:
-    """Solo lo que hace falta para atenderlo: de una foto o un audio no se guarda nada."""
+    """Solo lo que hace falta para atenderlo: de una foto o un audio, el id para
+    descargarlo (y el pie de foto, si trae)."""
     if recibido.opcion is not None:
         return {"opcion": recibido.opcion, "titulo": recibido.titulo}
+    contenido: dict[str, Any] = {}
     if recibido.texto is not None:
-        return {"texto": recibido.texto}
-    return {}
+        contenido["texto"] = recibido.texto
+    if recibido.archivo is not None:
+        contenido["archivo"] = {"id": recibido.archivo, "mime": recibido.mime}
+    return contenido
 
 
-def _entrada(mensaje: MensajeEntrante) -> Entrada:
+def descargar(media_id: str) -> Adjunto | None:
+    """La foto o el audio, de Meta. En las pruebas se cambia por uno de mentira."""
+    conectado = whatsapp.del_entorno()
+    return conectado.descargar(media_id) if conectado is not None else None
+
+
+def _entrada(mensaje: MensajeEntrante, *, con_gemini: bool) -> Entrada:
     contenido = mensaje.contenido or {}
     if contenido.get("opcion"):
         return Entrada(mensaje.telefono, opcion=contenido["opcion"])
-    if contenido.get("texto"):
-        return Entrada(mensaje.telefono, texto=contenido["texto"])
-    return Entrada(mensaje.telefono, otro=True)
+    archivo = contenido.get("archivo")
+    if not archivo:
+        if contenido.get("texto"):
+            return Entrada(mensaje.telefono, texto=contenido["texto"])
+        return Entrada(mensaje.telefono, otro=True)
+    # Sin Gemini nadie la vería: no se descarga.
+    adjunto = descargar(str(archivo.get("id"))) if con_gemini else None
+    return Entrada(mensaje.telefono, texto=contenido.get("texto"), otro=True, adjunto=adjunto)
 
 
 def _siguiente(sesion: Session, telefono: str) -> MensajeEntrante | None:
@@ -134,10 +154,17 @@ def atender_pendientes(abrir: AbrirSesion, telefono: str, *, ahora: datetime | N
                 # Gemini lee lo que el cliente escribe con sus palabras, si está: entiende
                 # qué quiere y escribe la conversación, en una sola consulta.
                 con_gemini = gemini.para_el_bot(leer_parametros(sesion))
-                respuestas = conversacion.atender(
-                    sesion, _entrada(mensaje), ahora=momento, interprete=con_gemini
+                entrada = _entrada(mensaje, con_gemini=con_gemini is not None)
+                respuestas, traza = conversacion.atender_con_traza(
+                    sesion, entrada, ahora=momento, interprete=con_gemini
                 )
                 _contestar(sesion, telefono, respuestas, momento)
+                if traza.lo_que_dice:
+                    # Lo que dice el audio o qué se ve en la foto: como si lo hubiera escrito.
+                    mensaje.contenido = {
+                        **(mensaje.contenido or {}),
+                        "lo_que_dice": traza.lo_que_dice,
+                    }
                 mensaje.procesado_en = momento
         except Exception as error:
             if mensaje_id is None:
@@ -177,10 +204,31 @@ def telefonos_con_mensajes_olvidados(sesion: Session, *, ahora: datetime) -> lis
     return sorted(sesion.scalars(consulta))
 
 
+def _el_ultimo_sin_atender(abrir: AbrirSesion, telefono: str) -> str | None:
+    with abrir() as sesion:
+        return sesion.scalar(
+            select(MensajeEntrante.id_meta)
+            .where(MensajeEntrante.telefono == telefono, MensajeEntrante.procesado_en.is_(None))
+            .order_by(MensajeEntrante.id.desc())
+            .limit(1)
+        )
+
+
+def _avisar_que_escribe(abrir: AbrirSesion, enviador: Enviador, telefono: str) -> None:
+    """El "escribiendo…" mientras el bot piensa, si el enviador sabe mostrarlo (WhatsApp)."""
+    avisar = getattr(enviador, "avisar_que_escribe", None)
+    if avisar is None:
+        return
+    id_meta = _el_ultimo_sin_atender(abrir, telefono)
+    if id_meta is not None:
+        avisar(id_meta)
+
+
 def atender_y_responder(abrir: AbrirSesion, enviador: Enviador, telefonos: Iterable[str]) -> None:
     """Lo que hace el webhook después de contestarle a Meta: atender y enviar ya mismo."""
     try:
         for telefono in sorted(telefonos):
+            _avisar_que_escribe(abrir, enviador, telefono)
             atender_pendientes(abrir, telefono)
         bandeja_salida.enviar_pendientes(
             abrir, enviador, ahora=tiempo.ahora(), sigue_vigente=avisos.sigue_vigente

@@ -170,7 +170,7 @@ def test_una_foto_en_la_queja_pide_que_lo_escriba(sesion: Session):
 
     cliente.manda_un_audio()
 
-    assert cliente.texto.startswith("Por ahora no podemos ver fotos, audios ni videos")
+    assert cliente.texto.startswith("Eso no lo alcancé a ver por aquí")
     assert paso(sesion) == "detalle"  # sigue esperando lo que pasó
 
 

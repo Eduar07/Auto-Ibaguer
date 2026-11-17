@@ -973,6 +973,14 @@ form:not(:has(input[name="tipo"][value="gasto"]:checked)) .solo-si-es-gasto { di
   padding: 0 16px; font-size: 16px; background: #fff;
 }
 .chat-bot__escribir .boton { min-height: 44px; border-radius: 22px; padding: 0 18px; }
+.chat-bot__adjuntar {
+  flex: 0 0 44px; display: grid; place-items: center; height: 44px; border-radius: 50%;
+  color: var(--tinta-suave); cursor: pointer;
+}
+.chat-bot__adjuntar:hover, .chat-bot__adjuntar:focus-within { background: var(--borde); color: var(--tinta); }
+.chat-bot__adjuntar.con-archivo { background: var(--verde-claro); color: var(--verde); }
+.burbuja__visto { margin-top: 4px; font-size: 13px; font-style: italic; opacity: .8; }
+.chat-bot__adjuntar input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .probar-bot__ayuda { flex: 1 1 280px; max-width: 420px; }
 .enlaces-del-bot { display: flex; flex-wrap: wrap; gap: 10px; }
 .gemini { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 12px; background: var(--fondo); }

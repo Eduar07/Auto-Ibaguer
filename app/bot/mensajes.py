@@ -113,12 +113,52 @@ def recortar(texto: str, largo: int) -> str:
     return texto if len(texto) <= largo else texto[: largo - 1].rstrip() + "…"
 
 
+# Lo que se le puede mostrar a Gemini, como lo nombra él. Una nota de voz de WhatsApp llega
+# como "audio/ogg; codecs=opus": vale "audio/ogg".
+TIPOS_DE_ARCHIVO = {
+    "image/jpeg": "imagen",
+    "image/png": "imagen",
+    "image/webp": "imagen",
+    "audio/ogg": "audio",
+    "audio/mpeg": "audio",
+    "audio/mp3": "audio",
+    "audio/aac": "audio",
+    "audio/wav": "audio",
+    "audio/flac": "audio",
+}
+IMAGEN, AUDIO = "imagen", "audio"
+
+
+def tipo_de_archivo(mime: str | None) -> str | None:
+    """ "audio/ogg; codecs=opus" -> "audio"; "video/mp4" -> None (no se le muestra)."""
+    return TIPOS_DE_ARCHIVO.get((mime or "").split(";")[0].strip().lower())
+
+
+@dataclass(frozen=True)
+class Adjunto:
+    """Una foto o un audio que mandó el cliente, ya descargado. No se guarda en ninguna
+    parte: se le muestra a Gemini y se olvida."""
+
+    mime: str  # "image/jpeg", "audio/ogg"...
+    datos: bytes = field(repr=False)
+
+    @property
+    def tipo(self) -> str:
+        return tipo_de_archivo(self.mime) or ""
+
+    @property
+    def mime_limpio(self) -> str:
+        return self.mime.split(";")[0].strip().lower()
+
+
 @dataclass(frozen=True)
 class Entrada:
     """Lo que escribió o tocó el cliente."""
 
     telefono: str  # como lo trae WhatsApp: 573001234567
-    texto: str | None = None
+    texto: str | None = None  # lo que escribió, o el pie de una foto
     opcion: str | None = None  # el id del botón u opción de la lista que tocó
-    # Lo que mandó y no es texto ni botón (audio, foto, ubicación...): el bot no lo entiende.
+    # Lo que mandó y no es texto ni botón (audio, foto, ubicación...).
     otro: bool = field(default=False)
+    # La foto o el audio, si se pudo descargar: lo lee Gemini. Sin él, el bot no lo entiende.
+    adjunto: Adjunto | None = None

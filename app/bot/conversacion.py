@@ -58,7 +58,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app import tiempo
-from app.bot import pausa, textos
+from app.bot import pausa, seguimiento, textos
 from app.bot.interprete import (
     CARRO,
     NO,
@@ -129,12 +129,16 @@ class Paso(StrEnum):
     DETALLE = "detalle"
     # A quien no es cliente se le pregunta si guardamos su número para responderle.
     PERMISO_CONTACTO = "permiso_contacto"
+    # Dijo "lo pienso": ¿quiere que mañana le escribamos? (app.bot.seguimiento)
+    SEGUIMIENTO = "seguimiento"
 
 
 # En estos pasos el bot espera que el cliente escriba; en los demás, que toque un botón.
 PASOS_DE_TEXTO = frozenset({Paso.NOMBRE, Paso.PLACA, Paso.NUMERO_DE_TURNO})
 # Las preguntas que también se contestan escribiendo un sí o un no ("no gracias", "dale").
-PASOS_DE_SI_O_NO = frozenset({Paso.AVISO_DATOS, Paso.CONFIRMAR, Paso.PERMISO_CONTACTO})
+PASOS_DE_SI_O_NO = frozenset(
+    {Paso.AVISO_DATOS, Paso.CONFIRMAR, Paso.PERMISO_CONTACTO, Paso.SEGUIMIENTO}
+)
 # Decisiones que no se deshacen: dar los datos, dar el número, cancelar un turno. Ahí un sí
 # tiene que ser claro (el botón, o un sí que el bot reconoce solo): el sí que entienda
 # Gemini no basta. Un no siempre vale.
@@ -167,6 +171,7 @@ PASO_DEL_BOTON = {
     "precios": Paso.PRECIOS,
     "cancelar": Paso.CANCELAR,
     "responder": Paso.PERMISO_CONTACTO,
+    "seguimiento": Paso.SEGUIMIENTO,
 }
 
 # Lo que el bot está esperando en cada paso, como se lo cuenta a Gemini (EN QUÉ VA): así
@@ -190,6 +195,8 @@ QUE_ESPERA: dict[Paso, str] = {
     "(por ejemplo, C-07).",
     Paso.PERMISO_CONTACTO: "El bot le preguntó si quiere que el administrador le responda; para "
     "eso se guarda su número de WhatsApp, solo para responderle (pregunta de sí o no).",
+    Paso.SEGUIMIENTO: "Dijo que lo iba a pensar. El bot le preguntó si quiere que le escriba "
+    "después para contarle cómo va la fila (pregunta de sí o no).",
 }
 
 # Lo que el cliente pide con sus palabras mientras cuenta lo que pasó, y el bot también
@@ -300,6 +307,21 @@ QUEJAS = (
     "no me gusto",
 )
 # Lo que se escribe para cerrar, sin contar nada más: "ok", "gracias", "eso es todo".
+# "Lo pienso": el bot ofrece escribirle después (app.bot.seguimiento).
+LO_PIENSO = (
+    "lo pienso",
+    "lo voy a pensar",
+    "voy a pensarlo",
+    "dejame pensarlo",
+    "dejame lo pienso",
+    "despues miro",
+    "despues le aviso",
+    "despues te aviso",
+    "luego le aviso",
+    "luego te aviso",
+    "mas tarde le aviso",
+    "mas tarde te aviso",
+)
 SOLO_PARA_CERRAR = DESPEDIDAS | {"ok", "okey", "listo", "dale", "bueno", "vale", "bien"}
 SOLO_PARA_CERRAR |= {"si", "no", "nada", "ya", "eso", "es", "todo", "muchas", "mil", "perfecto"}
 
@@ -690,6 +712,8 @@ class _Atencion:
     # --- Qué le llegó --------------------------------------------------------------------
 
     def responder(self) -> list[Mensaje]:
+        # Volvió a escribir: el seguimiento que tenía pendiente ya no hace falta.
+        seguimiento.cancelar(self.sesion, self.telefono)
         if self.entrada.opcion:
             self.traza.como = "Tocó un botón: el bot no le preguntó a Gemini."
             return self._boton(self.entrada.opcion)
@@ -777,6 +801,8 @@ class _Atencion:
             return self._hablar_con_una_persona(escrito)
         if _pregunta_sus_lavadas(normal):
             return self._mis_lavadas()
+        if _dice(normal, LO_PIENSO):
+            return self._lo_piensa()
         return None
 
     def _respuesta_clara(self, normal: str, escrito: str) -> list[Mensaje] | None:
@@ -905,6 +931,8 @@ class _Atencion:
             return self._hablar_con_una_persona(escrito)
         if _pregunta_sus_lavadas(normal):
             return self._mis_lavadas()
+        if _dice(normal, LO_PIENSO):
+            return self._lo_piensa()
         if DESPEDIDAS & set(palabras) and len(palabras) <= 4:
             return self._despedida()
         return None
@@ -1059,6 +1087,8 @@ class _Atencion:
                 return self._hablar_con_una_persona(escrito)
             case Intencion.PEDIDO_ESPECIAL:
                 return self._pedido_especial(escrito)
+            case Intencion.LO_PIENSO:
+                return self._lo_piensa()
             case Intencion.SALUDO:
                 return self._saludo(entendido)
             case Intencion.DESPEDIDA:
@@ -1083,6 +1113,7 @@ class _Atencion:
             Intencion.QUEJA,
             Intencion.HABLAR_CON_PERSONA,
             Intencion.PEDIDO_ESPECIAL,
+            Intencion.LO_PIENSO,
             Intencion.CRISIS,
         )
         if entendido.intencion in otra_cosa:
@@ -1196,6 +1227,7 @@ class _Atencion:
             "precios": self._eligio_precios,
             "cancelar": self._cancelar,
             "responder": self._permiso_para_responder,
+            "seguimiento": self._acepta_el_seguimiento,
         }
         if prefijo == "placa":
             self.datos["placa"] = None
@@ -1235,6 +1267,61 @@ class _Atencion:
         self._volver_al_menu()
         return [Mensaje(self._de_gemini(entendido) or self._fijo("despedida"))]
 
+    # --- "Lo pienso": el seguimiento -------------------------------------------------------
+
+    def _lo_piensa(self) -> list[Mensaje]:
+        """Dijo que lo va a pensar: se le ofrece escribirle después (dentro de las 24 horas
+        de WhatsApp, app.bot.seguimiento). Solo con su sí. Si ya tiene turno, o no hay un
+        buen momento para escribirle, no se le ofrece nada: se le despide con amabilidad."""
+        pistas = self.datos.get("pistas") or {}
+        self._volver_al_menu()
+        cuando = seguimiento.cuando(self.ahora, self.parametros)
+        if cuando is None or not self.parametros.bot_activo or self._activos():
+            return [Mensaje(self.texto("lo_piensa_sin_seguimiento"))]
+        tipo = self._tipo_por_nombre(pistas.get("precios_de") or pistas.get("vehiculo"))
+        self.paso = Paso.SEGUIMIENTO
+        self.datos = {
+            "enviar_en": cuando.momento.isoformat(),
+            "cuando": cuando.dicho,
+            "tipo_vehiculo_id": tipo.id if tipo is not None else None,
+        }
+        return [self._pregunta()]
+
+    def _pregunta_seguimiento(self) -> Mensaje:
+        return Mensaje(
+            self.texto("lo_piensa", cuando=self.datos.get("cuando") or seguimiento.MANANA),
+            botones=(
+                Opcion("seguimiento.si", BOTONES["escribeme"]),
+                Opcion("seguimiento.no", BOTONES["responder_no"]),
+            ),
+        )
+
+    def _acepta_el_seguimiento(self, respuesta: str) -> list[Mensaje]:
+        datos = self.datos
+        self._volver_al_menu()
+        if respuesta != "si":
+            return [Mensaje(self.texto("seguimiento_no"))]
+        try:
+            momento = datetime.fromisoformat(str(datos.get("enviar_en")))
+        except ValueError:
+            momento = None
+        if momento is None or momento <= self.ahora:
+            cuando = seguimiento.cuando(self.ahora, self.parametros)
+            if cuando is None:
+                return [Mensaje(self.texto("lo_piensa_sin_seguimiento"))]
+            momento, datos["cuando"] = cuando.momento, cuando.dicho
+        tipo_vehiculo_id = datos.get("tipo_vehiculo_id")
+        seguimiento.programar(
+            self.sesion,
+            self.telefono,
+            momento=momento,
+            cliente_id=self.cliente.id if self.cliente is not None else None,
+            tipo_vehiculo_id=tipo_vehiculo_id if isinstance(tipo_vehiculo_id, int) else None,
+            ahora=self.ahora,
+        )
+        dicho = str(datos.get("cuando") or seguimiento.MANANA)
+        return [Mensaje(self.texto("seguimiento_si", cuando=dicho[0].upper() + dicho[1:]))]
+
     def _opcion_del_menu(self, opcion: str) -> list[Mensaje]:
         if opcion == "pedir":
             return self._empezar_turno()
@@ -1258,6 +1345,7 @@ class _Atencion:
             Paso.CANCELAR: self._pregunta_cancelar,
             Paso.NUMERO_DE_TURNO: lambda: Mensaje(self.texto("pedir_numero_de_turno")),
             Paso.PERMISO_CONTACTO: self._pregunta_permiso,
+            Paso.SEGUIMIENTO: self._pregunta_seguimiento,
         }
         pregunta = preguntas.get(self.paso)
         return pregunta() if pregunta is not None else self._mensaje_del_menu("menu")
@@ -1774,15 +1862,7 @@ class _Atencion:
 
     def _como_va(self, resumen: ResumenDeLaFila) -> str:
         """Solo cantidades: el bot nunca muestra nombres ni placas de otros clientes."""
-        espera = f"en aprox. {duracion(resumen.espera_min)}" if resumen.espera_min else "pronto"
-        if resumen.puestos_activos == 0:
-            return self.texto("fila_cerrada")
-        if resumen.puede_venir_ya:
-            return self.texto("fila_libre")
-        if resumen.en_espera == 0:
-            return self.texto("fila_sin_espera", espera=espera)
-        vehiculos = f"{resumen.en_espera} vehículo{'s' if resumen.en_espera != 1 else ''}"
-        return self.texto("fila_con_espera", vehiculos=vehiculos, espera=espera)
+        return textos.como_va(resumen, self.texto)
 
     def _ver_la_fila(self) -> list[Mensaje]:
         self._registrar_consulta(TipoConsulta.FILA)

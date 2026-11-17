@@ -122,6 +122,14 @@ FRASES: tuple[FraseDePrueba, ...] = (
     FraseDePrueba("necesito hablar con el encargado", Q.HABLAR_CON_PERSONA),
     FraseDePrueba("me puede llamar alguien por favor?", Q.HABLAR_CON_PERSONA),
     FraseDePrueba("quiero hablar con una persona, no con un robot", Q.HABLAR_CON_PERSONA),
+    # --- "Lo pienso": el bot ofrece escribirle mañana ---
+    FraseDePrueba(
+        "listo, lo pienso y te aviso",
+        Q.LO_PIENSO,
+        antes=(bot("Servicios para moto: Básico $18.000...", "Pedir turno", "Ver la fila"),),
+    ),
+    FraseDePrueba("déjame miro y más tarde te confirmo", Q.LO_PIENSO, tambien=(Q.DESPEDIDA,)),
+    FraseDePrueba("de pronto mañana paso", Q.LO_PIENSO, tambien=(Q.DESPEDIDA,)),
     # --- Pedidos especiales: los decide el dueño, el bot no negocia ---
     FraseDePrueba(
         "buenas, tengo una empresa y necesito lavar 20 camionetas cada semana, me hacen precio?",

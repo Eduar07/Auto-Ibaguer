@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.bot import pausa as pausa_del_bot
+from app.bot import seguimiento
 from app.bot import sesiones as sesiones_del_bot
 from app.comentarios import avisos as avisos_al_dueno
 from app.db.sesion import AbrirSesion
@@ -69,6 +70,22 @@ def _vencer_sesiones_del_bot(abrir: AbrirSesion, ahora: datetime) -> list[str]:
 
 
 SESIONES_DEL_BOT = Tarea("las sesiones del bot", _vencer_sesiones_del_bot)
+
+
+# --- El seguimiento de "lo pienso" --------------------------------------------------------
+
+
+def _seguir(abrir: AbrirSesion, ahora: datetime) -> list[str]:
+    """A quien dijo "lo pienso" y aceptó que le escribiéramos: cómo va la fila, dentro de
+    las 24 horas de WhatsApp (app.bot.seguimiento). Sale con el envío de esta vuelta."""
+    with abrir() as sesion, sesion.begin():
+        enviados = seguimiento.enviar_los_que_tocan(sesion, ahora=ahora)
+    if not enviados:
+        return []
+    return [_cuantos(enviados, "seguimiento", "seguimientos") + ' de "lo pienso" en la bandeja.']
+
+
+SEGUIMIENTOS = Tarea('los seguimientos de "lo pienso"', _seguir)
 
 
 # --- El aviso al dueño --------------------------------------------------------------------
@@ -153,7 +170,7 @@ def del_servidor(enviador: Enviador | None) -> list[Tarea]:
     las otras tareas (por ejemplo, el aviso de "pasaste al final"). Sin WhatsApp conectado
     no se envía nada y los mensajes esperan en la bandeja de salida.
     """
-    tareas = [GRACIAS, SESIONES_DEL_BOT, AVISO_AL_DUENO]
+    tareas = [GRACIAS, SESIONES_DEL_BOT, AVISO_AL_DUENO, SEGUIMIENTOS]
     if enviador is not None:
         tareas += [MENSAJES_OLVIDADOS, enviar_mensajes(enviador)]
     return tareas

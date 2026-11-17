@@ -53,6 +53,7 @@ DATOS: dict[str, str] = {
     "servicios": "los servicios con su precio",
     "lavadas": "cuántas lavadas lleva (por ejemplo, 7 lavadas)",
     "ultima": "cuándo fue su última lavada (hoy, ayer, el sábado...)",
+    "cuando": "cuándo se le escribe: mañana temprano o más tarde",
 }
 
 _MENU = (BOTONES["pedir"], BOTONES["fila"], BOTONES["precios"])
@@ -144,6 +145,28 @@ GRUPOS: tuple[Grupo, ...] = (
                 "despedida",
                 "Despedida",
                 "Cuando el cliente escribe gracias o chao.",
+            ),
+            Editable(
+                "lo_piensa",
+                "Lo pienso",
+                "Cuando dice que lo va a pensar: se le ofrece escribirle después. {cuando} es "
+                "«mañana temprano» o «más tarde».",
+                botones=(BOTONES["escribeme"], BOTONES["responder_no"]),
+            ),
+            Editable(
+                "seguimiento_si",
+                "Lo pienso: acepta que le escribas",
+                "Cuando toca Sí, escríbeme.",
+                ejemplos={"cuando": "Mañana temprano"},
+            ),
+            Editable(
+                "seguimiento",
+                "El mensaje del seguimiento",
+                "Lo que le llega a la hora acordada (dentro de las 24 horas de WhatsApp). "
+                "{nombre} lleva la coma: «, Ana».",
+                opcionales=frozenset({"nombre"}),
+                ejemplos={"nombre": ", Ana"},
+                botones=(BOTONES["pedir"], BOTONES["precios"]),
             ),
             Editable(
                 "pico_y_placa",
@@ -658,6 +681,7 @@ def ejemplos(parametros: Parametros) -> dict[str, object]:
         "*Encerado* · $60.000\nBásico + cera protectora para la pintura",
         "lavadas": "7 lavadas",
         "ultima": "el sábado",
+        "cuando": "mañana temprano",
     }
 
 

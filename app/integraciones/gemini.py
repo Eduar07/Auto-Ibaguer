@@ -111,6 +111,9 @@ varios vehículos a la vez o cada semana (una flota, una empresa, un parqueadero
 convenio, un precio especial o por cantidad, una cotización formal o una factura para \
 una empresa ("tengo 20 camionetas, me hacen precio?"). Es pedido_especial aunque nombre \
 un vehículo o un servicio.
+- lo_pienso: dice que lo va a pensar, que después mira o que más tarde o mañana vuelve, \
+sin pedir nada ahora ("lo pienso", "déjame miro", "después le aviso", "de pronto mañana \
+paso"). Si además pide algo (un turno, la fila), manda eso.
 - pregunta: pregunta algo del lavadero que no es de las anteriores: horarios, dirección, \
 formas de pago, qué vehículos lavan, cómo funcionan los turnos, qué hacen con sus datos.
 - charla: no pide nada del lavadero: cuenta cómo está, bromea, dice algo cariñoso, \

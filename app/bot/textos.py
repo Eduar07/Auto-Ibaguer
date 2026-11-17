@@ -23,8 +23,10 @@ tabla `configuracion` y `Textos` lo usa en lugar del original.
 import logging
 import string
 from collections.abc import Mapping
+from typing import Any
 
 from app.bot.mensajes import Opcion
+from app.formato import duracion
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,14 @@ TEXTOS: dict[str, str] = {
     "sin_gemini": "Uy, no alcancé a leer bien tu mensaje. Intenta de nuevo en un momento o "
     "usa los botones; si es urgente, llama al {telefono}.",
     "despedida": "¡Con gusto! Que tengas un buen día.",
+    # --- "Lo pienso": el seguimiento (app.bot.seguimiento) ---
+    "lo_piensa": "¡Listo, sin afán! ¿Quieres que {cuando} te escriba para contarte cómo va "
+    "la fila?",
+    "lo_piensa_sin_seguimiento": "¡Listo, sin afán! Aquí estamos cuando te animes.",
+    "seguimiento_si": "¡Hecho! {cuando} te escribo. Si te animas antes, aquí estoy.",
+    "seguimiento_no": "Listo, sin problema. Cuando quieras, aquí estamos.",
+    "seguimiento": "¡Hola{nombre}! Te escribo como quedamos. Así está la fila ahora:\n\n"
+    "{filas}\n\n¿Te aparto un turno?",
     "pico_y_placa": "Por ahora no damos información de pico y placa por aquí. ¿En qué más te "
     "ayudamos?",
     "error_interno": "Tuvimos un problema para atenderte. Intenta de nuevo en un momento o "
@@ -246,6 +256,7 @@ BOTONES: dict[str, str] = {
     "llegue": "Ya estoy aquí",
     "responder_si": "Sí, que me responda",
     "responder_no": "No, gracias",
+    "escribeme": "Sí, escríbeme",
 }
 
 
@@ -303,6 +314,20 @@ class Textos:
 
 # Los textos originales, para lo que no depende de lo que cambió el administrador.
 texto = Textos()
+
+
+def como_va(resumen: Any, texto: "Textos") -> str:
+    """Cómo va una fila (consultas.ResumenDeLaFila), solo con cantidades: el bot nunca
+    muestra nombres ni placas de otros clientes."""
+    espera = f"en aprox. {duracion(resumen.espera_min)}" if resumen.espera_min else "pronto"
+    if resumen.puestos_activos == 0:
+        return texto("fila_cerrada")
+    if resumen.puede_venir_ya:
+        return texto("fila_libre")
+    if resumen.en_espera == 0:
+        return texto("fila_sin_espera", espera=espera)
+    vehiculos = f"{resumen.en_espera} vehículo{'s' if resumen.en_espera != 1 else ''}"
+    return texto("fila_con_espera", vehiculos=vehiculos, espera=espera)
 
 
 def adelante(cantidad: int) -> str:

@@ -185,7 +185,14 @@ GRUPOS: tuple[Grupo, ...] = (
                 "Fuera del horario",
                 "Cuando piden turno fuera del horario de atención.",
                 opcionales=frozenset({"horario", "apertura"}),
-                botones=_FILA_Y_PRECIOS,
+                botones=(BOTONES["precios"],),
+            ),
+            Editable(
+                "fila_fuera_de_horario",
+                "La fila, con el local cerrado",
+                "Cuando preguntan por la fila fuera del horario: no se dice «puedes venir ya».",
+                opcionales=frozenset({"apertura"}),
+                botones=(BOTONES["precios"],),
             ),
             Editable(
                 "bot_apagado",

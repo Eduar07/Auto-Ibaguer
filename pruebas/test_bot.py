@@ -331,19 +331,45 @@ def test_un_boton_viejo_no_pide_otro_turno(sesion: Session):
 # --- Cuando no se dan turnos ---------------------------------------------------------------
 
 
-def test_fuera_de_horario_no_da_turno_pero_muestra_la_fila_y_los_precios(sesion: Session):
+def test_fuera_de_horario_no_da_turno_ni_dice_que_venga_ya(sesion: Session):
     noche = LUNES_8AM.replace(hour=20)
     chat = Chat(sesion, ahora=noche).escribe("hola").toca("Pedir turno")
 
     assert chat.texto == (
         "Por WhatsApp damos turnos todos los días de 5:30 a.m. a 7:30 p.m., así que ahora no "
-        "podemos darte uno. Abrimos mañana a las 5:30 a.m. Mientras tanto puedes ver la fila o "
-        "los precios."
+        "podemos darte uno. Abrimos mañana a las 5:30 a.m. Mientras tanto te puedo contar los "
+        "precios."
     )
-    chat.toca("Ver la fila")
-    assert chat.texto.startswith("Así está la fila ahora:")
+    assert chat.opciones == ["Servicios y precios"]
+    # La fila de noche: los puestos siguen "libres" en el sistema, pero el local está
+    # cerrado. Nunca "puedes venir ya".
+    chat.escribe("está muy lleno?")
+    assert chat.texto == (
+        "Ahora estamos cerrados. Abrimos mañana a las 5:30 a.m.: a esa hora te cuento cómo va "
+        "la fila."
+    )
+    assert "puedes venir ya" not in chat.texto
     madrugada = Chat(sesion, ahora=LUNES_8AM.replace(hour=4)).toca_el_id("menu.pedir")
     assert "Abrimos hoy a las 5:30 a.m." in madrugada.texto
+
+
+def test_de_noche_sin_gemini_quiero_un_basico_no_es_no_te_entendi(sesion: Session):
+    """Lo que pasó la primera noche con WhatsApp: vio los precios, escribió "Quiero un
+    básico" y el bot no entendió."""
+    noche = LUNES_8AM.replace(hour=22, minute=37)
+    chat = Chat(sesion, ahora=noche).escribe("hola").toca("Servicios y precios")
+    chat.toca("Automóvil").escribe("Quiero un básico")
+
+    assert chat.texto.startswith("Por WhatsApp damos turnos todos los días")
+    assert "no te entendí" not in chat.texto
+
+
+def test_de_dia_quiero_un_encerado_empieza_el_turno_con_ese_servicio(sesion: Session):
+    chat = Chat(sesion).escribe("hola").toca("Servicios y precios").toca("Automóvil")
+
+    chat.escribe("quiero un encerado")
+
+    assert chat.texto == leer_parametros(sesion).aviso_datos  # empieza el turno
 
 
 def test_con_el_bot_apagado_no_da_turnos(sesion: Session):

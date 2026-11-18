@@ -118,7 +118,17 @@ def leer_aviso_de_meta(
             valor = cambio.get("value") or {}
             if cambio.get("field") != "messages":
                 continue
-            if (valor.get("metadata") or {}).get("phone_number_id") != id_numero:
+            para = (valor.get("metadata") or {}).get("phone_number_id")
+            if para != id_numero:
+                # Un mensaje para otro número de la cuenta (o WHATSAPP_ID_NUMERO mal
+                # copiado): se descarta, pero que quede rastro. El id del número no es un
+                # dato de nadie.
+                logger.warning(
+                    "Llegó un aviso de WhatsApp para el número %s, y el del bot es %s: no se "
+                    "atiende. Si es el del bot, revisa WHATSAPP_ID_NUMERO.",
+                    para,
+                    id_numero,
+                )
                 continue
             for mensaje in _lista(valor.get("messages")):
                 recibido = _leer_mensaje(mensaje)

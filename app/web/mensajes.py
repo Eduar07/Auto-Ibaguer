@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app import tiempo
 from app.bot.mensajes import recortar
+from app.clientes.reglas import TelefonoInvalido, normalizar_telefono
 from app.config import obtener_entorno
 from app.integraciones.bandeja_salida import TIPO_DEL_ADMINISTRADOR, TIPO_RESPUESTA
 from app.integraciones.historial import lo_que_vio_gemini
@@ -114,9 +115,27 @@ def _lo_que_dice(mensaje: MensajeSaliente) -> str:
     return QUE_AVISO.get(mensaje.tipo, mensaje.tipo)
 
 
+def _el_celular(texto: str) -> tuple[str | None, str | None]:
+    """El celular que buscan, como lo guarda WhatsApp, o por qué no sirve."""
+    if not texto.strip():
+        return None, None
+    try:
+        return normalizar_telefono(texto), None
+    except TelefonoInvalido:
+        return None, "Escribe el celular con sus 10 dígitos, por ejemplo 315 123 4567."
+
+
 @router.get("/mensajes", response_class=HTMLResponse)
-def pagina_mensajes(request: Request, sesion: SesionBD, _: Admin) -> Response:
+def pagina_mensajes(request: Request, sesion: SesionBD, _: Admin, celular: str = "") -> Response:
+    """Lo último que entró y salió. Con `celular`, solo lo de ese número: así se ve de una
+    si le escribió al bot y qué pasó con la respuesta."""
     entorno = obtener_entorno()
+    buscado, error_del_celular = _el_celular(celular)
+    de_entrada = select(MensajeEntrante).order_by(MensajeEntrante.id.desc()).limit(CUANTOS)
+    de_salida = select(MensajeSaliente).order_by(MensajeSaliente.id.desc()).limit(CUANTOS)
+    if buscado is not None:
+        de_entrada = de_entrada.where(MensajeEntrante.telefono == buscado)
+        de_salida = de_salida.where(MensajeSaliente.telefono == buscado)
     entrantes = [
         Entrante(
             tiempo.hora_local(m.recibido_en),
@@ -125,16 +144,9 @@ def pagina_mensajes(request: Request, sesion: SesionBD, _: Admin) -> Response:
             m.procesado_en is not None,
             m.error,
         )
-        for m in sesion.scalars(
-            select(MensajeEntrante).order_by(MensajeEntrante.id.desc()).limit(CUANTOS)
-        )
+        for m in sesion.scalars(de_entrada)
     ]
-    salientes = [
-        _saliente(m)
-        for m in sesion.scalars(
-            select(MensajeSaliente).order_by(MensajeSaliente.id.desc()).limit(CUANTOS)
-        )
-    ]
+    salientes = [_saliente(m) for m in sesion.scalars(de_salida)]
     contexto = {
         "conectado": entorno.whatsapp_conectado,
         "faltan": [
@@ -142,5 +154,8 @@ def pagina_mensajes(request: Request, sesion: SesionBD, _: Admin) -> Response:
         ],
         "entrantes": entrantes,
         "salientes": salientes,
+        "celular": celular.strip(),
+        "buscado": buscado,
+        "error_del_celular": error_del_celular,
     }
     return pagina(request, sesion, "mensajes.html", contexto, seccion="lavadero/configuracion")

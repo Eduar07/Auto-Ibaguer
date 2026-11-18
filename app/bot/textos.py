@@ -63,7 +63,9 @@ TEXTOS: dict[str, str] = {
     "llama al {telefono}.",
     # --- Cuando no se dan turnos ---
     "fuera_de_horario": "Por WhatsApp damos turnos {horario}, así que ahora no podemos "
-    "darte uno. Abrimos {apertura}. Mientras tanto puedes ver la fila o los precios.",
+    "darte uno. Abrimos {apertura}. Mientras tanto te puedo contar los precios.",
+    "fila_fuera_de_horario": "Ahora estamos cerrados. Abrimos {apertura}: a esa hora te "
+    "cuento cómo va la fila.",
     "bot_apagado": "Hoy no estamos dando turnos por WhatsApp. Puedes venir directamente al "
     "local o llamar al {telefono}.",
     # --- Aviso de datos ---

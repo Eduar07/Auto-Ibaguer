@@ -978,7 +978,7 @@ class _Atencion:
             if any(frase in normal for frase in HORARIO):
                 self.traza.notas.append("Entendió por unas palabras que pregunta el horario.")
                 return self._menu_con("horario", horario=self._horario())
-            entendido = por_palabras(normal)
+            entendido = por_palabras(normal) or self._servicio_por_palabras(normal)
             if entendido is not None:
                 entendido = self._con_el_catalogo(entendido)
                 lo_que = _lo_que_entendio(entendido)
@@ -1044,6 +1044,19 @@ class _Atencion:
                 Anterior(linea.quien.value, linea.dice, linea.opciones) for linea in lineas
             )
         return self._lo_anterior
+
+    def _servicio_por_palabras(self, normal: str) -> Interpretacion | None:
+        """Sin Gemini: "quiero un básico" justo después de ver los precios es pedir turno
+        con ese servicio (y el vehículo cuyos precios vio). Solo en mensajes cortos: un
+        servicio nombrado de pasada en una frase larga no es un pedido."""
+        palabras = set(normal.split())
+        if len(palabras) > 8:
+            return None
+        servicio = next((s for s in self._catalogo().servicios if normalizar(s) in palabras), None)
+        if servicio is None:
+            return None
+        vista = (self.datos.get("pistas") or {}).get("precios_de")
+        return Interpretacion(Intencion.PEDIR_TURNO, vehiculo=vista, servicio=servicio)
 
     def _catalogo(self) -> Catalogo:
         if self._el_catalogo is None:
@@ -1489,15 +1502,11 @@ class _Atencion:
         else:
             return None
         self._volver_al_menu()
-        return [
-            Mensaje(
-                self.texto(nombre, **datos),
-                botones=(
-                    Opcion("menu.fila", BOTONES["fila"]),
-                    Opcion("menu.precios", BOTONES["precios"]),
-                ),
-            )
-        ]
+        # Con el local cerrado, la fila no dice nada útil: solo los precios.
+        botones = (Opcion("menu.precios", BOTONES["precios"]),)
+        if nombre == "bot_apagado":
+            botones = (Opcion("menu.fila", BOTONES["fila"]), *botones)
+        return [Mensaje(self.texto(nombre, **datos), botones=botones)]
 
     def _telefono_del_negocio(self) -> str:
         return telefono_legible(self.parametros.telefono_contacto)
@@ -1969,6 +1978,15 @@ class _Atencion:
     def _ver_la_fila(self) -> list[Mensaje]:
         self._registrar_consulta(TipoConsulta.FILA)
         self._volver_al_menu()
+        if not self._en_horario():
+            # De noche los puestos pueden seguir "libres" en el sistema: decir "puedes
+            # venir ya" con el local cerrado sería mentirle.
+            return [
+                Mensaje(
+                    self.texto("fila_fuera_de_horario", apertura=self._proxima_apertura()),
+                    botones=(Opcion("menu.precios", BOTONES["precios"]),),
+                )
+            ]
         lineas = [
             f"*{fila.nombre}:* "
             + self._como_va(consultas.resumen_de_la_fila(self.sesion, fila.id, ahora=self.ahora))

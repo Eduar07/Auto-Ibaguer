@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app import tiempo
 from app.bot.mensajes import recortar
-from app.clientes.reglas import TelefonoInvalido, normalizar_telefono
+from app.clientes.reglas import TelefonoInvalido, normalizar_contacto
 from app.config import obtener_entorno
 from app.integraciones.bandeja_salida import TIPO_DEL_ADMINISTRADOR, TIPO_RESPUESTA
 from app.integraciones.historial import lo_que_vio_gemini
@@ -120,7 +120,7 @@ def _el_celular(texto: str) -> tuple[str | None, str | None]:
     if not texto.strip():
         return None, None
     try:
-        return normalizar_telefono(texto), None
+        return normalizar_contacto(texto), None
     except TelefonoInvalido:
         return None, "Escribe el celular con sus 10 dígitos, por ejemplo 315 123 4567."
 

@@ -7,6 +7,7 @@ from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Identity, Integer,
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.clientes.reglas import CONTACTO_VALIDO, LARGO_DEL_CONTACTO
 from app.db.base import Base
 
 
@@ -19,10 +20,10 @@ class SesionBot(Base):
     """
 
     __tablename__ = "sesion_bot"
-    __table_args__ = (CheckConstraint("telefono ~ '^[0-9]{8,15}$'", name="telefono_solo_digitos"),)
+    __table_args__ = (CheckConstraint(CONTACTO_VALIDO, name="telefono_o_usuario"),)
 
     id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
-    telefono: Mapped[str] = mapped_column(String(15), unique=True)
+    telefono: Mapped[str] = mapped_column(String(LARGO_DEL_CONTACTO), unique=True)
     # Vacío mientras la persona no ha aceptado el aviso de datos. Un cliente tiene una sola
     # sesión: si dos números quedaran apuntando al mismo cliente, la base lo rechaza.
     cliente_id: Mapped[int | None] = mapped_column(ForeignKey("cliente.id"), unique=True)
@@ -47,9 +48,9 @@ class PausaDelBot(Base):
     """
 
     __tablename__ = "pausa_del_bot"
-    __table_args__ = (CheckConstraint("telefono ~ '^[0-9]{8,15}$'", name="telefono_solo_digitos"),)
+    __table_args__ = (CheckConstraint(CONTACTO_VALIDO, name="telefono_o_usuario"),)
 
-    telefono: Mapped[str] = mapped_column(String(15), primary_key=True)
+    telefono: Mapped[str] = mapped_column(String(LARGO_DEL_CONTACTO), primary_key=True)
     hasta: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # El comentario que se está respondiendo: si el cliente escribe, vuelve a quedar por
     # atender. Si alguien lo borra, la pausa sigue sin él.
@@ -69,9 +70,9 @@ class Seguimiento(Base):
     """
 
     __tablename__ = "seguimiento"
-    __table_args__ = (CheckConstraint("telefono ~ '^[0-9]{8,15}$'", name="telefono_solo_digitos"),)
+    __table_args__ = (CheckConstraint(CONTACTO_VALIDO, name="telefono_o_usuario"),)
 
-    telefono: Mapped[str] = mapped_column(String(15), primary_key=True)
+    telefono: Mapped[str] = mapped_column(String(LARGO_DEL_CONTACTO), primary_key=True)
     cliente_id: Mapped[int | None] = mapped_column(ForeignKey("cliente.id", ondelete="CASCADE"))
     # La fila que estaba mirando (los precios de moto...), para contarle cómo va esa.
     tipo_vehiculo_id: Mapped[int | None] = mapped_column(

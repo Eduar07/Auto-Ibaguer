@@ -52,7 +52,7 @@
       <textarea id="respuesta" rows="3" readonly>{{ texto }}</textarea>
     </div>
     {% endif %}
-    <a class="boton boton--grande boton--borde" href="tel:+{{ c.telefono }}">Llamar</a>
+    {% if c.telefono is celular %}<a class="boton boton--grande boton--borde" href="tel:+{{ c.telefono }}">Llamar</a>{% endif %}
     {% endif %}
   </div>
 </form>

@@ -54,7 +54,7 @@ def test_si_ese_celular_no_escribio_lo_dice(adentro: TestClient):
     pagina = adentro.get("/mensajes", params={"celular": "3001112233"}).text
 
     assert "Ese celular no le ha escrito al bot" in pagina
-    assert "Suscribir webhooks" in pagina
+    assert "/mensajes/diagnostico" in pagina
 
 
 def test_un_celular_mal_escrito_se_explica(adentro: TestClient):

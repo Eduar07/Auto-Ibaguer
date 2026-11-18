@@ -1350,3 +1350,11 @@ form:not(:has(input[name="tipo"][value="gasto"]:checked)) .solo-si-es-gasto { di
 .tabla-caja__total th, .tabla-caja__total td { border-top: 2px solid var(--linea); }
 .elegir__juntos { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 8px 0 0; }
 form:not(:has(input[name="rol"][value="cajero"]:checked)) .solo-si-es-cajero { display: none; }
+
+/* Diagnóstico de WhatsApp */
+.diagnostico { margin-bottom: 16px; }
+.diagnostico__datos { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 12px 0; }
+.diagnostico__datos dt { font-weight: 600; }
+.diagnostico__datos dd { margin: 0; overflow-wrap: anywhere; }
+.diagnostico__linea { display: block; margin-bottom: 4px; }
+.diagnostico form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

@@ -163,6 +163,25 @@ def leer_aviso_de_meta(
 def _avisar_descartado(mensaje: dict[str, Any]) -> None:
     """Un mensaje que no se puede atender deja rastro: por qué y qué campos traía (los
     nombres de los campos, nunca su contenido)."""
+    logger.warning(
+        "Llegó un mensaje de WhatsApp que no se puede atender: %s. Campos: %s.",
+        por_que_se_descarta(mensaje),
+        ", ".join(campos(mensaje)),
+    )
+
+
+def campos(mensaje: dict[str, Any]) -> list[str]:
+    """Los nombres de los campos que trajo un mensaje (nunca lo que dicen)."""
+    return sorted(str(clave) for clave in mensaje)
+
+
+def leer_mensaje(mensaje: dict[str, Any]) -> Recibido | None:
+    """Un mensaje del aviso de Meta, o None si no se puede atender (por_que_se_descarta)."""
+    return _leer_mensaje(mensaje)
+
+
+def por_que_se_descarta(mensaje: dict[str, Any]) -> str:
+    """Por qué no se puede atender un mensaje que llegó de Meta."""
     remitente = mensaje.get("from")
     if not mensaje.get("id"):
         por_que = "no trae id"
@@ -174,11 +193,7 @@ def _avisar_descartado(mensaje: dict[str, Any]) -> None:
         por_que = "el remitente no es un número de celular"
     else:
         por_que = "no se entiende"
-    logger.warning(
-        "Llegó un mensaje de WhatsApp que no se puede atender: %s. Campos: %s.",
-        por_que,
-        ", ".join(sorted(str(clave) for clave in mensaje)),
-    )
+    return por_que
 
 
 def _lista(valor: Any) -> list[dict[str, Any]]:
@@ -234,6 +249,10 @@ def _el_mensaje(mensaje: dict[str, Any], id_meta: str, telefono: str, tipo: str)
         archivo=media_id if se_puede_ver else None,
         mime=mime if se_puede_ver else None,
     )
+
+
+def motivo_del_estado(estado: dict[str, Any]) -> str:
+    return _motivo(estado)
 
 
 def _motivo(estado: dict[str, Any]) -> str:

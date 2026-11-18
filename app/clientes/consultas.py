@@ -145,6 +145,8 @@ class FichaDelCliente:
     id: int
     nombre: str
     telefono: str | None
+    # El celular que dio para llamarlo, si escribe por WhatsApp sin mostrar su número.
+    celular: str | None
     fecha_aceptacion: date | None
     escribio_por_whatsapp: bool
     visitas: int
@@ -199,6 +201,7 @@ def ficha_del_cliente(sesion: Session, cliente_id: int, *, ultimas: int = 8) -> 
         id=cliente.id,
         nombre=cliente.nombre,
         telefono=cliente.telefono,
+        celular=cliente.celular,
         fecha_aceptacion=(
             tiempo.hora_local(cliente.fecha_aceptacion).date() if cliente.fecha_aceptacion else None
         ),

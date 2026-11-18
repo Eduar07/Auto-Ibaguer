@@ -15,6 +15,7 @@ from app.bot import conversacion
 from app.bot.avisos import mensaje_del_aviso
 from app.bot.mensajes import Entrada, Lista, Mensaje, Opcion
 from app.bot.tablas import SesionBot
+from app.bot.textos import EMOJI_DEL_VEHICULO
 from app.catalogo import configuracion
 from app.catalogo.parametros import leer_parametros
 from app.catalogo.tablas import Configuracion
@@ -39,6 +40,14 @@ E = EstadoTurno
 CELULAR = "573001234567"
 
 
+def sin_emoji(titulo: str) -> str:
+    """ "🏍️ Moto ABC12D" -> "Moto ABC12D"."""
+    for emoji in set(EMOJI_DEL_VEHICULO.values()):
+        if titulo.startswith(emoji + " "):
+            return titulo.removeprefix(emoji + " ")
+    return titulo
+
+
 class Chat:
     """Un cliente que le escribe al bot, como desde WhatsApp."""
 
@@ -52,7 +61,12 @@ class Chat:
         return self._enviar(Entrada(self.telefono, texto=texto))
 
     def toca(self, titulo: str) -> "Chat":
-        ids = [o.id for m in self.ultimas for o in m.opciones if o.titulo == titulo]
+        ids = [
+            o.id
+            for m in self.ultimas
+            for o in m.opciones
+            if titulo in (o.titulo, sin_emoji(o.titulo))
+        ]
         assert ids, f"El bot no ofreció {titulo!r}; ofreció {self.opciones}"
         return self._enviar(Entrada(self.telefono, opcion=ids[-1]))
 
@@ -76,7 +90,9 @@ class Chat:
 
     @property
     def opciones(self) -> list[str]:
-        return [opcion.titulo for mensaje in self.ultimas for opcion in mensaje.opciones]
+        """Los títulos sin el dibujito del vehículo ("🏍️ Moto" -> "Moto"): las pruebas
+        hablan de lo que dice el botón; los dibujitos se prueban aparte."""
+        return [sin_emoji(o.titulo) for mensaje in self.ultimas for o in mensaje.opciones]
 
     def ids(self) -> list[str]:
         return [opcion.id for mensaje in self.ultimas for opcion in mensaje.opciones]

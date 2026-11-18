@@ -612,7 +612,7 @@ def test_escribir_la_camionetica_elige_esa_opcion(sesion: Session):
     [_, contexto] = cliente.gemini.contextos  # el primero fue el "hola"
     assert contexto.en_que_va == (
         "Está pidiendo turno. El bot le preguntó qué vehículo trae. "
-        "Opciones: Automóvil | Camioneta | Moto."
+        "Opciones: 🚗 Automóvil | 🚙 Camioneta | 🏍️ Moto."
     )
 
 

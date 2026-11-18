@@ -76,14 +76,16 @@ from app.bot.mensajes import AUDIO, IMAGEN, Entrada, Lista, Mensaje, Opcion, rec
 from app.bot.redactor import ficha_completa, pide_ayuda_urgente, revisar_con_motivo
 from app.bot.sesiones import PASO_INICIAL
 from app.bot.tablas import PausaDelBot, SesionBot
-from app.bot.textos import BOTONES, Textos
+from app.bot.textos import BOTONES, Textos, con_emoji
 from app.catalogo.parametros import Parametros, leer_parametros
 from app.catalogo.tablas import Fila, Servicio, ServicioPrecio, TipoVehiculo
 from app.clientes import servicio as clientes
-from app.clientes.errores import NombreInvalido, PlacaDeOtroCliente, PlacaInvalida
+from app.clientes.errores import NombreInvalido, PlacaDeOtroCliente, PlacaInvalida, TelefonoInvalido
 from app.clientes.reglas import (
+    es_usuario_de_whatsapp,
     nombre_bonito,
     normalizar_contacto,
+    normalizar_telefono,
     placa_en_el_texto,
     validar_placa,
 )
@@ -117,6 +119,8 @@ class Paso(StrEnum):
     MENU = PASO_INICIAL
     AVISO_DATOS = "aviso_datos"
     NOMBRE = "nombre"
+    # A quien escribe sin mostrar su número (usuario de WhatsApp): a qué celular llamarlo.
+    CELULAR = "celular"
     VEHICULO = "vehiculo"
     PLACA = "placa"
     SERVICIO = "servicio"
@@ -135,7 +139,7 @@ class Paso(StrEnum):
 
 
 # En estos pasos el bot espera que el cliente escriba; en los demás, que toque un botón.
-PASOS_DE_TEXTO = frozenset({Paso.NOMBRE, Paso.PLACA, Paso.NUMERO_DE_TURNO})
+PASOS_DE_TEXTO = frozenset({Paso.NOMBRE, Paso.CELULAR, Paso.PLACA, Paso.NUMERO_DE_TURNO})
 # Las preguntas que también se contestan escribiendo un sí o un no ("no gracias", "dale").
 PASOS_DE_SI_O_NO = frozenset(
     {Paso.AVISO_DATOS, Paso.CONFIRMAR, Paso.PERMISO_CONTACTO, Paso.SEGUIMIENTO}
@@ -146,7 +150,15 @@ PASOS_DE_SI_O_NO = frozenset(
 PASOS_DE_PERMISO = frozenset({Paso.AVISO_DATOS, Paso.PERMISO_CONTACTO, Paso.CANCELAR})
 # Los pasos de pedir un turno: pedir turno en medio de ellos no es cambiar de tema.
 PASOS_DEL_TURNO = frozenset(
-    {Paso.AVISO_DATOS, Paso.NOMBRE, Paso.VEHICULO, Paso.PLACA, Paso.SERVICIO, Paso.CONFIRMAR}
+    {
+        Paso.AVISO_DATOS,
+        Paso.NOMBRE,
+        Paso.CELULAR,
+        Paso.VEHICULO,
+        Paso.PLACA,
+        Paso.SERVICIO,
+        Paso.CONFIRMAR,
+    }
 )
 
 # La memoria del bot: cuántos mensajes de lo último que se dijeron lee Gemini, y de cuánto
@@ -164,6 +176,7 @@ PASOS_DE_CHARLA = frozenset({Paso.MENU, Paso.DETALLE})
 # en cualquier momento.
 PASO_DEL_BOTON = {
     "datos": Paso.AVISO_DATOS,
+    "celular": Paso.CELULAR,
     "vehiculo": Paso.VEHICULO,
     "placa": Paso.PLACA,
     "servicio": Paso.SERVICIO,
@@ -181,6 +194,8 @@ QUE_ESPERA: dict[Paso, str] = {
     Paso.AVISO_DATOS: "Está pidiendo turno. El bot le mostró el aviso de datos personales y le "
     "preguntó si acepta (pregunta de sí o no).",
     Paso.NOMBRE: "Está pidiendo turno. El bot le preguntó a nombre de quién lo hace.",
+    Paso.CELULAR: "Está pidiendo turno. Su WhatsApp no muestra su número: el bot le preguntó a "
+    "qué celular llamarlo si hace falta (puede decir que ahora no).",
     Paso.VEHICULO: "Está pidiendo turno. El bot le preguntó qué vehículo trae.",
     Paso.PLACA: "Está pidiendo turno. El bot le preguntó la placa del vehículo (la pide por "
     "seguridad; si no la tiene a mano, la da en el local).",
@@ -898,6 +913,10 @@ class _Atencion:
         if self.paso == Paso.NOMBRE:
             nombre = _el_nombre(escrito, normal)
             return self._escribio_nombre(nombre) if nombre is not None else None
+        if self.paso == Paso.CELULAR:
+            if _parece_celular(escrito):
+                return self._escribio_celular(escrito)
+            return self._boton("celular.no") if _dice_que_no(normal) else None
         if self.paso == Paso.PLACA:
             placa = _la_placa(escrito)
             if placa is not None:
@@ -1322,6 +1341,7 @@ class _Atencion:
             return self._menu("boton_vencido")
         manejadores = {
             "datos": self._acepta_los_datos,
+            "celular": self._celular,
             "vehiculo": self._eligio_vehiculo,
             "placa": lambda _: self._preguntar_servicio(),  # "Ahora no": placa pendiente
             "servicio": self._eligio_servicio,
@@ -1339,6 +1359,8 @@ class _Atencion:
     def _lo_que_escribio(self, escrito: str) -> list[Mensaje]:
         if self.paso == Paso.NOMBRE:
             return self._escribio_nombre(escrito)
+        if self.paso == Paso.CELULAR:
+            return self._escribio_celular(escrito)
         if self.paso == Paso.PLACA:
             return self._escribio_placa(escrito)
         return self._escribio_numero_de_turno(escrito)
@@ -1453,6 +1475,7 @@ class _Atencion:
         preguntas = {
             Paso.AVISO_DATOS: self._pregunta_aviso_de_datos,
             Paso.NOMBRE: lambda: Mensaje(self.texto("pedir_nombre")),
+            Paso.CELULAR: self._pregunta_celular,
             Paso.VEHICULO: self._pregunta_vehiculo,
             Paso.PLACA: self._pregunta_placa,
             Paso.SERVICIO: self._pregunta_servicio,
@@ -1529,6 +1552,8 @@ class _Atencion:
             # Cliente nuevo: sin aceptar el aviso de datos no se guarda nada.
             self.paso = Paso.AVISO_DATOS
             return [self._pregunta()]
+        if self._falta_el_celular():
+            return self._preguntar_celular()
         return self._preguntar_vehiculo()
 
     def _pregunta_aviso_de_datos(self) -> Mensaje:
@@ -1562,6 +1587,46 @@ class _Atencion:
             self.datos["nombre"] = nombre_bonito(escrito)
         except NombreInvalido:
             return [Mensaje(self.texto("nombre_invalido"))]
+        if self._falta_el_celular():
+            return self._preguntar_celular()
+        return self._preguntar_vehiculo()
+
+    # --- Pedir turno: el celular de quien no lo muestra -------------------------------------
+
+    def _falta_el_celular(self) -> bool:
+        """Quien escribe con su usuario de WhatsApp no muestra su número: para poder
+        llamarlo, se le pide una vez. Si dice que ahora no, en esta conversación no se le
+        vuelve a pedir."""
+        if not es_usuario_de_whatsapp(self.telefono) or self.datos.get("celular_preguntado"):
+            return False
+        return self.cliente is None or not self.cliente.celular
+
+    def _preguntar_celular(self) -> list[Mensaje]:
+        self.paso = Paso.CELULAR
+        return [self._pregunta()]
+
+    def _pregunta_celular(self) -> Mensaje:
+        return Mensaje(
+            self.texto("pedir_celular"), botones=(Opcion("celular.no", BOTONES["ahora_no"]),)
+        )
+
+    def _celular(self, respuesta: str) -> list[Mensaje]:
+        """Tocó *Ahora no*: sigue sin celular."""
+        self.datos["celular_preguntado"] = True
+        return self._preguntar_vehiculo()
+
+    def _escribio_celular(self, escrito: str) -> list[Mensaje]:
+        try:
+            celular = normalizar_telefono(escrito)
+        except TelefonoInvalido:
+            celular = None
+        if celular is None or not _es_celular_colombiano(celular):
+            return [Mensaje(self.texto("celular_invalido"), botones=self._pregunta().botones)]
+        self.datos["celular_preguntado"] = True
+        if self.cliente is not None:
+            self.cliente.celular = celular
+        else:
+            self.datos["celular"] = celular  # se guarda con el cliente, al confirmar
         return self._preguntar_vehiculo()
 
     # --- Pedir turno: vehículo y placa --------------------------------------------------------
@@ -1655,13 +1720,18 @@ class _Atencion:
         conocidos = self._vehiculos_conocidos()
         if conocidos and not self.datos.get("otro_vehiculo"):
             botones = [
-                Opcion(f"vehiculo.{vehiculo.id}", _nombre_del_vehiculo(tipo.nombre, vehiculo.placa))
+                Opcion(
+                    f"vehiculo.{vehiculo.id}",
+                    con_emoji(tipo.nombre, _nombre_del_vehiculo(tipo.nombre, vehiculo.placa)),
+                )
                 for vehiculo, tipo in conocidos[:2]
             ]
             botones.append(Opcion("vehiculo.otro", BOTONES["otro_vehiculo"]))
             return Mensaje(self.texto("pedir_vehiculo_conocido"), botones=tuple(botones))
         tipos = list(self.sesion.scalars(select(TipoVehiculo).order_by(TipoVehiculo.id)))
-        opciones = tuple(Opcion(f"vehiculo.tipo.{tipo.id}", tipo.nombre) for tipo in tipos)
+        opciones = tuple(
+            Opcion(f"vehiculo.tipo.{tipo.id}", con_emoji(tipo.nombre)) for tipo in tipos
+        )
         if len(opciones) <= 3:
             return Mensaje(self.texto("pedir_vehiculo"), botones=opciones)
         return Mensaje(self.texto("pedir_vehiculo"), lista=Lista("Ver vehículos", opciones[:10]))
@@ -1857,6 +1927,8 @@ class _Atencion:
                     acepta_datos=True,
                     ahora=datetime.fromisoformat(self.datos["acepto_datos_en"]),
                 )
+                if self.datos.get("celular") and not cliente.celular:
+                    cliente.celular = self.datos["celular"]
                 vehiculo = self._vehiculo_para_el_turno(cliente)
                 nuevo = casos.pedir_turno(
                     self.sesion,
@@ -2010,7 +2082,7 @@ class _Atencion:
             carros = [tipo for tipo in tipos if tipo.nombre != "Moto"]
             if carros:
                 tipos = carros
-        opciones = tuple(Opcion(f"precios.{tipo.id}", tipo.nombre) for tipo in tipos)
+        opciones = tuple(Opcion(f"precios.{tipo.id}", con_emoji(tipo.nombre)) for tipo in tipos)
         nombre = "precios_carro" if self.datos.get("solo_carros") else "precios_tipo"
         if len(opciones) <= 3:
             return Mensaje(self.texto(nombre), botones=opciones)
@@ -2639,3 +2711,19 @@ def _como_va_el_turno(posicion: PosicionDelTurno, texto: Textos) -> str:
         E.LISTO: "mi_turno_listo",
     }
     return texto(nombres[posicion.estado], **datos)
+
+
+def _parece_celular(escrito: str) -> bool:
+    """ "315 123 4567", "+57 3151234567": casi todo son dígitos y son 10 o 12."""
+    limpio = escrito.strip()
+    digitos = re.sub(r"\D", "", limpio)
+    return re.fullmatch(r"[0-9\s+().-]+", limpio) is not None and len(digitos) in (10, 12)
+
+
+def _es_celular_colombiano(celular: str) -> bool:
+    """573 y 9 dígitos más: un celular de Colombia, al que se puede llamar."""
+    return len(celular) == 12 and celular.startswith("573")
+
+
+def _dice_que_no(normal: str) -> bool:
+    return normal in {"no", "ahora no", "no gracias", "no quiero", "prefiero no", "despues"}

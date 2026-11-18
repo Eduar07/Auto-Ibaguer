@@ -9,6 +9,7 @@
     <h2>{{ f.nombre }}</h2>
     <p>
       {{ f.telefono|telefono_oculto }} ·
+      {%- if f.celular %} celular para llamar {{ f.celular|telefono }} · <a href="tel:+{{ f.celular }}">Llamar</a> ·{% endif %}
       {% if f.escribio_por_whatsapp %}escribe por WhatsApp
       {%- elif f.telefono %}aún no escribe por WhatsApp: no recibe avisos
       {%- else %}no recibe avisos{% endif %}

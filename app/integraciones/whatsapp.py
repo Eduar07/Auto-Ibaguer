@@ -130,14 +130,51 @@ def leer_aviso_de_meta(
                     id_numero,
                 )
                 continue
-            for mensaje in _lista(valor.get("messages")):
+            mensajes, estados = _lista(valor.get("messages")), _lista(valor.get("statuses"))
+            # Qué trajo cada aviso, sin datos de nadie: así en el registro se ve si llegó
+            # un mensaje o solo el estado de una respuesta (enviado, leído, fallido).
+            logger.info(
+                "Aviso de WhatsApp: %d mensaje(s) y %d estado(s)%s.",
+                len(mensajes),
+                len(estados),
+                f" ({', '.join(sorted({str(e.get('status')) for e in estados}))})"
+                if estados
+                else "",
+            )
+            for mensaje in mensajes:
                 recibido = _leer_mensaje(mensaje)
                 if recibido is not None:
                     recibidos.append(recibido)
-            for estado in _lista(valor.get("statuses")):
+                else:
+                    _avisar_descartado(mensaje)
+            for estado in estados:
                 if estado.get("status") == "failed" and estado.get("id"):
-                    no_entregados.append(NoEntregado(estado["id"], _motivo(estado)))
+                    motivo = _motivo(estado)
+                    logger.warning("WhatsApp no entregó una respuesta del bot: %s", motivo)
+                    no_entregados.append(NoEntregado(estado["id"], motivo))
     return recibidos, no_entregados
+
+
+def _avisar_descartado(mensaje: dict[str, Any]) -> None:
+    """Un mensaje que no se puede atender deja rastro: por qué y qué campos traía (los
+    nombres de los campos, nunca su contenido)."""
+    remitente = mensaje.get("from")
+    if not mensaje.get("id"):
+        por_que = "no trae id"
+    elif remitente is None and mensaje.get("from_user_id"):
+        por_que = (
+            "no trae el celular del cliente, solo su usuario de WhatsApp (el cliente tiene "
+            "nombre de usuario y Meta no comparte su número)"
+        )
+    elif not isinstance(remitente, str) or not _TELEFONO.fullmatch(remitente):
+        por_que = "el remitente no es un número de celular"
+    else:
+        por_que = "no se entiende"
+    logger.warning(
+        "Llegó un mensaje de WhatsApp que no se puede atender: %s. Campos: %s.",
+        por_que,
+        ", ".join(sorted(str(clave) for clave in mensaje)),
+    )
 
 
 def _lista(valor: Any) -> list[dict[str, Any]]:

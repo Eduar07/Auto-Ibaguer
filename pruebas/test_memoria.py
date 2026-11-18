@@ -215,7 +215,7 @@ def test_tiene_la_personalidad_y_las_reglas():
         "no terminas siempre con una pregunta",
         "una sola pregunta",
         "Un emoji como mucho",
-        "No conviertes la charla en una venta",
+        "en el mismo mensaje, vuelve al",
         "no un asistente para todo",  # la política de Meta para WhatsApp Business
         "Nunca dices que eres una persona",
         "Nunca escribes precios, descuentos, promociones",

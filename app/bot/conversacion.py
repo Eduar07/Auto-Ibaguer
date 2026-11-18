@@ -1103,6 +1103,8 @@ class _Atencion:
         """Lo que el bot está esperando, para que Gemini entienda una respuesta corta ("sí",
         "la moto") y no repita la pregunta, que el bot vuelve a hacer después."""
         if self.paso == Paso.MENU:
+            if self.cliente is not None and self._activos():
+                return "Ya tiene un turno hoy: lo esperamos."
             return ""
         if self.paso == Paso.DETALLE:
             return (
@@ -2404,7 +2406,24 @@ class _Atencion:
             ]
         if intencion == Intencion.OTRO:
             return [_con_el_menu(dicho)]
+        if intencion == Intencion.CHARLA:
+            return [self._charla_que_invita(dicho)]
         return [Mensaje(dicho)]
+
+    def _charla_que_invita(self, dicho: str) -> Mensaje:
+        """La charla vuelve al lavadero (Gemini ya lo invitó a lavar): con los botones para
+        hacerlo de una. Si ya tiene turno hoy, sin botones: ya viene. De noche, solo los
+        precios: el turno no se puede pedir."""
+        if self._activos():
+            return Mensaje(dicho)
+        if self.parametros.bot_activo and self._en_horario():
+            botones = (
+                Opcion("menu.pedir", BOTONES["pedir"]),
+                Opcion("menu.precios", BOTONES["precios"]),
+            )
+        else:
+            botones = (Opcion("menu.precios", BOTONES["precios"]),)
+        return Mensaje(dicho, botones=botones)
 
     def _ficha(self) -> str:
         """Lo que Gemini sabe del negocio (se arma una sola vez por mensaje)."""

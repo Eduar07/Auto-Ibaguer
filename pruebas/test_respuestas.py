@@ -50,13 +50,14 @@ def dice(intencion: Intencion, texto: str, **datos) -> Interpretacion:
         ("me quiero ir a dormir", "¡Que descanses! Mañana te ayudamos con tu turno."),
     ],
 )
-def test_la_charla_la_contesta_gemini_sin_ofrecer_el_menu(sesion: Session, frase, contesta):
+def test_la_charla_la_contesta_gemini_y_vuelve_al_lavadero(sesion: Session, frase, contesta):
     cliente = charla(sesion, dice(Q.CHARLA, contesta))
 
     cliente.escribe(frase)
 
     assert cliente.texto == contesta
-    assert cliente.opciones == []  # es una conversación, no una venta
+    # Contesta como una persona y vuelve al lavadero, con los botones para hacerlo de una.
+    assert cliente.opciones == ["Pedir turno", "Servicios y precios"]
     assert cliente.gemini.mensajes == [frase]  # una sola consulta: entiende y escribe
     [contexto] = cliente.gemini.contextos
     assert contexto.ficha.startswith("Nombre: Auto Ibaguer.")

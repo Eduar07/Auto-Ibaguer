@@ -17,6 +17,21 @@
   <p class="nota">WhatsApp todavía no está conectado: {% if faltan %}faltan {{ faltan|join(", ") }} en el archivo .env{% endif %}. Mientras tanto el bot se prueba en Configuración &gt; Probar el bot, y los avisos esperan aquí, en la bandeja de salida.</p>
   {% endif %}
 
+  {#- Buscar un celular: ¿le escribió al bot?, ¿qué pasó con la respuesta? -#}
+  <form class="buscar-celular" method="get" action="/mensajes" role="search">
+    <label for="celular">Buscar un celular</label>
+    <div class="buscar-celular__fila">
+      <input id="celular" name="celular" type="tel" inputmode="tel" value="{{ celular }}" placeholder="315 123 4567" autocomplete="off">
+      <button type="submit" class="boton">Buscar</button>
+      {% if celular %}<a class="boton boton--borde" href="/mensajes">Ver todos</a>{% endif %}
+    </div>
+    {% if error_del_celular %}<p class="error-campo">{{ error_del_celular }}</p>{% endif %}
+  </form>
+
+  {% if buscado and not entrantes %}
+  <p class="nota">Ese celular no le ha escrito al bot: su mensaje no le llegó al servidor. Si sí escribió, revisa en Meta que <strong>Suscribir webhooks</strong> esté encendido en la cuenta del número; los mensajes que llegaron antes de encenderlo no se recuperan, así que tiene que escribir otra vez.</p>
+  {% endif %}
+
   <div class="mensajes">
     <section class="panel mensajes__bandeja" aria-labelledby="t-entrantes">
       <h2 id="t-entrantes">Lo que escribieron</h2>

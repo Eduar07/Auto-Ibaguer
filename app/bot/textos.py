@@ -189,7 +189,8 @@ TEXTOS: dict[str, str] = {
     "mis_lavadas_sin_registro": "No encontramos lavadas con este número de WhatsApp. Las "
     "contamos cuando pides turno por aquí o das este número en el local.",
     # --- Preguntas sobre el negocio y charla (las demás respuestas las escribe Gemini) ---
-    "charla": "Gracias por escribirnos. Por aquí te ayudamos con tu turno, la fila o los precios.",
+    "charla": "¡Gracias por escribirnos! Y ya que estamos, ¿le damos una lavadita a tu moto o "
+    "tu carro? Te muestro los precios o te aparto un turno.",
     "pregunta_al_administrador": "Esa no la sé, {nombre}, pero ya se la pasé al administrador "
     "para que te responda lo antes posible.",
     "pregunta_sin_respuesta": "Esa no la sé todavía. ¿Quieres que el administrador te "

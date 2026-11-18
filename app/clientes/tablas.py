@@ -16,6 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.clientes.reglas import CONTACTO_VALIDO, LARGO_DEL_CONTACTO
 from app.db.base import Base, lista_cerrada
 
 
@@ -29,7 +30,7 @@ class Cliente(Base):
     __tablename__ = "cliente"
     __table_args__ = (
         # Formato internacional sin "+": 573001234567
-        CheckConstraint("telefono ~ '^[0-9]{8,15}$'", name="telefono_solo_digitos"),
+        CheckConstraint(CONTACTO_VALIDO, name="telefono_o_usuario"),
         # Ley 1581: si aceptó el tratamiento de datos, queda la fecha en que lo hizo.
         CheckConstraint(
             "NOT acepta_datos OR fecha_aceptacion IS NOT NULL", name="aceptacion_con_fecha"
@@ -41,7 +42,7 @@ class Cliente(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
-    telefono: Mapped[str | None] = mapped_column(String(15), unique=True)
+    telefono: Mapped[str | None] = mapped_column(String(LARGO_DEL_CONTACTO), unique=True)
     nombre: Mapped[str] = mapped_column(String(80))
     acepta_datos: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     fecha_aceptacion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

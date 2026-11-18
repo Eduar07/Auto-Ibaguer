@@ -117,24 +117,16 @@ def test_gemini_sabe_que_la_charla_vuelve_al_lavadero():
 # --- Lo que no se atiende deja rastro (sin datos de nadie) -------------------------------------
 
 
-def test_un_cliente_con_nombre_de_usuario_sin_celular_deja_rastro(caplog):
-    """Desde 2026, a quien tiene nombre de usuario en WhatsApp Meta le puede mandar al bot
-    sin su celular: solo un id de usuario ("from_user_id")."""
-    sin_celular = {
-        "id": "wamid.sin-celular",
-        "from_user_id": "CO.1234567890123456",
-        "type": "text",
-        "text": {"body": "hola"},
-    }
+def test_un_mensaje_sin_ningun_remitente_deja_rastro(caplog):
+    sin_remitente = {"id": "wamid.raro", "type": "text", "text": {"body": "hola"}}
 
     with caplog.at_level(logging.INFO, logger="app.integraciones.whatsapp"):
-        recibidos, _ = whatsapp.leer_aviso_de_meta(aviso_de_meta(sin_celular), ID_DEL_NUMERO)
+        recibidos, _ = whatsapp.leer_aviso_de_meta(aviso_de_meta(sin_remitente), ID_DEL_NUMERO)
 
     assert recibidos == []
     assert "Aviso de WhatsApp: 1 mensaje(s) y 0 estado(s)." in caplog.text
-    assert "no trae el celular del cliente, solo su usuario de WhatsApp" in caplog.text
-    assert "Campos: from_user_id, id, text, type." in caplog.text
-    assert "CO.1234567890123456" not in caplog.text and "hola" not in caplog.text
+    assert "el remitente no es un número de celular. Campos: id, text, type." in caplog.text
+    assert "hola" not in caplog.text
 
 
 def test_una_respuesta_que_no_se_entrego_queda_en_el_registro_con_el_error(caplog):

@@ -10,6 +10,20 @@ LARGO_MAXIMO_NOMBRE = 80
 # celular colombiano empieza por 5799. A esos nunca se les escribe por WhatsApp.
 PREFIJO_DE_PRUEBA = "5799"
 
+# A quien tiene nombre de usuario en WhatsApp, Meta le puede mandar al bot sin su celular:
+# solo un id de usuario de la empresa (BSUID): país, punto y hasta 128 letras y números,
+# como "CO.13491208655302741918". Con él se le contesta igual. Donde el sistema guarda el
+# "teléfono" de una conversación de WhatsApp, guarda el celular o, si no lo hay, ese id.
+USUARIO_DE_WHATSAPP = re.compile(r"[A-Z]{2}\.[A-Za-z0-9]{1,128}")
+LARGO_DEL_CONTACTO = 140
+# La regla en la base de datos: el celular (solo dígitos) o el usuario de WhatsApp.
+CONTACTO_VALIDO = r"telefono ~ '^([0-9]{8,15}|[A-Z]{2}\.[A-Za-z0-9]{1,128})$'"
+
+
+def es_usuario_de_whatsapp(contacto: str | None) -> bool:
+    """¿Es el id de usuario de WhatsApp (sin celular) en vez de un celular?"""
+    return bool(contacto) and USUARIO_DE_WHATSAPP.fullmatch(contacto) is not None
+
 
 def normalizar_telefono(texto: str) -> str:
     """ "+57 322 755 6850" o "3227556850" -> "573227556850".
@@ -23,6 +37,14 @@ def normalizar_telefono(texto: str) -> str:
     if not 8 <= len(digitos) <= 15:
         raise TelefonoInvalido(f"El teléfono {texto.strip()!r} no es válido.")
     return digitos
+
+
+def normalizar_contacto(texto: str) -> str:
+    """Quien escribe por WhatsApp: su celular normalizado o, si no muestra el celular, su
+    id de usuario tal cual. Lo que alguien escribe a mano (el celular del negocio, el de
+    un cliente en el parqueadero) usa normalizar_telefono: ahí solo vale un celular."""
+    limpio = texto.strip()
+    return limpio if es_usuario_de_whatsapp(limpio) else normalizar_telefono(texto)
 
 
 def celular_inventado() -> str:

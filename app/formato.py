@@ -94,8 +94,19 @@ def horario(dias: Iterable[int], apertura: time, cierre: time) -> str:
     return f"{dias_de_atencion(dias)} de {hora(apertura)} a {hora(cierre)}"
 
 
+# Quien escribe por WhatsApp sin mostrar su celular (tiene nombre de usuario): el sistema
+# guarda su id de usuario ("CO.1349…") donde iría el celular. Así se muestra.
+SIN_CELULAR_VISIBLE = "WhatsApp sin número visible"
+
+
+def _es_usuario(numero: str) -> bool:
+    return "." in numero and not numero.replace(".", "").isdigit()
+
+
 def telefono(numero: str) -> str:
     """ "573227556850" -> "322 755 6850": como se dice un celular en Colombia."""
+    if _es_usuario(numero):
+        return SIN_CELULAR_VISIBLE
     local = numero.removeprefix("57") if len(numero) == 12 else numero
     if len(local) != 10:
         return local
@@ -106,6 +117,8 @@ def telefono_oculto(telefono: str | None) -> str:
     """ "573214564410" -> "321 *** 4410": suficiente para reconocerlo, sin mostrarlo entero."""
     if not telefono:
         return "Sin celular"
+    if _es_usuario(telefono):
+        return SIN_CELULAR_VISIBLE
     local = telefono.removeprefix("57") if len(telefono) == 12 else telefono
     return f"{local[:3]} *** {local[-4:]}"
 

@@ -83,7 +83,7 @@ from app.clientes import servicio as clientes
 from app.clientes.errores import NombreInvalido, PlacaDeOtroCliente, PlacaInvalida
 from app.clientes.reglas import (
     nombre_bonito,
-    normalizar_telefono,
+    normalizar_contacto,
     placa_en_el_texto,
     validar_placa,
 )
@@ -745,7 +745,7 @@ class _Atencion:
         self.parametros: Parametros = leer_parametros(sesion)
         # Con lo que el administrador cambió en Configuración > Textos del bot.
         self.texto = Textos(self.parametros.textos_bot)
-        self.telefono = normalizar_telefono(entrada.telefono)
+        self.telefono = normalizar_contacto(entrada.telefono)
         self.conversacion, self.empieza = _abrir_conversacion(sesion, self.telefono, ahora)
         try:
             self.paso = Paso(self.conversacion.paso_actual)

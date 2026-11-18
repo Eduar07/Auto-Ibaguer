@@ -23,7 +23,7 @@ from app.clientes.errores import (
     TelefonoDeOtroCliente,
     TieneTurnoActivo,
 )
-from app.clientes.reglas import nombre_bonito, normalizar_telefono, validar_placa
+from app.clientes.reglas import nombre_bonito, normalizar_contacto, validar_placa
 from app.clientes.tablas import Cliente, Consulta, TipoConsulta, Vehiculo
 from app.comentarios import servicio as comentarios
 from app.integraciones.tablas import MensajeEntrante, MensajeSaliente
@@ -36,7 +36,7 @@ NOMBRE_BORRADO = "Cliente borrado"
 
 
 def buscar_por_telefono(sesion: Session, telefono: str) -> Cliente | None:
-    consulta = select(Cliente).where(Cliente.telefono == normalizar_telefono(telefono))
+    consulta = select(Cliente).where(Cliente.telefono == normalizar_contacto(telefono))
     return sesion.scalars(consulta).one_or_none()
 
 
@@ -55,7 +55,7 @@ def registrar_cliente(
     if not acepta_datos:
         raise FaltaAutorizacion("Sin aceptar el aviso de tratamiento de datos no se guarda nada.")
     ahora = ahora or tiempo.ahora()
-    numero = normalizar_telefono(telefono) if telefono else None
+    numero = normalizar_contacto(telefono) if telefono else None
     if numero is not None:
         existente = sesion.scalars(select(Cliente).where(Cliente.telefono == numero)).one_or_none()
         if existente is not None:
@@ -208,7 +208,7 @@ def editar_cliente(sesion: Session, cliente_id: int, *, nombre: str, telefono: s
     """
     cliente = cliente_vigente(sesion, cliente_id)
     cliente.nombre = nombre_bonito(nombre)
-    numero = normalizar_telefono(telefono) if telefono.strip() else None
+    numero = normalizar_contacto(telefono) if telefono.strip() else None
     if numero is not None and numero != cliente.telefono:
         otro = sesion.scalars(select(Cliente).where(Cliente.telefono == numero)).one_or_none()
         if otro is not None:

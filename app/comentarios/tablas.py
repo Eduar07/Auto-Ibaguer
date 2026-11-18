@@ -17,6 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.clientes.reglas import LARGO_DEL_CONTACTO
 from app.db.base import Base, lista_cerrada
 
 # Lo más largo que se guarda de lo que escribió el cliente (la queja y lo que contó después).
@@ -70,7 +71,7 @@ class Comentario(Base):
     tipo: Mapped[TipoComentario] = mapped_column(lista_cerrada(TipoComentario, "tipo"))
     texto: Mapped[str] = mapped_column(Text)
     cliente_id: Mapped[int | None] = mapped_column(ForeignKey("cliente.id"), index=True)
-    telefono: Mapped[str | None] = mapped_column(String(15))
+    telefono: Mapped[str | None] = mapped_column(String(LARGO_DEL_CONTACTO))
     permiso_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # El último turno del cliente cuando escribió: casi siempre, de eso habla.
     turno_id: Mapped[int | None] = mapped_column(ForeignKey("turno.id"))

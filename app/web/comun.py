@@ -84,6 +84,9 @@ def _como_en_whatsapp(texto: str) -> Markup:
     return Markup(seguro.replace("\n", "<br>"))
 
 
+# "Llamar" solo si es un celular: a quien escribe sin mostrar su número no se le puede llamar.
+plantillas.env.tests["celular"] = lambda valor: bool(valor) and str(valor).isdigit()
+
 plantillas.env.filters.update(
     pesos=formato.pesos,
     telefono=formato.telefono,

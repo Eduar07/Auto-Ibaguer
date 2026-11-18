@@ -17,7 +17,7 @@ import hashlib
 import hmac
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from functools import lru_cache
 from typing import Any
@@ -30,7 +30,7 @@ from app import tiempo
 from app.bot.avisos import mensaje_del_aviso
 from app.bot.mensajes import Adjunto, Mensaje, tipo_de_archivo
 from app.catalogo.parametros import leer_parametros
-from app.clientes.reglas import es_de_prueba
+from app.clientes.reglas import es_de_prueba, es_usuario_de_whatsapp
 from app.config import ConfiguracionEntorno, obtener_entorno
 from app.integraciones.bandeja_salida import TIPO_DEL_ADMINISTRADOR, TIPO_RESPUESTA, EnvioFallido
 from app.integraciones.tablas import MensajeEntrante, MensajeSaliente
@@ -74,6 +74,8 @@ class Recibido:
     """Un mensaje de un cliente, como lo trajo Meta."""
 
     id_meta: str  # Meta le pone un id único: si lo manda dos veces, el repetido se ignora
+    # Su celular (573001234567) o, si Meta no lo comparte (tiene nombre de usuario), su id
+    # de usuario de WhatsApp ("CO.1349…"): con cualquiera de los dos se le contesta.
     telefono: str
     tipo: str  # text, interactive (tocó un botón), image, audio...
     texto: str | None = None
@@ -83,6 +85,9 @@ class Recibido:
     # De una foto o un audio: el id para descargarlo de Meta y su tipo ("image/jpeg").
     archivo: str | None = None
     mime: str | None = None
+    # Su id de usuario de WhatsApp cuando también vino el celular: así la conversación que
+    # empezó sin celular sigue con el mismo cliente.
+    usuario: str | None = None
 
 
 @dataclass(frozen=True)
@@ -163,8 +168,7 @@ def _avisar_descartado(mensaje: dict[str, Any]) -> None:
         por_que = "no trae id"
     elif remitente is None and mensaje.get("from_user_id"):
         por_que = (
-            "no trae el celular del cliente, solo su usuario de WhatsApp (el cliente tiene "
-            "nombre de usuario y Meta no comparte su número)"
+            "no trae el celular del cliente y su usuario de WhatsApp no tiene la forma de siempre"
         )
     elif not isinstance(remitente, str) or not _TELEFONO.fullmatch(remitente):
         por_que = "el remitente no es un número de celular"
@@ -182,9 +186,28 @@ def _lista(valor: Any) -> list[dict[str, Any]]:
 
 
 def _leer_mensaje(mensaje: dict[str, Any]) -> Recibido | None:
-    id_meta, telefono, tipo = mensaje.get("id"), mensaje.get("from"), mensaje.get("type", "")
-    if not id_meta or not isinstance(telefono, str) or not _TELEFONO.fullmatch(telefono):
+    id_meta, tipo = mensaje.get("id"), mensaje.get("type", "")
+    telefono = _quien(mensaje)
+    if not id_meta or telefono is None:
         return None
+    recibido = _el_mensaje(mensaje, id_meta, telefono, tipo)
+    usuario = mensaje.get("from_user_id")
+    if recibido is not None and es_usuario_de_whatsapp(usuario) and usuario != telefono:
+        return replace(recibido, usuario=usuario)
+    return recibido
+
+
+def _quien(mensaje: dict[str, Any]) -> str | None:
+    """El celular; si Meta no lo manda, el id de usuario de WhatsApp. None si ninguno sirve."""
+    celular, usuario = mensaje.get("from"), mensaje.get("from_user_id")
+    if isinstance(celular, str) and _TELEFONO.fullmatch(celular):
+        return celular
+    if isinstance(usuario, str) and es_usuario_de_whatsapp(usuario):
+        return usuario
+    return None
+
+
+def _el_mensaje(mensaje: dict[str, Any], id_meta: str, telefono: str, tipo: str) -> Recibido | None:
     if tipo == "text":
         return Recibido(id_meta, telefono, tipo, texto=(mensaje.get("text") or {}).get("body"))
     if tipo == "interactive":
@@ -228,7 +251,10 @@ def _motivo(estado: dict[str, Any]) -> str:
 
 def contenido_para_meta(mensaje: Mensaje, telefono: str) -> dict[str, Any]:
     """El mensaje del bot como lo pide la Cloud API: texto, texto con botones, o con lista."""
-    base = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": telefono}
+    # A quien no comparte su celular se le escribe con su id de usuario: va en
+    # "recipient", no en "to".
+    destino = "recipient" if es_usuario_de_whatsapp(telefono) else "to"
+    base = {"messaging_product": "whatsapp", "recipient_type": "individual", destino: telefono}
     if mensaje.botones:
         botones = [
             {"type": "reply", "reply": {"id": boton.id, "title": boton.titulo}}

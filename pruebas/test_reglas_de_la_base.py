@@ -35,8 +35,15 @@ def test_dos_clientes_no_pueden_tener_el_mismo_telefono(sesion: Session):
 
 
 def test_telefono_solo_con_digitos(sesion: Session):
-    with debe_rechazar(sesion, "ck_cliente_telefono_solo_digitos"):
+    with debe_rechazar(sesion, "ck_cliente_telefono_o_usuario"):
         sesion.add(Cliente(telefono="300-123-4567", nombre="Ana"))
+
+
+def test_o_el_usuario_de_whatsapp_de_quien_no_muestra_su_celular(sesion: Session):
+    sesion.add(Cliente(telefono="CO.13491208655302741918", nombre="Ana"))
+    sesion.flush()
+    with debe_rechazar(sesion, "ck_cliente_telefono_o_usuario"):
+        sesion.add(Cliente(telefono="co.123", nombre="Otra"))
 
 
 def test_aceptar_el_aviso_de_datos_exige_la_fecha(sesion: Session):

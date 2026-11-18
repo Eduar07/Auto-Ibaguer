@@ -20,21 +20,24 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot import conversacion
 from app.bot.mensajes import AUDIO, Adjunto, Entrada, Mensaje, tipo_de_archivo
+from app.bot.tablas import PausaDelBot, Seguimiento, SesionBot
 from app.bot.textos import texto
 from app.catalogo.parametros import leer_parametros
 from app.clientes import servicio as clientes
+from app.clientes.tablas import Cliente
+from app.comentarios.tablas import Comentario
 from app.db.sesion import AbrirSesion
 from app.formato import telefono as telefono_legible
 from app.integraciones import bandeja_salida, gemini, whatsapp
 from app.integraciones.bandeja_salida import Enviador
-from app.integraciones.tablas import MensajeEntrante
+from app.integraciones.tablas import MensajeEntrante, MensajeSaliente
 from app.integraciones.whatsapp import Recibido
 from app.turnos import avisos
 
@@ -49,6 +52,8 @@ def guardar(sesion: Session, recibidos: Iterable[Recibido], *, ahora: datetime) 
     """Guarda los mensajes nuevos. Devuelve los teléfonos que tienen algo por contestar."""
     por_atender: set[str] = set()
     for recibido in recibidos:
+        if recibido.usuario is not None:
+            unir_usuario_y_celular(sesion, recibido.usuario, recibido.telefono)
         nuevo = sesion.execute(
             insert(MensajeEntrante)
             .values(
@@ -66,6 +71,27 @@ def guardar(sesion: Session, recibidos: Iterable[Recibido], *, ahora: datetime) 
         if nuevo is not None and not recibido.ignorar:
             por_atender.add(recibido.telefono)
     return por_atender
+
+
+def unir_usuario_y_celular(sesion: Session, usuario: str, celular: str) -> None:
+    """Alguien que escribía sin mostrar su celular (solo con su usuario de WhatsApp) ahora
+    llega con el celular: lo que había a nombre del usuario pasa al celular. Así sigue siendo
+    el mismo cliente, con su conversación, sus comentarios y su seguimiento. Si ese celular
+    ya era de otro cliente, el cliente no se toca (no se juntan dos personas a ciegas)."""
+    if sesion.scalar(select(Cliente.id).where(Cliente.telefono == usuario)) is not None:
+        if sesion.scalar(select(Cliente.id).where(Cliente.telefono == celular)) is None:
+            sesion.execute(
+                update(Cliente).where(Cliente.telefono == usuario).values(telefono=celular)
+            )
+    for tabla in (MensajeEntrante, MensajeSaliente, Comentario):
+        sesion.execute(update(tabla).where(tabla.telefono == usuario).values(telefono=celular))
+    # Lo que es de una sola conversación (en qué paso iba, la pausa, el seguimiento): si el
+    # celular ya tiene uno, gana el del celular.
+    for tabla in (SesionBot, PausaDelBot, Seguimiento):
+        if sesion.scalar(select(func.count()).select_from(tabla).where(tabla.telefono == celular)):
+            sesion.execute(delete(tabla).where(tabla.telefono == usuario))
+        else:
+            sesion.execute(update(tabla).where(tabla.telefono == usuario).values(telefono=celular))
 
 
 def _lo_que_dice(recibido: Recibido) -> dict[str, Any]:

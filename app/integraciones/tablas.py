@@ -25,6 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.clientes.reglas import CONTACTO_VALIDO, LARGO_DEL_CONTACTO
 from app.db.base import Base, lista_cerrada
 
 
@@ -33,7 +34,7 @@ class MensajeEntrante(Base):
 
     __tablename__ = "mensaje_entrante"
     __table_args__ = (
-        CheckConstraint("telefono ~ '^[0-9]{8,15}$'", name="telefono_solo_digitos"),
+        CheckConstraint(CONTACTO_VALIDO, name="telefono_o_usuario"),
         # Los que faltan por procesar se buscan rápido.
         Index(
             "ix_mensaje_entrante_por_procesar",
@@ -45,7 +46,7 @@ class MensajeEntrante(Base):
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     # Id que pone Meta. Es único: si Meta reenvía el mismo mensaje, el repetido se rechaza.
     id_meta: Mapped[str] = mapped_column(String(128), unique=True)
-    telefono: Mapped[str] = mapped_column(String(15))
+    telefono: Mapped[str] = mapped_column(String(LARGO_DEL_CONTACTO))
     tipo: Mapped[str] = mapped_column(String(30))
     contenido: Mapped[dict[str, Any]] = mapped_column(JSONB)
     recibido_en: Mapped[datetime] = mapped_column(
@@ -71,7 +72,7 @@ class MensajeSaliente(Base):
 
     __tablename__ = "mensaje_saliente"
     __table_args__ = (
-        CheckConstraint("telefono ~ '^[0-9]{8,15}$'", name="telefono_solo_digitos"),
+        CheckConstraint(CONTACTO_VALIDO, name="telefono_o_usuario"),
         CheckConstraint("intentos >= 0", name="intentos_no_negativos"),
         CheckConstraint("estado <> 'enviado' OR enviado_en IS NOT NULL", name="enviado_con_fecha"),
         Index(
@@ -82,7 +83,7 @@ class MensajeSaliente(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
-    telefono: Mapped[str] = mapped_column(String(15))
+    telefono: Mapped[str] = mapped_column(String(LARGO_DEL_CONTACTO))
     cliente_id: Mapped[int | None] = mapped_column(ForeignKey("cliente.id"))
     turno_id: Mapped[int | None] = mapped_column(ForeignKey("turno.id"), index=True)
     # Qué aviso es: llamado, vehiculo_listo, aviso_anticipado... (app.turnos.estados.TipoAviso)

@@ -53,7 +53,7 @@ class Cuando:
 def _sirve(momento: datetime, p: Parametros) -> bool:
     """¿A esa hora se le puede escribir? Que esté abierto y le alcance para venir."""
     local = tiempo.hora_local(momento)
-    cierre = datetime.combine(local.date(), p.hora_cierre, local.tzinfo) - ANTES_DE_CERRAR
+    cierre = reglas.cierre_del_dia(local.date(), p.hora_cierre, local.tzinfo) - ANTES_DE_CERRAR
     return reglas.esta_en_horario(local, p.hora_apertura, p.hora_cierre, p.dias_atencion) and (
         local < cierre
     )

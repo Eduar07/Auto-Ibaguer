@@ -90,8 +90,10 @@ def dias_de_atencion(dias: Iterable[int]) -> str:
 
 
 def horario(dias: Iterable[int], apertura: time, cierre: time) -> str:
-    """ "todos los días de 5:30 a.m. a 7:30 p.m.": cuándo da turnos el bot."""
-    return f"{dias_de_atencion(dias)} de {hora(apertura)} a {hora(cierre)}"
+    """ "todos los días de 5:30 a.m. a 7:30 p.m.": cuándo da turnos el bot. Un cierre a las
+    12:00 a.m. es "a las 12 de la noche"."""
+    hasta = "12 de la noche" if cierre == time(0) else hora(cierre)
+    return f"{dias_de_atencion(dias)} de {hora(apertura)} a {hasta}"
 
 
 # Quien escribe por WhatsApp sin mostrar su celular (tiene nombre de usuario): el sistema
@@ -144,11 +146,14 @@ def dia_corto(dia: date) -> str:
 
 
 def dia_relativo(dia: date, hoy: date) -> str:
-    """ "Hoy", "Ayer", "17 de octubre" o, si fue otro año, "17 de octubre de 2025"."""
+    """ "Hoy", "Ayer", "Mañana" (una reserva), "17 de octubre" o, si es otro año, "17 de
+    octubre de 2025"."""
     if dia == hoy:
         return "Hoy"
     if dia == hoy - timedelta(days=1):
         return "Ayer"
+    if dia == hoy + timedelta(days=1):
+        return "Mañana"
     if dia.year == hoy.year:
         return f"{dia.day} de {MESES[dia.month - 1]}"
     return fecha(dia)

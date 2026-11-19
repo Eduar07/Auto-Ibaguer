@@ -79,6 +79,9 @@ LARGO_DE_CADA_DATO = {
     "lavadas": 15,  # "1234 lavadas"
     "ultima": 30,  # "el 30 de septiembre de 2025"
     "cuando": 20,  # "mañana temprano"
+    "dia_y_hora": 70,  # "lo antes posible (hay puesto libre, puedes venir ya)" o una fecha
+    "dia": 40,  # "el miércoles 25 de noviembre"
+    "recordatorio": 60,  # "Una hora antes te lo recordamos por aquí. "
 }
 
 

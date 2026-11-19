@@ -44,7 +44,8 @@ def test_sin_numero_visible_le_pide_el_celular_y_lo_guarda(sesion: Session):
 
     chat.escribe("315 123 4567")
     assert chat.opciones == ["Automóvil", "Camioneta", "Moto"]  # sigue con el vehículo
-    chat.toca("Moto").toca("Ahora no").toca("Lo decido en el local").toca("Confirmar turno")
+    chat.toca("Moto").toca("Ahora no").toca("Lo decido en el local").toca("Lo antes posible")
+    chat.toca("Confirmar turno")
 
     ana = cliente_de(sesion, USUARIO)
     assert (ana.nombre, ana.celular) == ("Ana Ruiz", "573151234567")
@@ -61,7 +62,8 @@ def test_puede_decir_que_ahora_no(sesion: Session):
     chat = hasta_el_nombre(sesion).escribe("Ana Ruiz").toca("Ahora no")
 
     assert chat.opciones == ["Automóvil", "Camioneta", "Moto"]
-    chat.toca("Moto").toca("Ahora no").toca("Lo decido en el local").toca("Confirmar turno")
+    chat.toca("Moto").toca("Ahora no").toca("Lo decido en el local").toca("Lo antes posible")
+    chat.toca("Confirmar turno")
     assert cliente_de(sesion, USUARIO).celular is None
 
 

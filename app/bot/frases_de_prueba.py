@@ -89,11 +89,16 @@ FRASES: tuple[FraseDePrueba, ...] = (
     FraseDePrueba("ya está lista la moto?", Q.MI_TURNO),
     FraseDePrueba("cuántos tengo adelante", Q.MI_TURNO),
     # --- Cancelar ---
-    FraseDePrueba("ya no voy a poder ir", Q.CANCELAR),
-    FraseDePrueba("me salió un imprevisto, no alcanzo a llegar", Q.CANCELAR),
+    FraseDePrueba("ya no voy a poder ir", Q.CANCELAR, tambien=(Q.REAGENDAR,)),
+    FraseDePrueba(
+        "me salió un imprevisto, no alcanzo a llegar", Q.CANCELAR, tambien=(Q.REAGENDAR,)
+    ),
     FraseDePrueba("quíteme de la fila, ya no voy", Q.CANCELAR),
-    FraseDePrueba("mejor otro día, hoy no puedo", Q.CANCELAR),
     FraseDePrueba("ya no necesito el turno", Q.CANCELAR),
+    # --- Cambiar el día o la hora ---
+    FraseDePrueba("mejor otro día, hoy no puedo", Q.REAGENDAR, tambien=(Q.CANCELAR,)),
+    FraseDePrueba("me cambias el turno para mañana a las 10?", Q.REAGENDAR),
+    FraseDePrueba("puedo llegar más tarde? a eso de las 4", Q.REAGENDAR),
     FraseDePrueba("Quiero cancelar mi turno.", Q.CANCELAR, prueba="I"),
     # En Colombia, cancelar también es pagar.
     FraseDePrueba("puedo cancelar con nequi?", Q.PREGUNTA),

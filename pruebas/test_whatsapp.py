@@ -320,6 +320,7 @@ def test_un_turno_completo_desde_whatsapp_solo_con_botones(
         toca(f"vehiculo.tipo.{automovil}", "Automóvil"),
         toca("placa.no", "Ahora no"),
         toca("servicio.local", "Lo decido en el local", lista=True),
+        toca("cuando.ya", "Lo antes posible", lista=True),
         toca("confirmar.si", "Confirmar turno"),
     ]
     for paso in pasos:

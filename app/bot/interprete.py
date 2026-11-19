@@ -34,6 +34,7 @@ class Intencion(StrEnum):
     PRECIOS = "precios"
     MI_TURNO = "mi_turno"
     CANCELAR = "cancelar"
+    REAGENDAR = "reagendar"  # cambiar el día o la hora de su turno ("ya no puedo hoy")
     LLEGUE = "llegue"  # avisa que ya está en el lavadero
     EN_CAMINO = "en_camino"  # avisa que va para allá
     PICO_Y_PLACA = "pico_y_placa"

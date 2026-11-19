@@ -71,14 +71,27 @@ CONFIGURACION_INICIAL: tuple[tuple[str, Any, str], ...] = (
         "573227556850",
         "Teléfono que da el bot cuando no puede resolver algo",
     ),
-    ("hora_apertura", "05:30", "Desde esta hora el bot da turnos"),
+    ("hora_apertura", "06:30", "Desde esta hora el bot da turnos"),
     (
         "hora_cierre",
-        "19:30",
-        "Desde esta hora el bot deja de dar turnos; la fila que ya existe se atiende igual",
+        "00:00",
+        "Desde esta hora el bot deja de dar turnos (00:00 es a las 12 de la noche); la fila "
+        "que ya existe se atiende igual",
     ),
     ("dias_atencion", [1, 2, 3, 4, 5, 6, 7], "Días en que abre: 1 = lunes ... 7 = domingo"),
     ("gracia_minutos", 15, "Minutos que tiene un cliente llamado para llegar"),
+    (
+        "minutos_entre_horarios",
+        60,
+        "Cada cuántos minutos hay un horario para reservar, desde la hora en que abre",
+    ),
+    ("dias_para_reservar", 7, "Con cuántos días de anticipación se puede reservar"),
+    (
+        "recordar_reserva_minutos",
+        60,
+        "Cuántos minutos antes se le recuerda la reserva (si WhatsApp lo deja: escribió en "
+        "las últimas 24 horas)",
+    ),
     (
         "avisar_cuando_falten",
         2,
@@ -146,9 +159,11 @@ def cargar_datos_iniciales(
     *,
     servicios: tuple[tuple[str, str, str, dict[str, int]], ...] = SERVICIOS,
     duracion: int = DURACION_ESTIMADA_MIN,
+    configuracion: tuple[tuple[str, Any, str], ...] | None = None,
 ) -> dict[str, int]:
     """Carga los datos de Auto Ibaguer y devuelve cuántos registros nuevos creó por tipo.
-    Las pruebas pasan su propio menú (`servicios`, `duracion`)."""
+    Las pruebas pasan su propio menú (`servicios`, `duracion`) y su horario
+    (`configuracion`)."""
     creados = dict.fromkeys(
         ("filas", "puestos", "tipos_de_vehiculo", "servicios", "precios", "parametros"), 0
     )
@@ -196,7 +211,7 @@ def cargar_datos_iniciales(
             )
             creados["precios"] += nuevo
 
-    for clave, valor, descripcion in CONFIGURACION_INICIAL:
+    for clave, valor, descripcion in configuracion or CONFIGURACION_INICIAL:
         _, nuevo = _obtener_o_crear(
             sesion, Configuracion, {"clave": clave}, {"valor": valor, "descripcion": descripcion}
         )

@@ -53,6 +53,28 @@ def _vencer_gracias(abrir: AbrirSesion, ahora: datetime) -> list[str]:
 GRACIAS = Tarea("los tiempos de gracia", _vencer_gracias)
 
 
+# --- Reservas ---------------------------------------------------------------------------------
+
+
+def _reservas(abrir: AbrirSesion, ahora: datetime) -> list[str]:
+    """A las reservas que les llegó la hora, entran a la fila de primero (y si hay un puesto
+    libre, se les llama). A las que les falta una hora, se les recuerda si WhatsApp lo
+    deja. Los mensajes salen con el envío de esta vuelta."""
+    with abrir() as sesion, sesion.begin():
+        entran = casos.activar_reservas(sesion, ahora=ahora)
+    with abrir() as sesion, sesion.begin():
+        recordadas = casos.recordar_reservas(sesion, ahora=ahora)
+    frases = [
+        f"{reserva.numero}: llegó la hora de su reserva, entra a la fila." for reserva in entran
+    ]
+    if recordadas:
+        frases.append(_cuantos(recordadas, "reserva recordada", "reservas recordadas") + ".")
+    return frases
+
+
+RESERVAS = Tarea("las reservas", _reservas)
+
+
 # --- Sesiones del bot ------------------------------------------------------------------------
 
 
@@ -170,7 +192,7 @@ def del_servidor(enviador: Enviador | None) -> list[Tarea]:
     las otras tareas (por ejemplo, el aviso de "pasaste al final"). Sin WhatsApp conectado
     no se envía nada y los mensajes esperan en la bandeja de salida.
     """
-    tareas = [GRACIAS, SESIONES_DEL_BOT, AVISO_AL_DUENO, SEGUIMIENTOS]
+    tareas = [RESERVAS, GRACIAS, SESIONES_DEL_BOT, AVISO_AL_DUENO, SEGUIMIENTOS]
     if enviador is not None:
         tareas += [MENSAJES_OLVIDADOS, enviar_mensajes(enviador)]
     return tareas

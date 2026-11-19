@@ -62,7 +62,7 @@ def test_un_cliente_nuevo_que_ya_dijo_la_moto_y_la_placa_no_las_repite(sesion: S
     # Sin preguntar el vehículo ni la placa: de una vez el servicio.
     assert cliente.texto.startswith("¿Qué servicio quieres para tu moto?")
     assert paso(sesion) == "servicio"
-    cliente.toca("Lo decido en el local")
+    cliente.toca("Lo decido en el local").toca("Lo antes posible")
     assert "*Vehículo:* Moto ABC12D" in cliente.texto
 
 
@@ -85,7 +85,7 @@ def test_si_tiene_carro_y_moto_y_dice_la_moto_usa_la_suya(sesion: Session):
     cliente = chat(sesion, Interpretacion(PIDE_TURNO, vehiculo="Moto"))
 
     cliente.escribe("quiero lavar la moto")
-    cliente.toca("Lo decido en el local")
+    cliente.toca("Lo decido en el local").toca("Lo antes posible")
 
     assert "*Vehículo:* Moto XYZ12A" in cliente.texto
 
@@ -99,7 +99,7 @@ def test_la_placa_que_escribio_elige_entre_sus_vehiculos(sesion: Session):
     cliente = chat(sesion, Interpretacion(PIDE_TURNO, vehiculo="carro"))
 
     cliente.escribe("me separa un turno para el DEF456")
-    cliente.toca("Lo decido en el local")
+    cliente.toca("Lo decido en el local").toca("Lo antes posible")
 
     assert "*Vehículo:* Automóvil DEF456" in cliente.texto
 
@@ -113,7 +113,8 @@ def test_el_servicio_que_nombro_tampoco_se_pregunta(sesion: Session):
 
     cliente.escribe("quiero un general para la camioneta")
 
-    assert paso(sesion) == "confirmar"
+    assert paso(sesion) == "cuando"  # sin preguntar el servicio: cuándo viene
+    cliente.toca("Lo antes posible")
     assert "*Servicio:* General · $140.000" in cliente.texto
 
 
@@ -177,7 +178,7 @@ def test_si_ya_tiene_vehiculos_los_precios_que_vio_no_le_cambian_el_suyo(sesion:
     cliente = Chat(sesion).toca_el_id("menu.precios")
     cliente.toca_el_id(f"precios.{tipo_vehiculo(sesion, 'Moto').id}")
 
-    cliente.toca("Pedir turno").toca("Lo decido en el local")
+    cliente.toca("Pedir turno").toca("Lo decido en el local").toca("Lo antes posible")
 
     assert "*Vehículo:* Automóvil ABC123" in cliente.texto  # el suyo, como siempre
 
@@ -189,6 +190,7 @@ def test_al_cambiar_datos_en_el_resumen_ya_lo_elige_el(sesion: Session):
     entendido = Interpretacion(PIDE_TURNO, vehiculo="Camioneta", servicio="General")
     cliente = chat(sesion, entendido)
     cliente.escribe("quiero un general para la camioneta")
+    cliente.toca("Lo antes posible")
 
     cliente.toca("Cambiar datos")
 

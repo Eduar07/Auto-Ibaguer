@@ -32,12 +32,16 @@ VA_EN = {
     "nombre": "Va pidiendo turno: el bot le preguntó el nombre.",
     "vehiculo": "Va pidiendo turno: el bot le preguntó el vehículo.",
     "placa": "Va pidiendo turno: el bot le preguntó la placa.",
+    "celular": "Va pidiendo turno: el bot le preguntó a qué celular llamarlo.",
     "servicio": "Va pidiendo turno: está eligiendo el servicio.",
+    "cuando": "Va pidiendo turno: está eligiendo cuándo viene.",
+    "hora": "Va pidiendo turno: está eligiendo la hora de su reserva.",
     "confirmar": "Va pidiendo turno: le falta confirmarlo.",
     "segundo_turno": "Quiso pedir otro turno en una fila donde ya tiene uno.",
     "precios": "Está mirando los precios.",
     "cancelar": "El bot le preguntó si cancela su turno.",
     "seguimiento": "Dijo «lo pienso»: el bot le preguntó si le escribe después.",
+    "reagendar": "Quiere cambiar la hora de su turno: el bot le preguntó cuál.",
 }
 NOMBRE_DEL_COMENTARIO = {
     TipoComentario.QUEJA: "Queja",

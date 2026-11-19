@@ -130,6 +130,9 @@ def _valores_guardados(sesion: Session, filas: list[FilaEnConfiguracion]) -> dic
         "gracia_minutos": str(int(parametros.gracia.total_seconds() // 60)),
         "avisar_cuando_falten": str(parametros.avisar_cuando_falten),
         "sesion_bot_minutos": str(int(parametros.sesion_bot.total_seconds() // 60)),
+        "minutos_entre_horarios": str(int(parametros.entre_horarios.total_seconds() // 60)),
+        "dias_para_reservar": str(parametros.dias_para_reservar),
+        "recordar_reserva_minutos": str(int(parametros.recordar_reserva.total_seconds() // 60)),
         "aviso_datos": parametros.aviso_datos,
         "gemini_activo": parametros.gemini_activo,
         "bot_ve_fotos": parametros.bot_ve_fotos,
@@ -214,6 +217,9 @@ async def guardar(request: Request, sesion: SesionBD, _: Admin) -> Response:
             "ficha_negocio",
         )
     }
+    for clave in configuracion.LIMITES_DE_LAS_RESERVAS:
+        if clave in formulario:
+            parametros[clave] = formulario.get(clave, "")
     parametros["dias_atencion"] = formulario.getlist("dias_atencion")
     parametros["bot_activo"] = formulario.get("bot_activo") == "si"
     parametros["gemini_activo"] = formulario.get("gemini_activo") == "si"

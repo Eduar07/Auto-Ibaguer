@@ -62,10 +62,10 @@ TEXTOS: dict[str, str] = {
     "error_interno": "Tuvimos un problema para atenderte. Intenta de nuevo en un momento o "
     "llama al {telefono}.",
     # --- Cuando no se dan turnos ---
-    "fuera_de_horario": "Por WhatsApp damos turnos {horario}, así que ahora no podemos "
-    "darte uno. Abrimos {apertura}. Mientras tanto te puedo contar los precios.",
+    "fuera_de_horario": "Por WhatsApp damos turnos {horario}, así que ahora no hay fila. "
+    "Abrimos {apertura}. Si quieres, desde ya te reservo el día y la hora que te queden bien.",
     "fila_fuera_de_horario": "Ahora estamos cerrados. Abrimos {apertura}: a esa hora te "
-    "cuento cómo va la fila.",
+    "cuento cómo va la fila. Si quieres, desde ya te reservo un turno.",
     "bot_apagado": "Hoy no estamos dando turnos por WhatsApp. Puedes venir directamente al "
     "local o llamar al {telefono}.",
     # --- Aviso de datos ---
@@ -89,13 +89,37 @@ TEXTOS: dict[str, str] = {
     "escríbela otra vez, o toca *Ahora no* y lo resolvemos en el local.",
     "pedir_servicio": "¿Qué servicio quieres para tu {vehiculo}? El pago es en el local.",
     "servicio_no_disponible": "Ese servicio ya no está disponible. Elige otro, por favor.",
+    # --- Cuándo viene: lo antes posible o un día y una hora ---
+    "pedir_cuando": "¿Cuándo quieres venir? Puede ser lo antes posible o el día y la hora que "
+    "te queden bien.",
+    "pedir_cuando_cerrado": "Ahora estamos cerrados (abrimos {apertura}), pero te reservo el "
+    "turno de una vez. ¿Qué día quieres venir?",
+    "reagendar_cuando": "Claro. ¿Para cuándo movemos tu turno *{numero}*?",
+    "pedir_hora": "Estas son las horas libres para {dia}. ¿A qué hora vienes?",
+    "hora_no_disponible": "A esa hora ya no tenemos cupo.",
+    "hora_muy_pronto": "Para hoy reservamos con al menos {minutos} minutos de anticipación.",
+    "hora_no_exacta": "A esa hora no tenemos turno, pero mira las más cercanas.",
+    "dia_sin_horarios": "Ese día no tenemos horas libres.",
+    "dia_fuera_de_rango": "Reservamos hasta {dias} días adelante.",
+    "sin_horarios": "Por ahora no tenemos horas libres para reservar. Llama al {telefono} y "
+    "te ayudamos.",
     "resumen": "Revisa tu turno:\n\n*Nombre:* {nombre}\n*Vehículo:* {vehiculo}\n"
-    "*Servicio:* {servicio}\n*Fila de {fila}:* {como_va}\n\n¿Lo reservamos?",
+    "*Servicio:* {servicio}\n*Cuándo:* {dia_y_hora}\n\n¿Lo reservamos?",
     "mejor_no": "Listo, no reservamos nada. Cuando quieras, aquí estamos.",
     "turno_confirmado": "¡Listo, {nombre}! Tu turno es *{numero}*.\n\n{situacion}\n\n"
     "Cuando te llamemos tienes {gracia} minutos para llegar. Si no llegas, pasas al final de "
     "la fila, y la segunda vez pierdes el turno. Escribe *mi turno* para ver cómo vas o "
     "*cancelar* si no puedes venir.",
+    "reserva_confirmada": "¡Listo, {nombre}! Tu turno *{numero}* quedó reservado para "
+    "{dia_y_hora}.\n\nA esa hora entras de primero. Tienes {gracia} minutos para llegar; si "
+    "no llegas, pierdes la reserva y pasas al final de la fila. {recordatorio}Si no puedes "
+    "venir, toca *Cambiar hora* o escribe *cancelar*.",
+    "reagendado": "¡Listo! Tu turno *{numero}* quedó para {dia_y_hora}. Te esperamos.",
+    "reagendado_otro_numero": "¡Listo! Movimos tu turno para {dia_y_hora}. Como cambió de "
+    "día, ahora es el *{numero}*. Te esperamos.",
+    "reagendar_cual": "¿A cuál turno le cambiamos la hora?",
+    "no_se_puede_reagendar": "Tu turno *{numero}* ya está en el local, así que eso se "
+    "resuelve allá. Si necesitas algo, llama al {telefono}.",
     "confirmado_llamado": "Hay un puesto libre: ven ya. Tienes hasta {hora} para llegar.",
     "confirmado_cerca": "Ya casi te toca ({adelante}): sal hacia el lavadero.",
     "confirmado_en_fila": "{adelante_mayuscula}{espera}. Te avisamos por aquí cuando falten "
@@ -116,6 +140,7 @@ TEXTOS: dict[str, str] = {
     "precios": "Servicios para {vehiculo}:\n\n{servicios}\n\nEl pago es en el local.",
     # --- Mi turno ---
     "sin_turno": "No tienes turnos activos. ¿Quieres pedir uno?",
+    "mi_turno_reservado": "Tu turno *{numero}* ({fila}): reservado para {dia_y_hora}.",
     "mi_turno_en_fila": "Tu turno *{numero}* ({fila}): {adelante}{espera}.",
     "mi_turno_llamado": "Tu turno *{numero}* ({fila}): ¡ya te estamos llamando! Tienes hasta "
     "{hora} para llegar.",
@@ -225,6 +250,8 @@ TEXTOS: dict[str, str] = {
     "*{turno}*. Si todavía quieres lavar tu vehículo, pide un turno nuevo.",
     "aviso_vehiculo_listo": "¡Tu vehículo está listo (turno *{turno}*)! Ya puedes recogerlo y "
     "pagar en el local. Gracias por elegir {negocio}.",
+    "aviso_recordatorio": "¡Hola! Te recordamos tu turno *{turno}*: te esperamos {dia_y_hora}. "
+    "Si no puedes venir, toca *Cambiar hora* o *Cancelar*.",
 }
 
 # Con Gemini, estos el bot los dice con sus palabras según la conversación, para no saludar
@@ -266,6 +293,15 @@ BOTONES: dict[str, str] = {
     "responder_si": "Sí, que me responda",
     "responder_no": "No, gracias",
     "escribeme": "Sí, escríbeme",
+    "reservar": "Reservar turno",
+    "cambiar_hora": "Cambiar hora",
+    "cancelar_turno": "Cancelar",
+    "cancelar_el_turno": "Cancelar el turno",
+    "lo_antes_posible": "Lo antes posible",
+    "ver_dias": "Ver días",
+    "ver_horas": "Ver horas",
+    "mas_horas": "Más tarde",
+    "otro_dia": "Otro día",
 }
 
 # El dibujito de cada tipo de vehículo en los botones: así se reconoce de un vistazo.
@@ -374,4 +410,12 @@ def botones_del_llamado() -> tuple[Opcion, ...]:
     return (
         Opcion("turno.en_camino", BOTONES["en_camino"]),
         Opcion("turno.llegue", BOTONES["llegue"]),
+    )
+
+
+def botones_de_la_reserva() -> tuple[Opcion, ...]:
+    """Lo que puede hacer alguien con su reserva: cambiarle la hora o cancelarla."""
+    return (
+        Opcion("turno.cambiar", BOTONES["cambiar_hora"]),
+        Opcion("turno.cancelar", BOTONES["cancelar_turno"]),
     )

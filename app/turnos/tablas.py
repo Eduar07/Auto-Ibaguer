@@ -46,6 +46,9 @@ class Turno(Base):
             "estado <> 'llamado' OR (llamado_en IS NOT NULL AND gracia_hasta IS NOT NULL)",
             name="llamado_con_hora_limite",
         ),
+        CheckConstraint(
+            "estado <> 'reservado' OR hora_reservada IS NOT NULL", name="reservado_con_hora"
+        ),
         # Un puesto no puede tener dos vehículos lavándose al mismo tiempo, aunque dos
         # personas toquen "Pasar a puesto" en el mismo segundo.
         Index(
@@ -60,6 +63,13 @@ class Turno(Base):
             "fila_id",
             "en_fila_desde",
             postgresql_where=text("estado IN ('en_fila', 'llamado', 'llego')"),
+        ),
+        # El reloj busca cada vuelta las reservas a las que ya les llegó la hora (o la del
+        # recordatorio).
+        Index(
+            "ix_turno_reservas",
+            "hora_reservada",
+            postgresql_where=text("estado = 'reservado'"),
         ),
         # El reloj busca cada 30 segundos los llamados cuyo tiempo de gracia ya venció.
         Index(
@@ -101,6 +111,13 @@ class Turno(Base):
     aviso_anticipado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     llamado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     gracia_hasta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # El día y la hora que reservó (Reservado). A esa hora entra a la fila de primero, con
+    # `prioridad`. Si no llega a tiempo, pierde la reserva: las dos se borran y queda al
+    # final de la fila, como cualquiera.
+    hora_reservada: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    prioridad: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # Cuándo se le recordó la reserva (una vez). Vuelve a vacío si cambia la hora.
+    recordado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Cuándo entró al puesto. Con la hora de Listo da la duración real del lavado.
     en_lavado_desde: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

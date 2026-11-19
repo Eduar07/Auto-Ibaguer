@@ -505,14 +505,19 @@ def test_si_tiene_un_solo_vehiculo_los_precios_son_de_ese(sesion: Session):
     assert cliente.texto.startswith("Servicios para moto:")
 
 
-def test_ya_no_voy_a_poder_ir_pregunta_antes_de_cancelar(sesion: Session):
+def test_ya_no_voy_a_poder_ir_ofrece_otro_dia_o_cancelar(sesion: Session):
+    """Quien dice que ya no puede, puede querer otro día: se le ofrece cambiar la hora y,
+    al final de la lista, cancelar. Nada se cancela solo."""
     por_whatsapp(sesion, vehiculo=cliente_con_vehiculo(sesion, telefono=CELULAR))
     cliente = chat(sesion, Interpretacion(Q.CANCELAR))
 
     cliente.escribe("ya no voy a poder ir")
 
+    assert cliente.texto == "Claro. ¿Para cuándo movemos tu turno *C-01*?"
+    assert cliente.opciones[0] == "Hoy" and cliente.opciones[-1] == "Cancelar el turno"
+    cliente.toca("Cancelar el turno")
     assert cliente.texto.startswith("¿Seguro que quieres cancelar tu turno *C-01*?")
-    assert cliente.opciones == ["Sí, cancelar", "No, mantenerlo"]  # nada se cancela solo
+    assert cliente.opciones == ["Sí, cancelar", "No, mantenerlo"]
 
 
 @pytest.mark.parametrize(
@@ -622,6 +627,8 @@ def test_escribir_el_servicio_con_sus_palabras_lo_elige(sesion: Session):
     cliente.toca("Automóvil").toca("Ahora no")
 
     cliente.escribe("el que trae cera")
+    assert paso(sesion) == "cuando"
+    cliente.toca("Lo antes posible")
 
     assert "*Servicio:* Encerado" in cliente.texto
     assert paso(sesion) == "confirmar"
@@ -694,6 +701,7 @@ def test_en_el_resumen_el_si_que_entiende_gemini_confirma(sesion: Session):
     cliente_con_vehiculo(sesion, telefono=CELULAR, placa="ABC123")
     cliente = chat(sesion, Interpretacion(Q.PEDIR_TURNO, si_o_no=SI))
     cliente.escribe("mi turno").toca("Pedir turno").toca("Lo decido en el local")
+    cliente.toca("Lo antes posible")
 
     cliente.escribe("hágale pues mijo, resérvemelo")
 

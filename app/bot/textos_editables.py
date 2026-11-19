@@ -54,11 +54,16 @@ DATOS: dict[str, str] = {
     "lavadas": "cuántas lavadas lleva (por ejemplo, 7 lavadas)",
     "ultima": "cuándo fue su última lavada (hoy, ayer, el sábado...)",
     "cuando": "cuándo se le escribe: mañana temprano o más tarde",
+    "dia_y_hora": "cuándo viene: lo antes posible o el día y la hora que reservó",
+    "dia": "el día que eligió para reservar",
+    "recordatorio": "si se le recuerda la reserva por aquí, y cuánto antes",
 }
 
 _MENU = (BOTONES["pedir"], BOTONES["fila"], BOTONES["precios"])
 _FILA_Y_PRECIOS = (BOTONES["fila"], BOTONES["precios"])
 _LLAMADO = (BOTONES["en_camino"], BOTONES["llegue"])
+_RESERVA = (BOTONES["cambiar_hora"], BOTONES["cancelar_turno"])
+_RESERVAR_Y_PRECIOS = (BOTONES["reservar"], BOTONES["precios"])
 _PERMISO = (BOTONES["responder_si"], BOTONES["responder_no"])
 
 
@@ -183,16 +188,17 @@ GRUPOS: tuple[Grupo, ...] = (
             Editable(
                 "fuera_de_horario",
                 "Fuera del horario",
-                "Cuando piden turno fuera del horario de atención.",
+                "Si el local cierra mientras piden turno «lo antes posible»: se le ofrece "
+                "reservar.",
                 opcionales=frozenset({"horario", "apertura"}),
-                botones=(BOTONES["precios"],),
+                botones=_RESERVAR_Y_PRECIOS,
             ),
             Editable(
                 "fila_fuera_de_horario",
                 "La fila, con el local cerrado",
                 "Cuando preguntan por la fila fuera del horario: no se dice «puedes venir ya».",
                 opcionales=frozenset({"apertura"}),
-                botones=(BOTONES["precios"],),
+                botones=_RESERVAR_Y_PRECIOS,
             ),
             Editable(
                 "bot_apagado",
@@ -246,12 +252,45 @@ GRUPOS: tuple[Grupo, ...] = (
                 lista=BOTONES["ver_servicios"],
             ),
             Editable(
+                "pedir_cuando",
+                "Pregunta cuándo viene",
+                "Después del servicio: lo antes posible (si está abierto) o un día para reservar.",
+                lista=BOTONES["ver_dias"],
+            ),
+            Editable(
+                "pedir_cuando_cerrado",
+                "Pregunta cuándo viene, con el local cerrado",
+                "Igual que la anterior, fuera del horario: solo puede reservar.",
+                opcionales=frozenset({"apertura"}),
+                lista=BOTONES["ver_dias"],
+            ),
+            Editable(
+                "pedir_hora",
+                "Pregunta la hora",
+                "Con las horas libres del día que eligió.",
+                lista=BOTONES["ver_horas"],
+            ),
+            Editable(
                 "resumen",
                 "Resumen antes de confirmar",
                 "Lo último antes de reservar: el cliente revisa sus datos.",
                 maximo=400,
                 botones=(BOTONES["confirmar"], BOTONES["cambiar"], BOTONES["mejor_no"]),
                 ejemplos={"vehiculo": "Automóvil ABC123", "nombre": "Ana Ruiz"},
+            ),
+            Editable(
+                "reserva_confirmada",
+                "Reserva confirmada",
+                "Cuando confirma un turno para un día y una hora.",
+                opcionales=frozenset({"nombre", "gracia", "recordatorio"}),
+                maximo=600,
+                botones=_RESERVA,
+            ),
+            Editable(
+                "reagendado",
+                "Cambió la hora",
+                "Cuando elige otra hora para su turno.",
+                botones=_RESERVA,
             ),
             Editable(
                 "turno_confirmado",
@@ -299,6 +338,14 @@ GRUPOS: tuple[Grupo, ...] = (
                 "Mi turno, sin turnos",
                 "Cuando escribe mi turno y no tiene turnos activos.",
                 botones=(BOTONES["pedir"], BOTONES["fila"]),
+            ),
+            Editable(
+                "mi_turno_reservado",
+                "Mi turno: reservado",
+                "Cuando escribe mi turno y tiene una reserva.",
+                opcionales=frozenset({"fila"}),
+                maximo=300,
+                botones=_RESERVA,
             ),
             Editable(
                 "mi_turno_en_fila",
@@ -374,6 +421,13 @@ GRUPOS: tuple[Grupo, ...] = (
         "avisos",
         "Avisos de la fila",
         (
+            Editable(
+                "aviso_recordatorio",
+                "Recordatorio de la reserva",
+                "Antes de la hora de su reserva (lo que digas en Configuración), si escribió en "
+                "las últimas 24 horas: si no, WhatsApp no deja escribirle.",
+                botones=_RESERVA,
+            ),
             Editable(
                 "aviso_anticipado",
                 "Ya casi le toca",
@@ -696,6 +750,9 @@ def ejemplos(parametros: Parametros) -> dict[str, object]:
         "lavadas": "7 lavadas",
         "ultima": "el sábado",
         "cuando": "mañana temprano",
+        "dia_y_hora": "el viernes 20 de noviembre a las 10:30 a.m.",
+        "dia": "el viernes 20 de noviembre",
+        "recordatorio": "Una hora antes te lo recordamos por aquí. ",
     }
 
 

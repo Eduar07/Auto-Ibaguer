@@ -182,9 +182,17 @@ def test_un_turno_sin_placa_ni_servicio_de_punta_a_punta(sesion: Session):
     assert lista.opciones[0].descripcion.startswith("$40.000 · Lavado exterior")
     chat.toca("Lo decido en el local")
     assert chat.texto == (
+        "¿Cuándo quieres venir? Puede ser lo antes posible o el día y la hora que te queden bien."
+    )
+    [cuando] = [m.lista for m in chat.ultimas]
+    assert cuando.opciones[0].titulo == "Lo antes posible"
+    assert cuando.opciones[0].descripcion == "Hoy: hay puesto libre, puedes venir ya"
+    assert [o.titulo for o in cuando.opciones[1:3]] == ["Hoy", "Mañana"]
+    chat.toca("Lo antes posible")
+    assert chat.texto == (
         "Revisa tu turno:\n\n*Nombre:* Laura Gómez\n*Vehículo:* Automóvil, placa pendiente\n"
-        "*Servicio:* lo decides en el local\n*Fila de carros:* hay puesto libre, puedes venir ya"
-        "\n\n¿Lo reservamos?"
+        "*Servicio:* lo decides en el local\n*Cuándo:* lo antes posible (fila de carros: hay "
+        "puesto libre, puedes venir ya)\n\n¿Lo reservamos?"
     )
     assert turnos_de(sesion) == []  # nada se reserva antes de confirmar
 
@@ -214,7 +222,8 @@ def test_con_la_fila_llena_dice_cuantos_tiene_adelante(sesion: Session):
         por_whatsapp(sesion)
     chat = Chat(sesion).toca_el_id("menu.pedir").toca("Acepto").escribe("Pedro")
 
-    chat.toca("Camioneta").escribe("klm-482").toca("General").toca("Confirmar turno")
+    chat.toca("Camioneta").escribe("klm-482").toca("General").toca("Lo antes posible")
+    chat.toca("Confirmar turno")
 
     assert "Tu turno es *C-06*." in chat.texto
     assert "Tienes 3 turnos adelante; entras en aprox. 2 h." in chat.texto
@@ -230,7 +239,8 @@ def test_si_queda_cerca_le_pide_salir_ya(sesion: Session):
     por_whatsapp(sesion)
     chat = Chat(sesion).toca_el_id("menu.pedir").toca("Acepto").escribe("Pedro")
 
-    chat.toca("Automóvil").toca("Ahora no").toca("Básico").toca("Confirmar turno")
+    chat.toca("Automóvil").toca("Ahora no").toca("Básico").toca("Lo antes posible")
+    chat.toca("Confirmar turno")
 
     assert "Ya casi te toca (tienes 1 turno adelante): sal hacia el lavadero." in chat.texto
 
@@ -277,14 +287,15 @@ def test_a_un_cliente_conocido_no_le_repite_nombre_ni_vehiculo(sesion: Session):
     chat = Chat(sesion).escribe("hola").toca("Pedir turno")
 
     assert chat.texto.startswith("¿Qué servicio quieres para tu automóvil?")
-    chat.toca("Encerado")
+    chat.toca("Encerado").toca("Lo antes posible")
     assert "*Nombre:* Ana Ruiz\n*Vehículo:* Automóvil ABC123\n*Servicio:* Encerado · $60.000" in (
         chat.texto
     )
     # Si trae otro vehículo, lo cambia en el resumen.
     chat.toca("Cambiar datos")
     assert chat.opciones == ["Automóvil ABC123", "Otro vehículo"]
-    chat.toca("Otro vehículo").toca("Moto").escribe("qwe45r").toca("Básico").toca("Confirmar turno")
+    chat.toca("Otro vehículo").toca("Moto").escribe("qwe45r").toca("Básico")
+    chat.toca("Lo antes posible").toca("Confirmar turno")
     [turno] = turnos_de(sesion)
     assert sesion.get(Vehiculo, turno.vehiculo_id).placa == "QWE45R"
     assert "Tu turno es *M-01*." in chat.texto  # la moto va en la fila de motos
@@ -310,7 +321,7 @@ def test_se_puede_escribir_la_opcion_en_vez_de_tocarla(sesion: Session):
 
     chat.escribe("Sí").escribe("Ana").escribe("moto").escribe("ahora no")
     assert chat.texto.startswith("¿Qué servicio quieres para tu moto?")
-    chat.escribe("básico").escribe("dale")
+    chat.escribe("básico").escribe("lo antes posible").escribe("dale")
 
     assert "Tu turno es *M-01*." in chat.texto
 
@@ -327,7 +338,7 @@ def test_si_escribe_otra_cosa_le_repite_la_pregunta(sesion: Session):
 def test_mejor_no_no_reserva_nada(sesion: Session):
     chat = Chat(sesion).toca_el_id("menu.pedir").toca("Acepto").escribe("Ana").toca("Moto")
 
-    chat.toca("Ahora no").toca("Básico").toca("Mejor no")
+    chat.toca("Ahora no").toca("Básico").toca("Lo antes posible").toca("Mejor no")
 
     assert chat.texto == "Listo, no reservamos nada. Cuando quieras, aquí estamos."
     assert turnos_de(sesion) == []
@@ -336,7 +347,7 @@ def test_mejor_no_no_reserva_nada(sesion: Session):
 
 def test_un_boton_viejo_no_pide_otro_turno(sesion: Session):
     chat = Chat(sesion).toca_el_id("menu.pedir").toca("Acepto").escribe("Ana").toca("Moto")
-    chat.toca("Ahora no").toca("Básico").toca("Confirmar turno")
+    chat.toca("Ahora no").toca("Básico").toca("Lo antes posible").toca("Confirmar turno")
 
     chat.toca_el_id("confirmar.si")  # el mismo botón, tocado otra vez
 
@@ -347,36 +358,38 @@ def test_un_boton_viejo_no_pide_otro_turno(sesion: Session):
 # --- Cuando no se dan turnos ---------------------------------------------------------------
 
 
-def test_fuera_de_horario_no_da_turno_ni_dice_que_venga_ya(sesion: Session):
+def test_fuera_de_horario_solo_reserva_y_nunca_dice_que_venga_ya(sesion: Session):
     noche = LUNES_8AM.replace(hour=20)
     chat = Chat(sesion, ahora=noche).escribe("hola").toca("Pedir turno")
+    assert "¿Aceptas?" in chat.texto  # sí se puede pedir: para reservar
+
+    chat.toca("Acepto").escribe("Ana").toca("Moto").toca("Ahora no").toca("Básico")
 
     assert chat.texto == (
-        "Por WhatsApp damos turnos todos los días de 5:30 a.m. a 7:30 p.m., así que ahora no "
-        "podemos darte uno. Abrimos mañana a las 5:30 a.m. Mientras tanto te puedo contar los "
-        "precios."
+        "Ahora estamos cerrados (abrimos mañana a las 5:30 a.m.), pero te reservo el turno de "
+        "una vez. ¿Qué día quieres venir?"
     )
-    assert chat.opciones == ["Servicios y precios"]
+    assert "Lo antes posible" not in chat.opciones
+    assert chat.opciones[0] == "Mañana"
     # La fila de noche: los puestos siguen "libres" en el sistema, pero el local está
-    # cerrado. Nunca "puedes venir ya".
-    chat.escribe("está muy lleno?")
+    # cerrado. Nunca "puedes venir ya"; sí puede reservar.
+    chat.toca_el_id("menu.fila")
     assert chat.texto == (
         "Ahora estamos cerrados. Abrimos mañana a las 5:30 a.m.: a esa hora te cuento cómo va "
-        "la fila."
+        "la fila. Si quieres, desde ya te reservo un turno."
     )
+    assert chat.opciones == ["Reservar turno", "Servicios y precios"]
     assert "puedes venir ya" not in chat.texto
-    madrugada = Chat(sesion, ahora=LUNES_8AM.replace(hour=4)).toca_el_id("menu.pedir")
-    assert "Abrimos hoy a las 5:30 a.m." in madrugada.texto
 
 
 def test_de_noche_sin_gemini_quiero_un_basico_no_es_no_te_entendi(sesion: Session):
     """Lo que pasó la primera noche con WhatsApp: vio los precios, escribió "Quiero un
-    básico" y el bot no entendió."""
+    básico" y el bot no entendió. Ahora empieza el turno, para reservar."""
     noche = LUNES_8AM.replace(hour=22, minute=37)
     chat = Chat(sesion, ahora=noche).escribe("hola").toca("Servicios y precios")
     chat.toca("Automóvil").escribe("Quiero un básico")
 
-    assert chat.texto.startswith("Por WhatsApp damos turnos todos los días")
+    assert chat.texto == leer_parametros(sesion).aviso_datos
     assert "no te entendí" not in chat.texto
 
 
@@ -431,7 +444,7 @@ def test_puede_tener_un_turno_de_carro_y_otro_de_moto(sesion: Session):
     assert chat.texto.startswith("Ya tienes el turno *C-01* en la fila de carros")
 
     chat.toca("Mantenerlo").toca_el_id("menu.pedir").toca("Moto sin placa")
-    chat.toca("Ahora no").toca("Básico").toca("Confirmar turno")
+    chat.toca("Ahora no").toca("Básico").toca("Lo antes posible").toca("Confirmar turno")
     assert "Tu turno es *M-01*." in chat.texto
     assert len(turnos_de(sesion)) == 2
 
@@ -498,7 +511,7 @@ def test_mi_turno_dice_como_va(sesion: Session):
     assert chat.texto == (
         f"Tu turno *{nuevo.numero}* (carros): tienes 1 turno adelante; entras en aprox. 1 h."
     )
-    assert chat.opciones == []
+    assert chat.opciones == ["Cambiar hora", "Cancelar"]  # si ya no alcanza a venir
 
 
 def test_cancelar_pregunta_antes_y_la_fila_avanza(sesion: Session):
@@ -696,6 +709,7 @@ def test_otro_dia_el_consecutivo_vuelve_a_empezar_tambien_por_whatsapp(sesion: S
     martes = LUNES_8AM + timedelta(days=1)
     chat = Chat(sesion, ahora=martes).toca_el_id("menu.pedir").toca("Acepto").escribe("Ana")
 
-    chat.toca("Moto").toca("Ahora no").toca("Básico").toca("Confirmar turno")
+    chat.toca("Moto").toca("Ahora no").toca("Básico").toca("Lo antes posible")
+    chat.toca("Confirmar turno")
 
     assert "Tu turno es *M-01*." in chat.texto

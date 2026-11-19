@@ -28,6 +28,8 @@ def sigue_vigente(sesion: Session, mensaje: MensajeSaliente, ahora: datetime) ->
         gracia_hasta=turno.gracia_hasta,
         gracia_del_aviso=_fecha(mensaje.contenido.get("gracia_hasta")),
         ahora=ahora,
+        hora_reservada=turno.hora_reservada,
+        hora_del_aviso=_fecha(mensaje.contenido.get("hora_reservada")),
     )
 
 

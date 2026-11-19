@@ -74,6 +74,11 @@ TEXTOS: dict[str, str] = {
     # --- Pedir turno ---
     "pedir_nombre": "¿A nombre de quién hacemos el turno?",
     "nombre_invalido": "No alcancé a leer el nombre. ¿Me lo escribes otra vez?",
+    "pedir_celular": "Tu WhatsApp no nos muestra tu número. ¿A qué celular te podemos llamar "
+    "si hace falta (por ejemplo, cuando tu vehículo esté listo)? Si prefieres no darlo, toca "
+    "*Ahora no*.",
+    "celular_invalido": "Ese celular no me cuadra. Escríbelo con sus 10 dígitos (por ejemplo, "
+    "315 123 4567) o toca *Ahora no*.",
     "pedir_vehiculo": "¿Qué vehículo traes?",
     "pedir_vehiculo_conocido": "¿Para cuál vehículo es el turno?",
     "pedir_placa": "¿Cuál es la placa de tu {vehiculo}? La pedimos por seguridad: así te "
@@ -262,6 +267,29 @@ BOTONES: dict[str, str] = {
     "responder_no": "No, gracias",
     "escribeme": "Sí, escríbeme",
 }
+
+# El dibujito de cada tipo de vehículo en los botones: así se reconoce de un vistazo.
+EMOJI_DEL_VEHICULO = {
+    "automóvil": "🚗",
+    "automovil": "🚗",
+    "carro": "🚗",
+    "camioneta": "🚙",
+    "moto": "🏍️",
+    "motocicleta": "🏍️",
+}
+# WhatsApp corta lo que no cabe: un botón muestra hasta 20 caracteres.
+LARGO_DE_UN_BOTON = 20
+
+
+def con_emoji(tipo_vehiculo: str, titulo: str | None = None) -> str:
+    """ "Moto" -> "🏍️ Moto". Con `titulo` ("Moto ABC12D"), el dibujito del tipo delante del
+    título, si cabe en un botón. Un tipo que no está en la lista queda tal cual."""
+    titulo = titulo or tipo_vehiculo
+    emoji = EMOJI_DEL_VEHICULO.get(tipo_vehiculo.strip().lower())
+    if emoji is None:
+        return titulo
+    adornado = f"{emoji} {titulo}"
+    return adornado if len(adornado) <= LARGO_DE_UN_BOTON else titulo
 
 
 def huecos(plantilla: str) -> list[str]:

@@ -219,10 +219,17 @@ GRUPOS: tuple[Grupo, ...] = (
                 "A un cliente nuevo, después de aceptar el aviso de datos.",
             ),
             Editable(
+                "pedir_celular",
+                "Pregunta por el celular",
+                "Solo a quien escribe sin mostrar su número (tiene nombre de usuario en "
+                "WhatsApp), para poder llamarlo. Puede contestar Ahora no.",
+                botones=(BOTONES["ahora_no"],),
+            ),
+            Editable(
                 "pedir_vehiculo",
                 "Pregunta por el vehículo",
                 "Cuando el bot todavía no sabe qué vehículo trae.",
-                botones=("Automóvil", "Camioneta", "Moto"),
+                botones=("🚗 Automóvil", "🚙 Camioneta", "🏍️ Moto"),
             ),
             Editable(
                 "pedir_placa",

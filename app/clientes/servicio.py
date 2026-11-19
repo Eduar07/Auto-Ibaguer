@@ -290,6 +290,7 @@ def borrar_datos(sesion: Session, cliente_id: int, *, ahora: datetime | None = N
         vehiculo.placa = None
     cliente.nombre = NOMBRE_BORRADO
     cliente.telefono = None
+    cliente.celular = None
     cliente.acepta_datos = False
     cliente.fecha_aceptacion = None
     cliente.datos_borrados_en = ahora

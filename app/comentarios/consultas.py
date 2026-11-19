@@ -37,6 +37,8 @@ class ComentarioEnLista:
     # Si el administrador le está respondiendo: hasta qué hora el bot no le contesta.
     pausa_hasta: datetime | None = None
     resumen: str | None = None  # qué pide, en una línea (de Gemini)
+    # A qué celular llamarlo: su teléfono, o el que dio si escribe sin mostrar su número.
+    llamar_a: str | None = None
 
     @property
     def atendido(self) -> bool:
@@ -78,6 +80,7 @@ def _consulta(ahora: datetime | None) -> Select:
         select(
             Comentario,
             Cliente.nombre,
+            Cliente.celular,
             Fila.prefijo,
             Turno.consecutivo,
             Turno.fecha,
@@ -97,6 +100,7 @@ def _consulta(ahora: datetime | None) -> Select:
 def _en_lista(
     comentario: Comentario,
     cliente: str | None,
+    celular: str | None,
     prefijo: str | None,
     consecutivo: int | None,
     turno_fecha: date | None,
@@ -119,4 +123,11 @@ def _en_lista(
         atendido_por=atendido_por,
         pausa_hasta=pausa_hasta,
         resumen=comentario.resumen,
+        llamar_a=_a_que_celular(comentario.telefono, celular),
     )
+
+
+def _a_que_celular(telefono: str | None, celular: str | None) -> str | None:
+    if telefono and telefono.isdigit():
+        return telefono
+    return celular

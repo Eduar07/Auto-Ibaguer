@@ -16,11 +16,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, Response
+from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.config import obtener_entorno
 from app.db.sesion import AbrirSesion, abrir_sesion
-from app.integraciones import bandeja_entrada, bandeja_salida, whatsapp
+from app.integraciones import bandeja_entrada, bandeja_salida, diagnostico, whatsapp
 from app.integraciones.bandeja_salida import Enviador
 from app.web.comun import SesionBD
 
@@ -81,13 +82,17 @@ def recibir_de_whatsapp(
     firma = request.headers.get("x-hub-signature-256")
     if not whatsapp.firma_valida(cuerpo, firma, entorno.whatsapp_secreto_app):
         logger.warning("Llegó un aviso al webhook de WhatsApp sin una firma válida: se descartó.")
+        _anotar_rechazo(sesion, diagnostico.FIRMA_INVALIDA)
         raise HTTPException(status_code=403, detail="Firma inválida.")
     try:
         datos = json.loads(cuerpo)
     except ValueError as error:
+        _anotar_rechazo(sesion, diagnostico.NO_ES_JSON)
         raise HTTPException(status_code=400, detail="El aviso no es JSON.") from error
     if not isinstance(datos, dict):
+        _anotar_rechazo(sesion, diagnostico.NO_ES_JSON)
         raise HTTPException(status_code=400, detail="El aviso no tiene la forma que usa Meta.")
+    diagnostico.anotar(sesion, diagnostico.resumir(datos, entorno.whatsapp_id_numero))
     recibidos, no_entregados = whatsapp.leer_aviso_de_meta(datos, entorno.whatsapp_id_numero)
     por_atender = bandeja_entrada.guardar(sesion, recibidos, ahora=tiempo.ahora())
     bandeja_salida.registrar_estados(sesion, ((n.id_meta, n.motivo) for n in no_entregados))
@@ -96,3 +101,9 @@ def recibir_de_whatsapp(
         # Corre después de contestarle a Meta: atiende los mensajes y envía las respuestas.
         tareas.add_task(bandeja_entrada.atender_y_responder, abrir, enviador, por_atender)
     return Response(status_code=200)
+
+
+def _anotar_rechazo(sesion: Session, problema: str) -> None:
+    """Que el rechazo quede en el diagnóstico aunque la respuesta sea un error."""
+    diagnostico.anotar(sesion, diagnostico.rechazado(problema))
+    sesion.commit()

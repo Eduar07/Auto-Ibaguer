@@ -9,6 +9,7 @@
       <h1>Mensajes de WhatsApp</h1>
       <p>Lo último que escribieron los clientes y lo que el bot les envió. Sirve para revisar por qué a alguien no le llegó un aviso.</p>
     </div>
+    <a class="boton boton--borde" href="/mensajes/diagnostico">Diagnóstico</a>
   </div>
 
   {% if conectado %}
@@ -29,7 +30,7 @@
   </form>
 
   {% if buscado and not entrantes %}
-  <p class="nota">Ese celular no le ha escrito al bot: su mensaje no le llegó al servidor. Si sí escribió, revisa en Meta que <strong>Suscribir webhooks</strong> esté encendido en la cuenta del número; los mensajes que llegaron antes de encenderlo no se recuperan, así que tiene que escribir otra vez.</p>
+  <p class="nota">Ese celular no le ha escrito al bot: su mensaje no le llegó al servidor. Si sí escribió, mira el <a href="/mensajes/diagnostico">Diagnóstico</a>: dice si Meta mandó algo a esa hora y si el número está bien.</p>
   {% endif %}
 
   <div class="mensajes">

@@ -1,0 +1,90 @@
+{% extends "pagina.html" %}
+
+{% block titulo %}Diagnóstico de WhatsApp · Auto Ibaguer{% endblock %}
+
+{% block contenido %}
+<main class="principal pantalla">
+  <div class="titular titular--siempre">
+    <div>
+      <h1>Diagnóstico de WhatsApp</h1>
+      <p>Para saber por qué a alguien no le contestó el bot. Si un cliente escribió y abajo no aparece ningún aviso a esa hora, Meta nunca le mandó su mensaje al servidor: el problema no es del bot.</p>
+    </div>
+    <a class="boton boton--borde" href="/mensajes">Volver a Mensajes</a>
+  </div>
+
+  {% if enlazada %}
+    {% if enlazada.startswith("si:") %}
+    <p class="nota nota--verde">Listo: la app quedó enlazada otra vez con la cuenta de WhatsApp{% if enlazada[3:] %} ({{ enlazada[3:] }}){% endif %}. Pide que vuelvan a escribir.</p>
+    {% else %}
+    <p class="nota">Meta no enlazó la app: {{ enlazada[3:] }}</p>
+    {% endif %}
+  {% endif %}
+
+  <section class="panel diagnostico" aria-labelledby="t-meta">
+    <h2 id="t-meta">El número del bot, según Meta</h2>
+    {% for alerta in revision.alertas %}<p class="nota">{{ alerta }}</p>{% endfor %}
+    {% for error in revision.errores %}<p class="nota">{{ error }}</p>{% endfor %}
+    <dl class="diagnostico__datos">
+      <dt>Número</dt><dd>{{ revision.numero or "—" }}{% if revision.nombre %} · {{ revision.nombre }}{% endif %}</dd>
+      <dt>Estado</dt><dd>{{ revision.estado or "—" }}</dd>
+      <dt>Calidad</dt><dd>{{ revision.calidad or "—" }}</dd>
+      <dt>Plataforma</dt><dd>{{ revision.plataforma or "—" }}{% if revision.modo %} · {{ revision.modo }}{% endif %}</dd>
+      <dt>Nombre aprobado</dt><dd>{{ revision.nombre_aprobado or "—" }}</dd>
+      <dt>Límite de envíos</dt><dd>{{ revision.limite or "—" }}</dd>
+      <dt>Avisos a</dt><dd>{{ revision.avisos_a or "—" }}</dd>
+      <dt>Apps enlazadas</dt><dd>{% if revision.apps is none %}—{% elif revision.apps %}{{ revision.apps|join(", ") }}{% else %}Ninguna{% endif %}</dd>
+    </dl>
+    <p class="suave">Los clientes tienen que escribirle exactamente a este número. Compáralo con el que tienen guardado: en el chat, toca el nombre de arriba.</p>
+    {% if puede_enlazar %}
+    <form method="post" action="/mensajes/diagnostico/enlazar">
+      <button type="submit" class="boton boton--borde">Enlazar la app otra vez</button>
+      <span class="suave">Si los mensajes de verdad no llegan pero la prueba de Meta sí. No daña nada.</span>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="panel diagnostico" aria-labelledby="t-avisos">
+    <h2 id="t-avisos">Lo que ha mandado Meta al webhook</h2>
+    {% if avisos %}
+    <table class="tabla-mensajes">
+      <thead><tr><th>Hora</th><th>Qué traía</th><th>Qué se hizo</th></tr></thead>
+      <tbody>
+        {% for cuando, a in avisos %}
+        <tr>
+          <td>{{ dia_relativo(cuando.date()) }} · {{ cuando|hora }}</td>
+          <td>
+            {% if not a.firma_valida %}—
+            {% else %}
+              {% for d in a.detalle %}
+                {% if d.clase == "mensaje" %}
+                <span class="diagnostico__linea">Mensaje ({{ d.tipo }}) de <strong>{{ d.quien }}</strong>{% if d.con_usuario %} · tiene usuario de WhatsApp{% endif %}</span>
+                {% else %}
+                <span class="diagnostico__linea suave">Estado de una respuesta: {{ d.estado }}</span>
+                {% endif %}
+              {% else %}
+                <span class="suave">Nada ({{ a.mensajes }} mensajes, {{ a.estados }} estados)</span>
+              {% endfor %}
+            {% endif %}
+          </td>
+          <td>
+            {% if a.problema %}<span class="insignia insignia--rojo">No se atendió</span> <span class="tabla-mensajes__error">{{ a.problema }}</span>
+            {% else %}
+              {% for d in a.detalle %}
+                {% if d.clase == "mensaje" %}
+                  {% if d.atendible %}<span class="diagnostico__linea"><span class="insignia insignia--verde">Lo atiende el bot</span></span>
+                  {% else %}<span class="diagnostico__linea"><span class="insignia insignia--rojo">Descartado</span> <span class="tabla-mensajes__error">{{ d.motivo }}. Campos: {{ d.campos|join(", ") }}</span></span>{% endif %}
+                {% elif d.motivo %}<span class="diagnostico__linea"><span class="insignia insignia--rojo">No se entregó</span> <span class="tabla-mensajes__error">{{ d.motivo }}</span></span>
+                {% else %}<span class="diagnostico__linea suave">—</span>{% endif %}
+              {% else %}<span class="suave">—</span>{% endfor %}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="suave">Meta no ha mandado ningún aviso desde que se activó el diagnóstico. Escríbele al bot y recarga esta página.</p>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

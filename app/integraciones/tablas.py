@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -105,3 +106,34 @@ class MensajeSaliente(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     enviado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AvisoDeMeta(Base):
+    """Cada aviso que Meta manda al webhook, y qué se hizo con él: el diagnóstico de
+    WhatsApp (Mensajes > Diagnóstico).
+
+    Sirve para saber, con datos, si el mensaje de un cliente llegó al servidor o no. Nada
+    de lo que escribió se guarda aquí: de cada mensaje, solo el celular a medias
+    ("322 *** 6850"), el tipo, los nombres de los campos y por qué se descartó, si se
+    descartó. Se guardan los últimos QUEDAN_AVISOS; los más viejos se borran solos.
+    """
+
+    __tablename__ = "aviso_de_meta"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    recibido_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    # Si la firma no es de Meta (o la clave secreta de la app está mal), no se lee nada más.
+    firma_valida: Mapped[bool] = mapped_column(Boolean)
+    # Para qué número de WhatsApp era (el id que pone Meta, no el número mismo): si no es el
+    # del bot, no se atiende.
+    para_el_numero: Mapped[str | None] = mapped_column(String(40))
+    mensajes: Mapped[int] = mapped_column(SmallInteger, default=0, server_default=text("0"))
+    estados: Mapped[int] = mapped_column(SmallInteger, default=0, server_default=text("0"))
+    # Una entrada por mensaje y por estado (ver app.integraciones.diagnostico).
+    detalle: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    problema: Mapped[str | None] = mapped_column(Text)
+
+
+QUEDAN_AVISOS = 500

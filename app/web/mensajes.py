@@ -3,15 +3,19 @@ conectado. Sirve para revisar, por ejemplo, por qué a un cliente no le llegó u
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Annotated
+from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 
 from app import tiempo
 from app.bot.mensajes import recortar
 from app.clientes.reglas import TelefonoInvalido, normalizar_contacto
 from app.config import obtener_entorno
+from app.integraciones import diagnostico, whatsapp
 from app.integraciones.bandeja_salida import TIPO_DEL_ADMINISTRADOR, TIPO_RESPUESTA
 from app.integraciones.historial import lo_que_vio_gemini
 from app.integraciones.tablas import EstadoMensaje, MensajeEntrante, MensajeSaliente
@@ -159,3 +163,46 @@ def pagina_mensajes(request: Request, sesion: SesionBD, _: Admin, celular: str =
         "error_del_celular": error_del_celular,
     }
     return pagina(request, sesion, "mensajes.html", contexto, seccion="lavadero/configuracion")
+
+
+# --- Diagnóstico: ¿llegó el mensaje?, ¿está bien el número en Meta? --------------------------
+
+
+def obtener_http_de_meta() -> httpx.Client | None:
+    """Con qué se le pregunta a Meta (las pruebas lo cambian por uno de mentira)."""
+    return None
+
+
+HttpDeMeta = Annotated[httpx.Client | None, Depends(obtener_http_de_meta)]
+
+
+@router.get("/mensajes/diagnostico", response_class=HTMLResponse)
+def pagina_diagnostico(
+    request: Request, sesion: SesionBD, _: Admin, http: HttpDeMeta, enlazada: str = ""
+) -> Response:
+    """Cada aviso que llegó de Meta y lo que Meta dice del número del bot."""
+    entorno = obtener_entorno()
+    avisos = diagnostico.ultimos(sesion)
+    contexto = {
+        "revision": diagnostico.revisar_meta(entorno, http),
+        "avisos": [(tiempo.hora_local(a.recibido_en), a) for a in avisos],
+        "id_numero": entorno.whatsapp_id_numero,
+        "puede_enlazar": entorno.whatsapp_conectado and bool(entorno.whatsapp_id_cuenta),
+        "enlazada": enlazada,
+    }
+    return pagina(request, sesion, "diagnostico.html", contexto, seccion="lavadero/configuracion")
+
+
+@router.post("/mensajes/diagnostico/enlazar")
+def enlazar_otra_vez(_: Admin, http: HttpDeMeta) -> Response:
+    """Enlaza otra vez la app con la cuenta de WhatsApp Business. No daña nada: si ya estaba
+    enlazada, Meta contesta lo mismo."""
+    entorno = obtener_entorno()
+    try:
+        apps = whatsapp.enlazar_la_app(entorno, http)
+        resultado = "si:" + ", ".join(apps)
+    except whatsapp.RegistroFallido as error:
+        resultado = "no:" + str(error)
+    return RedirectResponse(
+        "/mensajes/diagnostico?" + urlencode({"enlazada": resultado[:300]}), status_code=303
+    )

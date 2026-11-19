@@ -1,6 +1,7 @@
 """Los comandos de la terminal: preparar-base, actualizar-tablas, revisar-base, crear-admin y
 simular-turno."""
 
+import functools
 from collections.abc import Iterator
 
 import pytest
@@ -18,6 +19,7 @@ from app.turnos.tablas import Turno
 from app.web.claves import verificar_clave
 from app.web.tablas import Administrador
 from pruebas.base_de_pruebas import URL_PRUEBAS, borrar_base, recrear_base
+from pruebas.catalogo_de_prueba import SERVICIOS_DE_PRUEBA
 from pruebas.fabricas import LUNES_8AM, nuevo_turno
 
 
@@ -61,6 +63,12 @@ def escribir_contrasenas(monkeypatch: pytest.MonkeyPatch, *respuestas: str) -> N
 def test_preparar_base(base_de_pruebas, monkeypatch, capsys):
     migraciones = []
     monkeypatch.setattr(cli, "migrar", lambda: migraciones.append("aplicadas"))
+    # La base de pruebas tiene el menú de las pruebas, no el del negocio.
+    monkeypatch.setattr(
+        cli,
+        "cargar_datos_iniciales",
+        functools.partial(cli.cargar_datos_iniciales, servicios=SERVICIOS_DE_PRUEBA),
+    )
 
     assert cli.main(["preparar-base"]) == 0
 

@@ -19,8 +19,8 @@ from app.catalogo.tablas import (
 )
 from app.db.base import Base
 
-# Decisión del negocio: por ahora todo dura 1 hora. Se ajusta con los tiempos reales.
-DURACION_ESTIMADA_MIN = 60
+# Decisión del negocio: cada servicio dura unos 45 minutos. Se ajusta en Configuración.
+DURACION_ESTIMADA_MIN = 45
 
 PLACA_CARRO = r"^[A-Z]{3}[0-9]{3}$"  # ABC123
 PLACA_MOTO = r"^[A-Z]{3}[0-9]{2}[A-Z]$"  # ABC12D
@@ -38,50 +38,28 @@ TIPOS_DE_VEHICULO = (
     ("Moto", "Motos", PLACA_MOTO),
 )
 
-# (fila, servicio, qué incluye, precio en pesos por tipo de vehículo)
+# (fila, servicio, qué incluye, precio en pesos por tipo de vehículo). Por ahora el
+# lavadero ofrece dos servicios; los demás se agregan en Configuración cuando crezca.
 SERVICIOS = (
     (
         "Carros",
         "Básico",
-        "Lavado exterior a presión, champú, secado y brillo de llantas",
-        {"Automóvil": 40_000, "Camioneta": 50_000},
+        "Agua, champú Simoniz, aspirado por dentro, tapetes y llantina",
+        {"Automóvil": 30_000, "Camioneta": 40_000},
     ),
     (
         "Carros",
         "Encerado",
-        "Básico + cera protectora para la pintura",
+        "Básico + encerado con polichadora: cera 3M o Meguiar's, pasta para pulir 3M y "
+        "Morita de B-Max, que humecta, restaura y da brillo a las partes negras",
         {"Automóvil": 60_000, "Camioneta": 70_000},
     ),
-    (
-        "Carros",
-        "General",
-        "Encerado + aspirado completo, tablero, puertas y vidrios por dentro",
-        {"Automóvil": 120_000, "Camioneta": 140_000},
-    ),
-    (
-        "Carros",
-        "Premium",
-        "General + limpieza de cojinería, lavado de motor e hidratación de plásticos",
-        {"Automóvil": 160_000, "Camioneta": 220_000},
-    ),
-    (
-        "Carros",
-        "Empelotado",
-        "Desmonte de sillas y alfombras, cojinería, techo, chasis, motor, encerado y pulido",
-        {"Automóvil": 300_000, "Camioneta": 400_000},
-    ),
-    ("Motos", "Básico", "Lavado a presión, champú y secado", {"Moto": 18_000}),
+    ("Motos", "Básico", "Agua, champú Simoniz y llantina", {"Moto": 15_000}),
     (
         "Motos",
-        "Intermedio",
-        "Básico + desengrase de motor y cadena, brillo de llantas",
-        {"Moto": 25_000},
-    ),
-    (
-        "Motos",
-        "Premium",
-        "Intermedio + lubricación de cadena, brillo de plásticos y cromados, protector",
-        {"Moto": 35_000},
+        "Encerado",
+        "Básico + encerado a mano con cera 3M o Meguiar's (sin polichadora)",
+        {"Moto": 20_000},
     ),
 )
 
@@ -163,8 +141,14 @@ def _obtener_o_crear[M: Base](
     return nuevo, True
 
 
-def cargar_datos_iniciales(sesion: Session) -> dict[str, int]:
-    """Carga los datos de Auto Ibaguer y devuelve cuántos registros nuevos creó por tipo."""
+def cargar_datos_iniciales(
+    sesion: Session,
+    *,
+    servicios: tuple[tuple[str, str, str, dict[str, int]], ...] = SERVICIOS,
+    duracion: int = DURACION_ESTIMADA_MIN,
+) -> dict[str, int]:
+    """Carga los datos de Auto Ibaguer y devuelve cuántos registros nuevos creó por tipo.
+    Las pruebas pasan su propio menú (`servicios`, `duracion`)."""
     creados = dict.fromkeys(
         ("filas", "puestos", "tipos_de_vehiculo", "servicios", "precios", "parametros"), 0
     )
@@ -191,7 +175,7 @@ def cargar_datos_iniciales(sesion: Session) -> dict[str, int]:
         tipos[nombre] = tipo
         creados["tipos_de_vehiculo"] += nuevo
 
-    for orden, (nombre_fila, nombre, descripcion, precios) in enumerate(SERVICIOS, start=1):
+    for orden, (nombre_fila, nombre, descripcion, precios) in enumerate(servicios, start=1):
         servicio, nuevo = _obtener_o_crear(
             sesion,
             Servicio,
@@ -208,7 +192,7 @@ def cargar_datos_iniciales(sesion: Session) -> dict[str, int]:
                     "tipo_vehiculo_id": tipos[nombre_tipo].id,
                     "activo": True,
                 },
-                {"precio": precio, "duracion_min": DURACION_ESTIMADA_MIN},
+                {"precio": precio, "duracion_min": duracion},
             )
             creados["precios"] += nuevo
 

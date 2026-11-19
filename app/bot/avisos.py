@@ -13,7 +13,7 @@ from app.bot import textos
 from app.bot.mensajes import Mensaje, Opcion
 from app.bot.textos import BOTONES, Textos
 from app.catalogo.parametros import Parametros
-from app.formato import hora_con_articulo
+from app.formato import cuando_sera, hora_con_articulo
 from app.turnos.estados import TipoAviso
 
 
@@ -46,4 +46,13 @@ def mensaje_del_aviso(tipo: str, contenido: dict[str, Any], parametros: Parametr
         case TipoAviso.VEHICULO_LISTO:
             return Mensaje(
                 texto("aviso_vehiculo_listo", turno=turno, negocio=parametros.nombre_negocio)
+            )
+        case TipoAviso.RECORDATORIO:
+            reservada = tiempo.hora_local(datetime.fromisoformat(contenido["hora_reservada"]))
+            hoy = tiempo.hora_local(tiempo.ahora()).date()
+            cuando = cuando_sera(reservada, hoy)
+            dia_y_hora = f"hoy a {cuando}" if reservada.date() == hoy else cuando
+            return Mensaje(
+                texto("aviso_recordatorio", turno=turno, dia_y_hora=dia_y_hora),
+                botones=textos.botones_de_la_reserva(),
             )

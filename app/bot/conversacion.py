@@ -50,7 +50,7 @@ import re
 import time
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -60,6 +60,8 @@ from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot import pausa, seguimiento, textos
+from app.bot.cuando import FRANJAS, Dicho
+from app.bot.cuando import entender as entender_cuando
 from app.bot.interprete import (
     CARRO,
     NO,
@@ -72,7 +74,17 @@ from app.bot.interprete import (
     Interpretacion,
     Interprete,
 )
-from app.bot.mensajes import AUDIO, IMAGEN, Entrada, Lista, Mensaje, Opcion, recortar
+from app.bot.mensajes import (
+    AUDIO,
+    IMAGEN,
+    MAX_DESCRIPCION_OPCION,
+    MAX_OPCIONES_LISTA,
+    Entrada,
+    Lista,
+    Mensaje,
+    Opcion,
+    recortar,
+)
 from app.bot.redactor import ficha_completa, pide_ayuda_urgente, revisar_con_motivo
 from app.bot.sesiones import PASO_INICIAL
 from app.bot.tablas import PausaDelBot, SesionBot
@@ -93,7 +105,17 @@ from app.clientes.tablas import Cliente, TipoConsulta, Vehiculo
 from app.comentarios import servicio as comentarios
 from app.comentarios.tablas import LARGO_MAXIMO, TipoComentario
 from app.errores import ReglaDelNegocio
-from app.formato import DIAS, cuando_fue, duracion, hora_con_articulo, horario, pesos
+from app.formato import (
+    DIAS,
+    cuando_fue,
+    dia_y_mes,
+    duracion,
+    fecha_larga,
+    hora,
+    hora_con_articulo,
+    horario,
+    pesos,
+)
 from app.formato import telefono as telefono_legible
 from app.integraciones import historial
 from app.turnos import casos_de_uso as casos
@@ -102,6 +124,7 @@ from app.turnos.consultas import PosicionDelTurno, ResumenDeLaFila
 from app.turnos.errores import (
     CambioNoPermitido,
     FueraDeHorario,
+    HorarioNoDisponible,
     ServicioNoDisponible,
     YaTieneTurnoActivo,
 )
@@ -124,6 +147,9 @@ class Paso(StrEnum):
     VEHICULO = "vehiculo"
     PLACA = "placa"
     SERVICIO = "servicio"
+    # Cuándo viene: lo antes posible o un día; y si eligió un día, a qué hora.
+    CUANDO = "cuando"
+    HORA = "hora"
     CONFIRMAR = "confirmar"
     SEGUNDO_TURNO = "segundo_turno"
     PRECIOS = "precios"
@@ -136,6 +162,8 @@ class Paso(StrEnum):
     PERMISO_CONTACTO = "permiso_contacto"
     # Dijo "lo pienso": ¿quiere que mañana le escribamos? (app.bot.seguimiento)
     SEGUIMIENTO = "seguimiento"
+    # Quiere cambiar la hora y tiene dos turnos (carro y moto): ¿cuál?
+    REAGENDAR = "reagendar"
 
 
 # En estos pasos el bot espera que el cliente escriba; en los demás, que toque un botón.
@@ -157,9 +185,13 @@ PASOS_DEL_TURNO = frozenset(
         Paso.VEHICULO,
         Paso.PLACA,
         Paso.SERVICIO,
+        Paso.CUANDO,
+        Paso.HORA,
         Paso.CONFIRMAR,
     }
 )
+# Los pasos en que el cliente elige cuándo viene: ahí entiende "mañana a las 10".
+PASOS_DE_CUANDO = frozenset({Paso.CUANDO, Paso.HORA})
 
 # La memoria del bot: cuántos mensajes de lo último que se dijeron lee Gemini, y de cuánto
 # tiempo atrás (lo mismo que WhatsApp deja escribirle: 24 horas).
@@ -180,12 +212,15 @@ PASO_DEL_BOTON = {
     "vehiculo": Paso.VEHICULO,
     "placa": Paso.PLACA,
     "servicio": Paso.SERVICIO,
+    "cuando": Paso.CUANDO,
+    "hora": Paso.HORA,
     "confirmar": Paso.CONFIRMAR,
     "segundo": Paso.SEGUNDO_TURNO,
     "precios": Paso.PRECIOS,
     "cancelar": Paso.CANCELAR,
     "responder": Paso.PERMISO_CONTACTO,
     "seguimiento": Paso.SEGUIMIENTO,
+    "reagendar": Paso.REAGENDAR,
 }
 
 # Lo que el bot está esperando en cada paso, como se lo cuenta a Gemini (EN QUÉ VA): así
@@ -201,6 +236,10 @@ QUE_ESPERA: dict[Paso, str] = {
     "seguridad; si no la tiene a mano, la da en el local).",
     Paso.SERVICIO: "Está pidiendo turno. El bot le preguntó qué servicio quiere; la lista trae "
     "los precios.",
+    Paso.CUANDO: "El bot le preguntó cuándo quiere venir: lo antes posible (la fila de hoy) "
+    "o un día para reservar.",
+    Paso.HORA: "El bot le mostró las horas libres de un día para que elija a qué hora viene.",
+    Paso.REAGENDAR: "Quiere cambiar la hora de su turno y tiene dos: el bot le preguntó cuál.",
     Paso.CONFIRMAR: "Está pidiendo turno. El bot le mostró el resumen y le preguntó si lo "
     "confirma (pregunta de sí o no; también puede cambiar los datos).",
     Paso.SEGUNDO_TURNO: "Quiso pedir otro turno, pero ya tiene uno en esa fila. El bot le "
@@ -519,6 +558,54 @@ def _pide_cancelar(normal: str) -> bool:
     return _CANCELAR.fullmatch(palabras) is not None
 
 
+# Cambiar el día o la hora del turno ("reagendar", "cambiar la hora", "ya no puedo hoy"):
+# el bot le ofrece otros días y horas, y también cancelar.
+REAGENDAR = (
+    "reagend",
+    "re agend",
+    "cambiar la hora",
+    "cambiar hora",
+    "cambiar de hora",
+    "cambiar el dia",
+    "cambiar de dia",
+    "cambiar el turno",
+    "cambiar mi turno",
+    "cambiar la cita",
+    "cambiar la reserva",
+    "cambiarme la hora",
+    "cambiar el horario",
+    "mover el turno",
+    "mover mi turno",
+    "mover la cita",
+    "correr el turno",
+    "correr mi turno",
+    "aplazar",
+    "posponer",
+    "otro dia",
+    "otra hora",
+    "ya no puedo",
+    "no puedo ir",
+    "no voy a poder",
+    "no alcanzo",
+    "mejor manana",
+    "mejor pasado manana",
+    "mejor el ",
+    "mejor otro",
+    "mejor a las",
+    "mejor para",
+)
+
+
+def _pide_reagendar(normal: str) -> bool:
+    """ "ya no puedo hoy", "me cambias la hora", "mejor mañana a las 10"."""
+    con_espacios = f" {normal} "
+    return any(frase in con_espacios for frase in REAGENDAR)
+
+
+# Cuántas horas se muestran a la vez (con "Más tarde" y "Otro día" quedan 10, lo que cabe
+# en una lista de WhatsApp).
+HORAS_POR_PAGINA = 8
+
 # Así empieza una pregunta, no un nombre.
 PALABRAS_DE_PREGUNTA = frozenset(
     {"que", "porque", "como", "cuanto", "cuantos", "cuanta", "cuantas", "donde", "cuando"}
@@ -731,13 +818,16 @@ def _abrir_conversacion(sesion: Session, telefono: str, ahora: datetime) -> tupl
     return conversacion, empieza
 
 
-def _pistas(entendido: Interpretacion, escrito: str) -> dict[str, str]:
+def _pistas(entendido: Interpretacion, escrito: str, hoy: date) -> dict[str, object]:
     """Lo que el cliente ya dijo al pedir el turno con sus palabras: el vehículo y el
-    servicio que entendió Gemini, y la placa que escribió (a Gemini le llega tapada)."""
-    pistas = {
+    servicio que entendió Gemini, la placa que escribió (a Gemini le llega tapada) y cuándo
+    quiere venir ("mañana a las 10")."""
+    dicho = entender_cuando(escrito, hoy)
+    pistas: dict[str, object] = {
         "vehiculo": entendido.vehiculo,
         "servicio": entendido.servicio,
         "placa": placa_en_el_texto(escrito),
+        "cuando": dicho.como_dato() if dicho is not None else None,
     }
     return {clave: valor for clave, valor in pistas.items() if valor}
 
@@ -881,6 +971,8 @@ class _Atencion:
         pagar, no cancelar el turno; "gracias, ¿abren mañana?" no es una despedida)."""
         if FRASE_DEL_QR in normal:
             return self._llego_por_el_qr()
+        if self._puede_reagendar_aqui() and _pide_reagendar(normal) and not _pide_cancelar(normal):
+            return self._cambiar_hora(self._dicho(escrito))
         if not _es_corto(normal):
             return None
         if _pide_cancelar(normal):
@@ -910,6 +1002,10 @@ class _Atencion:
         elegida = elegir_por_texto(normal, pregunta)
         if elegida is not None:
             return self._boton(elegida)
+        if self.paso in PASOS_DE_CUANDO:
+            dicho = self._dicho(escrito)
+            if dicho is not None:
+                return self._con_lo_dicho(dicho)
         if self.paso == Paso.NOMBRE:
             nombre = _el_nombre(escrito, normal)
             return self._escribio_nombre(nombre) if nombre is not None else None
@@ -1003,6 +1099,13 @@ class _Atencion:
                 lo_que = _lo_que_entendio(entendido)
                 self.traza.notas.append(f"Entendió por unas palabras: {lo_que}.")
                 return self._hacer(entendido, escrito)
+            dicho = self._dicho(escrito)
+            if dicho is not None and not dicho.ya:
+                # "mañana a las 10": si ya tiene turno, es cambiarle la hora; si no, pedir uno.
+                self.traza.notas.append("Entendió por unas palabras cuándo quiere venir.")
+                if self._cambiables():
+                    return self._cambiar_hora(dicho)
+                return self._empezar_turno({"cuando": dicho.como_dato()})
             palabras = normal.split()
             saluda = (
                 self.empieza
@@ -1028,6 +1131,8 @@ class _Atencion:
         # Primero cancelar: "quiero cancelar mi turno" es cancelar, no preguntar cómo va.
         if "cancel" in normal:
             return self._preguntar_si_cancela()  # siempre pregunta antes, con botones
+        if self._puede_reagendar_aqui() and _pide_reagendar(normal):
+            return self._cambiar_hora(self._dicho(escrito))
         if "mi turno" in normal:
             return self._mi_turno()
         if _avisa_que_llego(normal):
@@ -1182,7 +1287,9 @@ class _Atencion:
             case Intencion.PEDIR_TURNO if entendido.vehiculo == OTRO_VEHICULO:
                 return self._vehiculo_que_no_lava(entendido)
             case Intencion.PEDIR_TURNO:
-                return self._empezar_turno(_pistas(entendido, escrito))
+                return self._empezar_turno(_pistas(entendido, escrito, self._hoy()))
+            case Intencion.REAGENDAR:
+                return self._cambiar_hora(self._dicho(escrito))
             case Intencion.VER_FILA:
                 return self._ver_la_fila()
             case Intencion.PRECIOS if entendido.vehiculo == OTRO_VEHICULO:
@@ -1228,6 +1335,7 @@ class _Atencion:
             Intencion.VER_FILA,
             Intencion.MI_TURNO,
             Intencion.CANCELAR,
+            Intencion.REAGENDAR,
             Intencion.LLEGUE,
             Intencion.EN_CAMINO,
             Intencion.PICO_Y_PLACA,
@@ -1336,7 +1444,13 @@ class _Atencion:
         if prefijo == "menu":
             return self._opcion_del_menu(resto)
         if prefijo == "turno":
+            if resto == "cambiar":
+                return self._cambiar_hora()
+            if resto == "cancelar":
+                return self._preguntar_si_cancela()
             return self._llegada() if resto == "llegue" else self._en_camino()
+        if prefijo in ("cuando", "hora") and self.paso in PASOS_DE_CUANDO:
+            self.paso = PASO_DEL_BOTON[prefijo]  # "Otro día" desde las horas, y al revés
         if PASO_DEL_BOTON.get(prefijo) != self.paso:
             return self._menu("boton_vencido")
         manejadores = {
@@ -1345,12 +1459,15 @@ class _Atencion:
             "vehiculo": self._eligio_vehiculo,
             "placa": lambda _: self._preguntar_servicio(),  # "Ahora no": placa pendiente
             "servicio": self._eligio_servicio,
+            "cuando": self._eligio_cuando,
+            "hora": self._eligio_hora,
             "confirmar": self._confirmar,
             "segundo": self._segundo_turno,
             "precios": self._eligio_precios,
             "cancelar": self._cancelar,
             "responder": self._permiso_para_responder,
             "seguimiento": self._acepta_el_seguimiento,
+            "reagendar": self._eligio_cual_reagendar,
         }
         if prefijo == "placa":
             self.datos["placa"] = None
@@ -1479,6 +1596,8 @@ class _Atencion:
             Paso.VEHICULO: self._pregunta_vehiculo,
             Paso.PLACA: self._pregunta_placa,
             Paso.SERVICIO: self._pregunta_servicio,
+            Paso.CUANDO: self._pregunta_cuando,
+            Paso.HORA: self._pregunta_hora,
             Paso.CONFIRMAR: self._resumen,
             Paso.SEGUNDO_TURNO: self._pregunta_segundo_turno,
             Paso.PRECIOS: self._pregunta_precios,
@@ -1486,6 +1605,7 @@ class _Atencion:
             Paso.NUMERO_DE_TURNO: lambda: Mensaje(self.texto("pedir_numero_de_turno")),
             Paso.PERMISO_CONTACTO: self._pregunta_permiso,
             Paso.SEGUIMIENTO: self._pregunta_seguimiento,
+            Paso.REAGENDAR: self._pregunta_cual_reagendar,
         }
         pregunta = preguntas.get(self.paso)
         return pregunta() if pregunta is not None else self._mensaje_del_menu("menu")
@@ -1518,27 +1638,32 @@ class _Atencion:
         return "pronto"
 
     def _no_hay_turnos(self) -> list[Mensaje] | None:
-        """Si ahora no se dan turnos por WhatsApp, el mensaje que lo explica."""
-        if not self.parametros.bot_activo:
-            nombre, datos = "bot_apagado", {"telefono": self._telefono_del_negocio()}
-        elif not self._en_horario():
-            nombre = "fuera_de_horario"
-            datos = {"horario": self._horario(), "apertura": self._proxima_apertura()}
-        else:
+        """Si ahora no se dan turnos por WhatsApp (el bot está apagado), el mensaje que lo
+        explica. Con el local cerrado sí se puede reservar un día y una hora."""
+        if self.parametros.bot_activo:
             return None
         self._volver_al_menu()
-        # Con el local cerrado, la fila no dice nada útil: solo los precios.
-        botones = (Opcion("menu.precios", BOTONES["precios"]),)
-        if nombre == "bot_apagado":
-            botones = (Opcion("menu.fila", BOTONES["fila"]), *botones)
-        return [Mensaje(self.texto(nombre, **datos), botones=botones)]
+        return [
+            Mensaje(
+                self.texto("bot_apagado", telefono=self._telefono_del_negocio()),
+                botones=(
+                    Opcion("menu.fila", BOTONES["fila"]),
+                    Opcion("menu.precios", BOTONES["precios"]),
+                ),
+            )
+        ]
+
+    def _fuera_de_horario(self) -> str:
+        return self.texto(
+            "fuera_de_horario", horario=self._horario(), apertura=self._proxima_apertura()
+        )
 
     def _telefono_del_negocio(self) -> str:
         return telefono_legible(self.parametros.telefono_contacto)
 
     # --- Pedir turno: aviso de datos y nombre -----------------------------------------------
 
-    def _empezar_turno(self, pistas: dict[str, str] | None = None) -> list[Mensaje]:
+    def _empezar_turno(self, pistas: dict[str, object] | None = None) -> list[Mensaje]:
         """`pistas`: lo que ya dijo con sus palabras (el vehículo, el servicio, la placa).
         Sin ellas, las de los precios que acaba de ver. Lo que ya dijo no se le pregunta."""
         no_hay = self._no_hay_turnos()
@@ -1869,8 +1994,288 @@ class _Atencion:
             if servicio_id not in disponibles:
                 return [_con_nota(self.texto("servicio_no_disponible"), self._pregunta())]
             self.datos["servicio_id"] = servicio_id
+        return self._preguntar_cuando()
+
+    # --- Pedir turno: cuándo viene (lo antes posible, o un día y una hora) -------------------
+
+    def _hoy(self) -> date:
+        return tiempo.hora_local(self.ahora).date()
+
+    def _dicho(self, escrito: str) -> Dicho | None:
+        """Lo que dijo de cuándo viene ("mañana a las 10"), si dijo algo de eso."""
+        return entender_cuando(escrito, self._hoy())
+
+    def _duracion(self) -> timedelta:
+        """Lo que dura su servicio: con eso se ve en qué horarios cabe."""
+        tipo = self._tipo()
+        return casos.duracion_del_turno(
+            self.sesion, tipo.fila_id, self.datos.get("servicio_id"), tipo.id
+        )
+
+    def _horarios_libres(self, fecha: date) -> list[datetime]:
+        return casos.horarios_libres(
+            self.sesion,
+            fila_id=self._tipo().fila_id,
+            fecha=fecha,
+            duracion=self._duracion(),
+            ahora=self.ahora,
+            sin_turno_id=self.datos.get("reagendar"),
+        )
+
+    def _se_puede_ya(self) -> bool:
+        """ "Lo antes posible" (la fila de hoy): con el local abierto y algún puesto prendido.
+        Quien cambia la hora de su turno elige una hora."""
+        if self.datos.get("reagendar") or not self._en_horario():
+            return False
+        fila_id = self._tipo().fila_id
+        return bool(
+            consultas.resumen_de_la_fila(self.sesion, fila_id, ahora=self.ahora).puestos_activos
+        )
+
+    def _preguntar_cuando(self) -> list[Mensaje]:
+        dicho = Dicho.desde_dato(self._pista("cuando"))
+        if dicho is not None:
+            return self._con_lo_dicho(dicho)
+        self.paso = Paso.CUANDO
+        pregunta = self._pregunta()
+        if not pregunta.opciones:
+            # Ni la fila de hoy ni un día con cupo: no hay qué ofrecerle.
+            self._volver_al_menu()
+            return [_con_el_menu(self.texto("sin_horarios", telefono=self._telefono_del_negocio()))]
+        return [pregunta]
+
+    def _titulo_del_dia(self, fecha: date) -> str:
+        hoy = self._hoy()
+        if fecha == hoy:
+            return "Hoy"
+        if fecha == hoy + timedelta(days=1):
+            return "Mañana"
+        return f"{DIAS[fecha.weekday()].capitalize()} {fecha.day}"
+
+    def _el_dia(self, fecha: date) -> str:
+        """ "hoy", "mañana" o "el sábado 22 de noviembre"."""
+        hoy = self._hoy()
+        if fecha == hoy:
+            return "hoy"
+        if fecha == hoy + timedelta(days=1):
+            return "mañana"
+        return f"el {DIAS[fecha.weekday()]} {dia_y_mes(fecha)}"
+
+    def _dia_y_hora(self, momento: datetime) -> str:
+        """ "hoy a las 10:30 a.m.", "mañana a las 7:30 a.m." o "el sábado 22 de noviembre a
+        las 8:30 a.m." """
+        return _dicho_de_la_reserva(momento, self._hoy())
+
+    def _pregunta_cuando(self) -> Mensaje:
+        opciones: list[Opcion] = []
+        reagendar = self.datos.get("reagendar")
+        if self._se_puede_ya():
+            resumen = consultas.resumen_de_la_fila(
+                self.sesion, self._tipo().fila_id, ahora=self.ahora
+            )
+            opciones.append(
+                Opcion(
+                    "cuando.ya",
+                    BOTONES["lo_antes_posible"],
+                    recortar(f"Hoy: {self._como_va(resumen)}", MAX_DESCRIPCION_OPCION),
+                )
+            )
+        dias = casos.dias_para_reservar(
+            self.sesion,
+            fila_id=self._tipo().fila_id,
+            duracion=self._duracion(),
+            ahora=self.ahora,
+            sin_turno_id=reagendar,
+        )
+        cupo = MAX_OPCIONES_LISTA - len(opciones) - (1 if reagendar else 0)
+        for dia in dias[:cupo]:
+            libres = "1 hora libre" if dia.horarios == 1 else f"{dia.horarios} horas libres"
+            opciones.append(
+                Opcion(
+                    f"cuando.{dia.fecha.isoformat()}",
+                    self._titulo_del_dia(dia.fecha),
+                    f"{fecha_larga(dia.fecha)} · {libres}",
+                )
+            )
+        if reagendar and opciones:
+            opciones.append(
+                Opcion("cuando.cancelar", BOTONES["cancelar_el_turno"], "Si ya no vas a venir")
+            )
+        if reagendar:
+            texto = self.texto("reagendar_cuando", numero=self.datos.get("numero", ""))
+        elif self._en_horario():
+            texto = self.texto("pedir_cuando")
+        else:
+            texto = self.texto("pedir_cuando_cerrado", apertura=self._proxima_apertura())
+        if not opciones:
+            return Mensaje(texto)
+        return Mensaje(texto, lista=Lista(BOTONES["ver_dias"], tuple(opciones)))
+
+    def _eligio_cuando(self, eleccion: str) -> list[Mensaje]:
+        if eleccion == "cancelar":
+            return self._preguntar_si_cancela()
+        if eleccion == "ya":
+            if not self._se_puede_ya():
+                self.paso = Paso.CUANDO
+                return [_con_nota(self._fuera_de_horario(), self._pregunta())]
+            self.datos["cuando"] = "ya"
+            self.paso = Paso.CONFIRMAR
+            return [self._pregunta()]
+        try:
+            fecha = date.fromisoformat(eleccion)
+        except ValueError:
+            self.paso = Paso.CUANDO
+            return [_con_nota(self.texto("toca_una_opcion"), self._pregunta())]
+        return self._mostrar_horas(fecha)
+
+    def _mostrar_horas(
+        self, fecha: date, *, nota: str | None = None, cerca_de=None
+    ) -> list[Mensaje]:
+        """Las horas libres de ese día. `cerca_de`: la lista empieza por la más cercana a esa
+        hora (o a esa parte del día)."""
+        libres = self._horarios_libres(fecha)
+        if not libres:
+            hoy = self._hoy()
+            fuera = fecha > hoy + timedelta(days=self.parametros.dias_para_reservar)
+            nota_del_dia = (
+                self.texto("dia_fuera_de_rango", dias=self.parametros.dias_para_reservar)
+                if fuera
+                else self.texto("dia_sin_horarios")
+            )
+            self.paso = Paso.CUANDO
+            return [_con_nota(nota_del_dia, self._pregunta())]
+        desde = 0
+        if cerca_de is not None:
+            objetivo = cerca_de
+            desde = min(
+                range(len(libres)),
+                key=lambda i: abs(tiempo.hora_local(libres[i]).replace(tzinfo=None) - objetivo),
+            )
+            desde = max(0, desde - 1)
+        self.paso = Paso.HORA
+        self.datos["dia"] = fecha.isoformat()
+        self.datos["desde"] = desde
+        pregunta = self._pregunta()
+        return [_con_nota(nota, pregunta) if nota else pregunta]
+
+    def _pregunta_hora(self) -> Mensaje:
+        try:
+            fecha = date.fromisoformat(str(self.datos.get("dia")))
+        except ValueError:
+            fecha = self._hoy()
+        libres = self._horarios_libres(fecha)
+        desde = int(self.datos.get("desde") or 0)
+        if desde >= len(libres):
+            desde = max(0, len(libres) - HORAS_POR_PAGINA)
+        pagina = libres[desde : desde + HORAS_POR_PAGINA]
+        if not pagina:
+            # Mientras elegía, se ocuparon las que quedaban: solo puede elegir otro día.
+            return Mensaje(
+                self.texto("dia_sin_horarios"),
+                lista=Lista(
+                    BOTONES["ver_dias"],
+                    (Opcion("hora.dias", BOTONES["otro_dia"], "Elegir otro día"),),
+                ),
+            )
+        opciones = [
+            Opcion(
+                f"hora.{tiempo.hora_local(momento):%Y%m%d%H%M}", hora(tiempo.hora_local(momento))
+            )
+            for momento in pagina
+        ]
+        if desde + HORAS_POR_PAGINA < len(libres):
+            opciones.append(Opcion("hora.mas", BOTONES["mas_horas"], "Más horas ese día"))
+        opciones.append(Opcion("hora.dias", BOTONES["otro_dia"], "Elegir otro día"))
+        return Mensaje(
+            self.texto("pedir_hora", dia=self._el_dia(fecha)),
+            lista=Lista(BOTONES["ver_horas"], tuple(opciones)),
+        )
+
+    def _eligio_hora(self, eleccion: str) -> list[Mensaje]:
+        if eleccion == "dias":
+            self.paso = Paso.CUANDO
+            return [self._pregunta()]
+        if eleccion == "mas":
+            self.datos["desde"] = int(self.datos.get("desde") or 0) + HORAS_POR_PAGINA
+            return [self._pregunta()]
+        try:
+            momento = datetime.strptime(eleccion, "%Y%m%d%H%M").replace(
+                tzinfo=tiempo.zona_horaria()
+            )
+        except ValueError:
+            return [_con_nota(self.texto("toca_una_opcion"), self._pregunta())]
+        return self._elegir_hora(momento)
+
+    def _elegir_hora(self, momento: datetime) -> list[Mensaje]:
+        fecha = tiempo.hora_local(momento).date()
+        if momento not in self._horarios_libres(fecha):
+            return self._mostrar_horas(
+                fecha,
+                nota=self._por_que_no_esa_hora(momento),
+                cerca_de=tiempo.hora_local(momento).replace(tzinfo=None),
+            )
+        if self.datos.get("reagendar"):
+            return self._reagendar_a(momento)
+        self.datos["cuando"] = momento.isoformat()
         self.paso = Paso.CONFIRMAR
         return [self._pregunta()]
+
+    def _con_lo_dicho(self, dicho: Dicho) -> list[Mensaje]:
+        """Dijo con sus palabras cuándo viene: "mañana a las 10", "el sábado en la tarde",
+        "ahorita". Lo que se pueda, se hace; si esa hora no está, le muestra las más cercanas."""
+        hoy = self._hoy()
+        if dicho.ya and dicho.hora is None:
+            if self._se_puede_ya():
+                return self._eligio_cuando("ya")
+            self.paso = Paso.CUANDO
+            return [_con_nota(self._fuera_de_horario(), self._pregunta())]
+        fecha = dicho.fecha
+        if fecha is None and dicho.hora is not None:
+            # "a las 3": hoy, si todavía alcanza; si no, mañana.
+            hoy_a_esa_hora = datetime.combine(hoy, dicho.hora, tiempo.zona_horaria())
+            limite = self.ahora + casos.ANTICIPACION_MINIMA
+            fecha = hoy if hoy_a_esa_hora >= limite else hoy + timedelta(days=1)
+        if fecha is None:
+            fecha = hoy  # "en la tarde": hoy
+        if dicho.hora is not None:
+            deseada = datetime.combine(fecha, dicho.hora, tiempo.zona_horaria())
+            libres = self._horarios_libres(fecha)
+            if deseada in libres:
+                return self._elegir_hora(deseada)
+            if not libres:
+                return self._mostrar_horas(fecha)  # dice que ese día no hay
+            if deseada in self._horarios_del_dia(fecha):
+                nota = self._por_que_no_esa_hora(deseada)
+            else:
+                nota = self.texto("hora_no_exacta")
+            return self._mostrar_horas(
+                fecha, nota=nota, cerca_de=datetime.combine(fecha, dicho.hora)
+            )
+        cerca_de = None
+        if dicho.franja is not None:
+            cerca_de = datetime.combine(fecha, FRANJAS[dicho.franja])
+        return self._mostrar_horas(fecha, cerca_de=cerca_de)
+
+    def _por_que_no_esa_hora(self, momento: datetime) -> str:
+        """Por qué no se puede esa hora: está muy encima (lo que el negocio no quiere: que
+        den la cita "muy encima") o ya no hay cupo."""
+        if momento < self.ahora + casos.ANTICIPACION_MINIMA:
+            minutos = int(casos.ANTICIPACION_MINIMA.total_seconds() // 60)
+            return self.texto("hora_muy_pronto", minutos=minutos)
+        return self.texto("hora_no_disponible")
+
+    def _horarios_del_dia(self, fecha: date) -> list[datetime]:
+        """Todos los horarios de ese día, libres o no."""
+        p = self.parametros
+        return reglas.horarios_del_dia(
+            fecha,
+            apertura=p.hora_apertura,
+            cierre=p.hora_cierre,
+            dias=p.dias_atencion,
+            cada=p.entre_horarios,
+            duracion=self._duracion(),
+            zona=tiempo.zona_horaria(),
+        )
 
     def _resumen(self) -> Mensaje:
         tipo = self._tipo()
@@ -1885,16 +2290,23 @@ class _Atencion:
             nombre = self.sesion.get(Servicio, servicio_id).nombre
             servicio = f"{nombre} · {pesos(precio)}" if precio is not None else nombre
         fila = self.sesion.get(Fila, tipo.fila_id)
+        como_va = self._como_va(
+            consultas.resumen_de_la_fila(self.sesion, fila.id, ahora=self.ahora)
+        )
+        reserva = self._hora_elegida()
+        if reserva is None:
+            dia_y_hora = f"lo antes posible (fila de {fila.nombre.lower()}: {como_va})"
+        else:
+            dia_y_hora = self._dia_y_hora(reserva)
         return Mensaje(
             self.texto(
                 "resumen",
                 nombre=self.cliente.nombre if self.cliente else self.datos.get("nombre", ""),
                 vehiculo=_nombre_del_vehiculo(tipo.nombre, placa, pendiente=", placa pendiente"),
                 servicio=servicio,
+                dia_y_hora=dia_y_hora,
                 fila=fila.nombre.lower(),
-                como_va=self._como_va(
-                    consultas.resumen_de_la_fila(self.sesion, fila.id, ahora=self.ahora)
-                ),
+                como_va=como_va,
             ),
             botones=(
                 Opcion("confirmar.si", BOTONES["confirmar"]),
@@ -1910,12 +2322,20 @@ class _Atencion:
         if respuesta == "cambiar":
             for clave in ("vehiculo_id", "tipo_vehiculo_id", "placa", "servicio_id"):
                 self.datos.pop(clave, None)
+            for clave in ("cuando", "dia", "desde"):
+                self.datos.pop(clave, None)
             return self._preguntar_vehiculo(aunque_lo_conozca=True)
         no_hay = self._no_hay_turnos()
         if no_hay is not None:
             return no_hay
         if self.cliente is None and not {"nombre", "acepto_datos_en"} <= self.datos.keys():
             return self._empezar_turno()  # le falta el aviso de datos o el nombre
+        reserva = self._hora_elegida()
+        if reserva is None and not self._en_horario():
+            # Iba a venir lo antes posible, pero ya cerramos: que reserve.
+            self.datos.pop("cuando", None)
+            self.paso = Paso.CUANDO
+            return [_con_nota(self._fuera_de_horario(), self._pregunta())]
         try:
             # Si algo falla, se deshace solo lo de aquí adentro (cliente, vehículo y turno):
             # la conversación igual queda anotada.
@@ -1930,19 +2350,40 @@ class _Atencion:
                 if self.datos.get("celular") and not cliente.celular:
                     cliente.celular = self.datos["celular"]
                 vehiculo = self._vehiculo_para_el_turno(cliente)
-                nuevo = casos.pedir_turno(
-                    self.sesion,
-                    vehiculo_id=vehiculo.id,
-                    origen=OrigenTurno.WHATSAPP,
-                    servicio_id=self.datos.get("servicio_id"),
-                    ahora=self.ahora,
-                )
+                if reserva is not None:
+                    nuevo = casos.reservar(
+                        self.sesion,
+                        vehiculo_id=vehiculo.id,
+                        hora_elegida=reserva,
+                        origen=OrigenTurno.WHATSAPP,
+                        servicio_id=self.datos.get("servicio_id"),
+                        ahora=self.ahora,
+                    )
+                else:
+                    nuevo = casos.pedir_turno(
+                        self.sesion,
+                        vehiculo_id=vehiculo.id,
+                        origen=OrigenTurno.WHATSAPP,
+                        servicio_id=self.datos.get("servicio_id"),
+                        ahora=self.ahora,
+                    )
         except YaTieneTurnoActivo as error:
             self.paso = Paso.SEGUNDO_TURNO
             self.datos = {"turno_id": error.turno_id}
             return [self._pregunta()]
         except FueraDeHorario:
-            return self._no_hay_turnos() or self._menu("menu")
+            self.datos.pop("cuando", None)
+            self.paso = Paso.CUANDO
+            return [_con_nota(self._fuera_de_horario(), self._pregunta())]
+        except HorarioNoDisponible:
+            # Mientras confirmaba, alguien tomó el último cupo de esa hora (o se le pasó el
+            # tiempo y ya quedó muy encima).
+            local = tiempo.hora_local(reserva)
+            return self._mostrar_horas(
+                local.date(),
+                nota=self._por_que_no_esa_hora(reserva),
+                cerca_de=local.replace(tzinfo=None),
+            )
         except ServicioNoDisponible:
             self.paso = Paso.SERVICIO
             return [_con_nota(self.texto("servicio_no_disponible"), self._pregunta())]
@@ -1963,7 +2404,162 @@ class _Atencion:
         self.cliente = cliente
         self._vincular(cliente)
         self._volver_al_menu()
+        if isinstance(nuevo, casos.Reserva):
+            return [self._reserva_confirmada(nuevo)]
         return [self._turno_confirmado(nuevo)]
+
+    def _hora_elegida(self) -> datetime | None:
+        """La hora que reservó en esta conversación; None si viene lo antes posible."""
+        cuando = self.datos.get("cuando")
+        if not isinstance(cuando, str) or cuando == "ya":
+            return None
+        try:
+            return datetime.fromisoformat(cuando)
+        except ValueError:
+            return None
+
+    def _recordatorio(self, momento: datetime) -> str:
+        """ "Una hora antes te lo recordamos por aquí. ", si WhatsApp nos va a dejar: el
+        recordatorio sale dentro de las 24 horas desde este mensaje."""
+        antes = self.parametros.recordar_reserva
+        if antes <= timedelta(0):
+            return ""
+        sale = momento - antes
+        if not self.ahora < sale <= self.ahora + casos.VENTANA_PARA_ESCRIBIR:
+            return ""
+        minutos = int(antes.total_seconds() // 60)
+        cuanto = "Una hora" if minutos == 60 else duracion(minutos)
+        return f"{cuanto} antes te lo recordamos por aquí. "
+
+    def _reserva_confirmada(self, reserva: casos.Reserva) -> Mensaje:
+        return Mensaje(
+            self.texto(
+                "reserva_confirmada",
+                nombre=_primer_nombre(self.cliente),
+                numero=reserva.numero,
+                dia_y_hora=self._dia_y_hora(reserva.hora),
+                gracia=int(self.parametros.gracia.total_seconds() // 60),
+                recordatorio=self._recordatorio(reserva.hora),
+            ),
+            botones=textos.botones_de_la_reserva(),
+        )
+
+    # --- Cambiar la hora (reagendar) ----------------------------------------------------------
+
+    def _cambiables(self) -> list[PosicionDelTurno]:
+        """Sus turnos a los que todavía se les puede cambiar la hora: no han llegado al local."""
+        return [p for p in self._activos() if p.estado in casos.SE_PUEDE_REAGENDAR]
+
+    def _puede_reagendar_aqui(self) -> bool:
+        """En medio de pedir otro turno, "otro día" es elegir otro día, no cambiar el turno
+        que ya tiene."""
+        if self.paso in PASOS_DEL_TURNO or self.paso == Paso.REAGENDAR:
+            return False
+        return bool(self._cambiables())
+
+    def _cambiar_hora(
+        self, dicho: Dicho | None = None, turno_id: int | None = None
+    ) -> list[Mensaje]:
+        """Quiere cambiar el día o la hora ("ya no puedo hoy", "mejor mañana a las 10", el
+        botón Cambiar hora). Si dijo cuándo, se hace de una; si no, se le muestran los días."""
+        self._volver_al_menu()
+        posiciones = self._activos()
+        cambiables = [p for p in posiciones if p.estado in casos.SE_PUEDE_REAGENDAR]
+        if turno_id is not None:
+            cambiables = [p for p in cambiables if p.turno_id == turno_id]
+        if not cambiables:
+            if posiciones:
+                return [
+                    Mensaje(
+                        self.texto(
+                            "no_se_puede_reagendar",
+                            numero=posiciones[0].numero,
+                            telefono=self._telefono_del_negocio(),
+                        )
+                    )
+                ]
+            # No tiene turno: que pida uno para cuando dijo.
+            return self._empezar_turno({"cuando": dicho.como_dato()} if dicho else None)
+        if len(cambiables) > 1:
+            self.paso = Paso.REAGENDAR
+            self.datos = {
+                "cambiables": {str(p.turno_id): p.numero for p in cambiables[:2]},
+                "dicho": dicho.como_dato() if dicho is not None else None,
+            }
+            return [self._pregunta()]
+        return self._reagendar_turno(cambiables[0].turno_id, dicho)
+
+    def _pregunta_cual_reagendar(self) -> Mensaje:
+        cambiables: dict[str, str] = self.datos.get("cambiables", {})
+        botones = [
+            Opcion(f"reagendar.{turno_id}", f"Cambiar {numero}")
+            for turno_id, numero in cambiables.items()
+        ]
+        botones.append(Opcion("reagendar.no", BOTONES["mantener"]))
+        return Mensaje(self.texto("reagendar_cual"), botones=tuple(botones))
+
+    def _eligio_cual_reagendar(self, eleccion: str) -> list[Mensaje]:
+        if eleccion not in self.datos.get("cambiables", {}):
+            self._volver_al_menu()
+            return [Mensaje(self.texto("mantener"))]
+        return self._reagendar_turno(int(eleccion), Dicho.desde_dato(self.datos.get("dicho")))
+
+    def _reagendar_turno(self, turno_id: int, dicho: Dicho | None) -> list[Mensaje]:
+        turno = self.sesion.get(Turno, turno_id)
+        vehiculo = self.sesion.get(Vehiculo, turno.vehiculo_id)
+        numero = consultas.posicion_del_turno(self.sesion, turno_id, ahora=self.ahora).numero
+        self._volver_al_menu()
+        self.datos = {
+            "reagendar": turno_id,
+            "numero": numero,
+            "tipo_vehiculo_id": vehiculo.tipo_vehiculo_id,
+            "servicio_id": turno.servicio_id,
+        }
+        if dicho is not None and not dicho.ya:
+            return self._con_lo_dicho(dicho)
+        self.paso = Paso.CUANDO
+        return [self._pregunta()]
+
+    def _reagendar_a(self, momento: datetime) -> list[Mensaje]:
+        turno_id = int(self.datos["reagendar"])
+        numero = str(self.datos.get("numero", ""))
+        try:
+            with self.sesion.begin_nested():
+                reserva = casos.reagendar(
+                    self.sesion,
+                    turno_id,
+                    hora_elegida=momento,
+                    actor=Actor.CLIENTE,
+                    ahora=self.ahora,
+                )
+        except HorarioNoDisponible:
+            local = tiempo.hora_local(momento)
+            return self._mostrar_horas(
+                local.date(),
+                nota=self._por_que_no_esa_hora(momento),
+                cerca_de=local.replace(tzinfo=None),
+            )
+        except CambioNoPermitido:
+            self._volver_al_menu()
+            return [
+                Mensaje(
+                    self.texto(
+                        "no_se_puede_reagendar",
+                        numero=numero,
+                        telefono=self._telefono_del_negocio(),
+                    )
+                )
+            ]
+        self._volver_al_menu()
+        nombre = "reagendado_otro_numero" if reserva.numero_anterior else "reagendado"
+        return [
+            Mensaje(
+                self.texto(
+                    nombre, numero=reserva.numero, dia_y_hora=self._dia_y_hora(reserva.hora)
+                ),
+                botones=textos.botones_de_la_reserva(),
+            )
+        ]
 
     def _vehiculo_para_el_turno(self, cliente: Cliente) -> Vehiculo:
         placa = self.datos.get("placa")
@@ -2014,23 +2610,26 @@ class _Atencion:
         posicion = consultas.posicion_del_turno(
             self.sesion, self.datos["turno_id"], ahora=self.ahora
         )
+        botones = [Opcion("segundo.mantener", BOTONES["mantener"])]
+        if posicion.estado in casos.SE_PUEDE_REAGENDAR:
+            botones.append(Opcion("segundo.cambiar", BOTONES["cambiar_hora"]))
+        botones.append(Opcion("segundo.cancelar", BOTONES["cancelarlo"]))
         return Mensaje(
             self.texto(
                 "segundo_turno",
                 numero=posicion.numero,
                 fila=posicion.fila.lower(),
-                estado=_estado_corto(posicion),
+                estado=_estado_corto(posicion, self._hoy()),
             ),
-            botones=(
-                Opcion("segundo.mantener", BOTONES["mantener"]),
-                Opcion("segundo.cancelar", BOTONES["cancelarlo"]),
-            ),
+            botones=tuple(botones),
         )
 
     def _segundo_turno(self, eleccion: str) -> list[Mensaje]:
         turno_id = self.datos.get("turno_id")
         if eleccion == "cancelar" and turno_id is not None:
             return self._cancelar_turno(turno_id)
+        if eleccion == "cambiar" and turno_id is not None:
+            return self._cambiar_hora(turno_id=turno_id)
         self._volver_al_menu()
         return [Mensaje(self.texto("mantener"))]
 
@@ -2058,7 +2657,10 @@ class _Atencion:
             return [
                 Mensaje(
                     self.texto("fila_fuera_de_horario", apertura=self._proxima_apertura()),
-                    botones=(Opcion("menu.precios", BOTONES["precios"]),),
+                    botones=(
+                        Opcion("menu.pedir", BOTONES["reservar"]),
+                        Opcion("menu.precios", BOTONES["precios"]),
+                    ),
                 )
             ]
         lineas = [
@@ -2143,10 +2745,17 @@ class _Atencion:
                 )
             ]
         llamados = [p for p in posiciones if p.estado == E.LLAMADO]
+        botones: tuple[Opcion, ...] = ()
+        if len(llamados) == 1:
+            botones = textos.botones_del_llamado()
+        elif any(p.estado in (E.RESERVADO, E.EN_FILA) for p in posiciones):
+            botones = textos.botones_de_la_reserva()
         return [
             Mensaje(
-                "\n\n".join(_como_va_el_turno(posicion, self.texto) for posicion in posiciones),
-                botones=textos.botones_del_llamado() if len(llamados) == 1 else (),
+                "\n\n".join(
+                    _como_va_el_turno(posicion, self.texto, self._hoy()) for posicion in posiciones
+                ),
+                botones=botones,
             )
         ]
 
@@ -2161,7 +2770,7 @@ class _Atencion:
                     botones=(Opcion("menu.pedir", BOTONES["pedir"]),),
                 )
             ]
-        cancelables = [p for p in posiciones if p.estado in (E.EN_FILA, E.LLAMADO)]
+        cancelables = [p for p in posiciones if p.estado in (E.RESERVADO, E.EN_FILA, E.LLAMADO)]
         if not cancelables:
             return [
                 Mensaje(self.texto("cancelar_en_el_local", telefono=self._telefono_del_negocio()))
@@ -2212,7 +2821,12 @@ class _Atencion:
     def _llegada(self) -> list[Mensaje]:
         """ "Ya estoy aquí": el turno pasa a Llegó y puede tomar el próximo puesto libre."""
         self._volver_al_menu()
-        esperando = [p for p in self._activos() if p.estado in (E.EN_FILA, E.LLAMADO, E.LLEGO)]
+        esperando = [
+            p
+            for p in self._activos()
+            if p.estado in (E.RESERVADO, E.EN_FILA, E.LLAMADO, E.LLEGO)
+            and (p.estado != E.RESERVADO or self._reserva_de_hoy(p))
+        ]
         if not esperando:
             if self.cliente is None:
                 # Quizás pidió el turno en el mostrador sin dejar el celular.
@@ -2228,6 +2842,13 @@ class _Atencion:
                 self.sesion, posicion.turno_id, actor=Actor.CLIENTE, ahora=self.ahora
             )
         return [Mensaje(self.texto("llegada", numeros=numeros))]
+
+    def _reserva_de_hoy(self, posicion: PosicionDelTurno) -> bool:
+        """ "Ya llegué" sirve para una reserva de hoy; la de otro día todavía no."""
+        hora_reservada = posicion.hora_reservada
+        return (
+            hora_reservada is not None and tiempo.hora_local(hora_reservada).date() == self._hoy()
+        )
 
     def _en_camino(self) -> list[Mensaje]:
         self._volver_al_menu()
@@ -2683,7 +3304,21 @@ def _hora_limite(momento: datetime) -> str:
     return hora_con_articulo(tiempo.hora_local(momento))
 
 
-def _estado_corto(posicion: PosicionDelTurno) -> str:
+def _dicho_de_la_reserva(momento: datetime, hoy: date) -> str:
+    """ "hoy a las 10:30 a.m.", "mañana a las 7:30 a.m." o "el sábado 22 de noviembre a las
+    8:30 a.m.": cuándo es una reserva, en medio de una frase."""
+    local = tiempo.hora_local(momento)
+    dia = local.date()
+    if dia == hoy:
+        return f"hoy a {hora_con_articulo(local)}"
+    if dia == hoy + timedelta(days=1):
+        return f"mañana a {hora_con_articulo(local)}"
+    return f"el {DIAS[dia.weekday()]} {dia_y_mes(dia)} a {hora_con_articulo(local)}"
+
+
+def _estado_corto(posicion: PosicionDelTurno, hoy: date) -> str:
+    if posicion.estado == E.RESERVADO and posicion.hora_reservada is not None:
+        return f"reservado para {_dicho_de_la_reserva(posicion.hora_reservada, hoy)}"
     if posicion.estado == E.EN_FILA and posicion.adelante is not None:
         return textos.adelante(posicion.adelante)
     if posicion.estado == E.LLAMADO and posicion.gracia_hasta is not None:
@@ -2691,8 +3326,11 @@ def _estado_corto(posicion: PosicionDelTurno) -> str:
     return NOMBRE_DEL_ESTADO[posicion.estado].lower()
 
 
-def _como_va_el_turno(posicion: PosicionDelTurno, texto: Textos) -> str:
+def _como_va_el_turno(posicion: PosicionDelTurno, texto: Textos, hoy: date) -> str:
     datos = {"numero": posicion.numero, "fila": posicion.fila.lower()}
+    if posicion.estado == E.RESERVADO and posicion.hora_reservada is not None:
+        cuando = _dicho_de_la_reserva(posicion.hora_reservada, hoy)
+        return texto("mi_turno_reservado", dia_y_hora=cuando, **datos)
     if posicion.estado == E.LLAMADO and posicion.gracia_hasta is not None:
         return texto("mi_turno_llamado", hora=_hora_limite(posicion.gracia_hasta), **datos)
     if posicion.estado == E.EN_FILA:

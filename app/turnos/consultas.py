@@ -5,7 +5,7 @@ fila solo trae cantidades.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -29,6 +29,8 @@ class FotoDeLaFila:
     puestos_activos: int
     puestos_libres: int
     estimacion: reglas.Estimacion
+    # Puestos libres que se guardan para reservas que vienen: no son para la fila.
+    guardados: int = 0
 
     def adelante_de(self, turno_id: int) -> int | None:
         """Cuántos turnos tiene adelante. None si ya no está esperando puesto."""
@@ -61,19 +63,46 @@ def foto_de_la_fila(
         return duraciones.de(turno.servicio_id, tipos[turno.vehiculo_id])
 
     libres_desde = []
+    liberados = []  # cuándo termina cada puesto ocupado
     for puesto in puestos:
         turno = lavando.get(puesto.id)
         if turno is None:
             libres_desde.append(ahora)
         else:
             libres_desde.append((turno.en_lavado_desde or ahora) + duracion(turno))
+            liberados.append(libres_desde[-1])
+
+    # Las reservas de hoy que todavía no entran a la fila: se atienden a su hora.
+    tipica = duraciones.tipica()
+    por_llegar = datos.reservas_por_llegar(sesion, fila_id, hasta=_fin_del_dia(ahora, parametros))
+    tipos.update(datos.tipos_de_vehiculo(sesion, [t.vehiculo_id for t in por_llegar]))
+    reservas = [(turno.hora_reservada, duracion(turno)) for turno in por_llegar]
+    libres = sum(1 for puesto in puestos if puesto.id not in lavando)
+    guardados = reglas.puestos_para_reservas(
+        liberados, [hora for hora, _ in reservas if hora < ahora + tipica], libres
+    )
 
     return FotoDeLaFila(
         fila=fila,
         espera=espera,
         puestos_activos=len(puestos),
-        puestos_libres=sum(1 for puesto in puestos if puesto.id not in lavando),
-        estimacion=reglas.estimar_fila(libres_desde, [duracion(t) for t in espera], ahora),
+        puestos_libres=libres,
+        estimacion=reglas.estimar_fila(
+            libres_desde,
+            [duracion(t) for t in espera],
+            ahora,
+            reservas=reservas,
+            duracion_nueva=tipica,
+        ),
+        guardados=guardados,
+    )
+
+
+def _fin_del_dia(ahora: datetime, parametros: Parametros) -> datetime:
+    """Hasta cuándo cuentan las reservas de hoy para estimar la fila."""
+    hoy = tiempo.hora_local(ahora).date()
+    return reglas.cierre_del_dia(hoy, parametros.hora_cierre, tiempo.zona_horaria()) + timedelta(
+        hours=1
     )
 
 
@@ -86,11 +115,12 @@ class ResumenDeLaFila:
     puestos_libres: int
     en_espera: int
     espera_min: int | None  # cuánto esperaría un turno nuevo
+    guardados: int = 0  # puestos libres que esperan una reserva
 
     @property
     def puede_venir_ya(self) -> bool:
-        """Hay un puesto libre que nadie de la fila va a ocupar."""
-        return self.puestos_libres > self.en_espera
+        """Hay un puesto libre que nadie de la fila (ni una reserva) va a ocupar."""
+        return self.puestos_libres - self.guardados > self.en_espera
 
 
 def resumen_de_la_fila(
@@ -104,6 +134,7 @@ def resumen_de_la_fila(
         puestos_libres=foto.puestos_libres,
         en_espera=len(foto.espera),
         espera_min=reglas.minutos_hasta(foto.estimacion.siguiente, ahora),
+        guardados=foto.guardados,
     )
 
 
@@ -121,6 +152,7 @@ class PosicionDelTurno:
     en_camino: bool
     placa_pendiente: bool
     servicio_por_definir: bool
+    hora_reservada: datetime | None = None  # si reservó: el día y la hora
 
 
 def _posicion(sesion: Session, turno: Turno, foto: FotoDeLaFila, ahora: datetime):
@@ -136,6 +168,7 @@ def _posicion(sesion: Session, turno: Turno, foto: FotoDeLaFila, ahora: datetime
         en_camino=turno.en_camino,
         placa_pendiente=vehiculo.placa is None,
         servicio_por_definir=turno.servicio_id is None,
+        hora_reservada=turno.hora_reservada,
     )
 
 
@@ -169,7 +202,10 @@ def siguiente_para_puesto(sesion: Session, fila_id: int) -> int | None:
     """El turno que debería entrar al próximo puesto libre (el puesto no espera)."""
     espera = datos.en_espera(sesion, fila_id)
     return reglas.elegir_siguiente_para_puesto(
-        [reglas.TurnoEnEspera(t.id, t.estado, t.aviso_anticipado_en is not None) for t in espera]
+        [
+            reglas.TurnoEnEspera(t.id, t.estado, t.aviso_anticipado_en is not None, t.prioridad)
+            for t in espera
+        ]
     )
 
 

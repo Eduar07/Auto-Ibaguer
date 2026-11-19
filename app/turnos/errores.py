@@ -51,3 +51,8 @@ class PrecioInvalido(ReglaDelNegocio):
 
 class PuestoOcupado(ReglaDelNegocio):
     """Un puesto con un vehículo lavándose no se apaga."""
+
+
+class HorarioNoDisponible(ReglaDelNegocio):
+    """Ese día y esa hora no se pueden reservar: ya no hay cupo, no abren, ya pasó o queda
+    muy lejos."""

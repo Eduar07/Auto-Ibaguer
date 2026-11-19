@@ -6,6 +6,8 @@ no ofrece. El menú de verdad está en app.catalogo.datos_iniciales y tiene su p
 (test_tablas_y_datos).
 """
 
+from app.catalogo.datos_iniciales import CONFIGURACION_INICIAL
+
 DURACION_DE_PRUEBA = 60
 
 SERVICIOS_DE_PRUEBA = (
@@ -52,4 +54,13 @@ SERVICIOS_DE_PRUEBA = (
         "Intermedio + lubricación de cadena, brillo de plásticos y cromados, protector",
         {"Moto": 35_000},
     ),
+)
+
+
+# El horario con que corren las pruebas: de 5:30 a.m. a 7:30 p.m., para probar el cierre a
+# una hora del día (el de 12 de la noche del negocio tiene sus propias pruebas).
+HORARIO_DE_PRUEBA = {"hora_apertura": "05:30", "hora_cierre": "19:30"}
+CONFIGURACION_DE_PRUEBA = tuple(
+    (clave, HORARIO_DE_PRUEBA.get(clave, valor), descripcion)
+    for clave, valor, descripcion in CONFIGURACION_INICIAL
 )

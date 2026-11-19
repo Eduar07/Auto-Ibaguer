@@ -220,7 +220,7 @@ def test_con_un_error_no_se_guarda_nada(adentro: TestClient, sesion: Session):
     respuesta = adentro.post("/configuracion", headers=HTMX, data=formulario)
 
     assert error(respuesta).startswith("No se guardó nada")
-    assert "Debe ser después de la hora en que abre." in respuesta.text
+    assert "Debe ser después de la hora en que abre" in respuesta.text
     assert 'value="45.000"' in respuesta.text  # lo escrito no se pierde
     assert datos.precio_vigente(sesion, basico, automovil).precio == 40_000
 

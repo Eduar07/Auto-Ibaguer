@@ -32,6 +32,10 @@ class Parametros:
     dias_atencion: frozenset[int]  # 1 = lunes ... 7 = domingo
     gracia: timedelta
     avisar_cuando_falten: int
+    # Reservas: cada cuánto hay un horario, hasta cuántos días adelante y cuándo se recuerda.
+    entre_horarios: timedelta
+    dias_para_reservar: int
+    recordar_reserva: timedelta
     sesion_bot: timedelta
     servicio_por_defecto: str
     turnos_activos_por_telefono: int
@@ -66,6 +70,9 @@ def leer_parametros(sesion: Session) -> Parametros:
         dias_atencion=frozenset(int(dia) for dia in valor("dias_atencion")),
         gracia=timedelta(minutes=int(valor("gracia_minutos"))),
         avisar_cuando_falten=int(valor("avisar_cuando_falten")),
+        entre_horarios=timedelta(minutes=int(valor("minutos_entre_horarios"))),
+        dias_para_reservar=int(valor("dias_para_reservar")),
+        recordar_reserva=timedelta(minutes=int(valor("recordar_reserva_minutos"))),
         sesion_bot=timedelta(minutes=int(valor("sesion_bot_minutos"))),
         servicio_por_defecto=str(valor("servicio_por_defecto")),
         turnos_activos_por_telefono=int(valor("turnos_activos_por_telefono")),

@@ -10,7 +10,7 @@ toca un puesto libre y le pide salir hacia el lavadero a quien le faltan 2 turno
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -26,8 +26,9 @@ from app.catalogo.tablas import Fila, Puesto, Servicio, TipoVehiculo
 from app.clientes import servicio as clientes
 from app.clientes.errores import NoExiste
 from app.clientes.tablas import Cliente, Vehiculo
-from app.formato import hora, hora_con_articulo, pesos
+from app.formato import cuando_sera, hora, hora_con_articulo, pesos
 from app.integraciones import bandeja_salida
+from app.integraciones.tablas import MensajeEntrante
 from app.turnos import caja as caja_del_lavadero
 from app.turnos import consultas, datos, reglas
 from app.turnos.errores import (
@@ -35,6 +36,7 @@ from app.turnos.errores import (
     FaltaPlaca,
     FaltaServicio,
     FueraDeHorario,
+    HorarioNoDisponible,
     PuestoNoDisponible,
     PuestoOcupado,
     ServicioNoDisponible,
@@ -151,11 +153,16 @@ def _revisar_fila(
     se acaba de pedir por WhatsApp: la confirmación del bot ya le dice todo, así que no
     se le manda un aviso aparte.
     """
-    espera = datos.en_espera(sesion, fila.id)
+    foto = consultas.foto_de_la_fila(sesion, fila.id, ahora, parametros)
+    espera = foto.espera
     decision = reglas.decidir_llamados(
-        [reglas.TurnoEnEspera(t.id, t.estado, t.aviso_anticipado_en is not None) for t in espera],
-        datos.puestos_libres(sesion, fila.id),
+        [
+            reglas.TurnoEnEspera(t.id, t.estado, t.aviso_anticipado_en is not None, t.prioridad)
+            for t in espera
+        ],
+        foto.puestos_libres,
         parametros.avisar_cuando_falten,
+        guardados=foto.guardados,
     )
     por_id = {turno.id: turno for turno in espera}
     for turno_id in decision.llamar:
@@ -365,6 +372,7 @@ def marcar_llegada(
     turno = datos.bloquear_turno(sesion, turno_id)
     if turno.estado == EstadoTurno.LLEGO:
         return turno
+    reservado = turno.estado == EstadoTurno.RESERVADO
     _cambiar_estado(
         sesion,
         turno,
@@ -372,9 +380,15 @@ def marcar_llegada(
         actor=actor,
         ahora=ahora,
         administrador_id=administrador_id,
+        detalle="Llegó antes de la hora de su reserva" if reservado else None,
     )
     turno.en_camino = False
+    if reservado:
+        # Entra a la fila desde que llegó; a la hora de su reserva pasa de primero.
+        turno.en_fila_desde = ahora
     sesion.flush()
+    if reservado:
+        _revisar_fila(sesion, sesion.get(Fila, turno.fila_id), ahora, leer_parametros(sesion))
     return turno
 
 
@@ -453,6 +467,11 @@ def vencer_gracias(sesion: Session, *, ahora: datetime | None = None) -> list[Gr
                 turno.en_camino = False
                 turno.aviso_anticipado_en = None
                 detalle = "No llegó a tiempo: pasa al final de la fila"
+                if turno.hora_reservada is not None:
+                    # Pierde la reserva: queda en la fila como cualquiera.
+                    detalle = "No llegó a la hora de su reserva: la pierde y pasa al final"
+                    turno.hora_reservada = None
+                    turno.prioridad = False
                 al_final.append(turno)
             else:
                 turno.intentos_sin_llegar = 2
@@ -873,3 +892,448 @@ def agregar_puesto(sesion: Session, fila_id: int, *, ahora: datetime | None = No
     sesion.flush()
     _revisar_fila(sesion, fila, ahora, leer_parametros(sesion))
     return puesto
+
+
+# --- Reservas ----------------------------------------------------------------------------
+
+# Una reserva para hoy queda, mínimo, media hora adelante: que alcance a llegar sin afán.
+ANTICIPACION_MINIMA = timedelta(minutes=30)
+
+
+@dataclass(frozen=True)
+class DiaParaReservar:
+    fecha: date
+    horarios: int  # cuántos horarios libres le quedan
+
+
+@dataclass(frozen=True)
+class Reserva:
+    """Lo que el bot necesita para confirmar una reserva o un cambio de hora."""
+
+    turno: Turno
+    numero: str
+    hora: datetime
+    # Si cambió de día, el turno cambia de número: este era el de antes.
+    numero_anterior: str | None = None
+
+
+def duracion_del_turno(
+    sesion: Session, fila_id: int, servicio_id: int | None, tipo_vehiculo_id: int
+) -> timedelta:
+    parametros = leer_parametros(sesion)
+    return datos.Duraciones(sesion, fila_id, parametros.servicio_por_defecto).de(
+        servicio_id, tipo_vehiculo_id
+    )
+
+
+def horarios_libres(
+    sesion: Session,
+    *,
+    fila_id: int,
+    fecha: date,
+    duracion: timedelta,
+    ahora: datetime | None = None,
+    sin_turno_id: int | None = None,
+) -> list[datetime]:
+    """Las horas de ese día que todavía se pueden reservar en esa fila para un servicio que
+    dura `duracion`: dentro del horario, con media hora de anticipación como mínimo, hasta
+    `dias_para_reservar` días adelante y mientras quede un puesto (activo) libre en todo el
+    rato que dura. `sin_turno_id`: el turno que cambia de hora no cuenta como ocupado."""
+    ahora = ahora or tiempo.ahora()
+    p = leer_parametros(sesion)
+    zona = tiempo.zona_horaria()
+    hoy = tiempo.hora_local(ahora).date()
+    if not hoy <= fecha <= hoy + timedelta(days=p.dias_para_reservar):
+        return []
+    horas = [
+        momento
+        for momento in reglas.horarios_del_dia(
+            fecha,
+            apertura=p.hora_apertura,
+            cierre=p.hora_cierre,
+            dias=p.dias_atencion,
+            cada=p.entre_horarios,
+            duracion=duracion,
+            zona=zona,
+        )
+        if momento >= ahora + ANTICIPACION_MINIMA
+    ]
+    if not horas:
+        return []
+    capacidad = len(datos.puestos_activos(sesion, fila_id))
+    duraciones = datos.Duraciones(sesion, fila_id, p.servicio_por_defecto)
+    del_dia = datos.reservas(
+        sesion,
+        fila_id,
+        desde=datetime.combine(fecha, time(0), zona) - timedelta(hours=6),
+        hasta=datetime.combine(fecha + timedelta(days=1), time(0), zona) + timedelta(hours=6),
+        sin_turno_id=sin_turno_id,
+    )
+    tipos = datos.tipos_de_vehiculo(sesion, [t.vehiculo_id for t in del_dia])
+    ocupadas = [
+        (t.hora_reservada, duraciones.de(t.servicio_id, tipos[t.vehiculo_id])) for t in del_dia
+    ]
+    return [
+        momento
+        for momento in horas
+        if reglas.cabe_otra_reserva(momento, duracion, ocupadas, capacidad)
+    ]
+
+
+def dias_para_reservar(
+    sesion: Session,
+    *,
+    fila_id: int,
+    duracion: timedelta,
+    ahora: datetime | None = None,
+    sin_turno_id: int | None = None,
+) -> list[DiaParaReservar]:
+    """Los días que todavía tienen horarios libres, desde hoy hasta `dias_para_reservar`."""
+    ahora = ahora or tiempo.ahora()
+    hoy = tiempo.hora_local(ahora).date()
+    dias = []
+    for adelante in range(leer_parametros(sesion).dias_para_reservar + 1):
+        fecha = hoy + timedelta(days=adelante)
+        libres = horarios_libres(
+            sesion,
+            fila_id=fila_id,
+            fecha=fecha,
+            duracion=duracion,
+            ahora=ahora,
+            sin_turno_id=sin_turno_id,
+        )
+        if libres:
+            dias.append(DiaParaReservar(fecha, len(libres)))
+    return dias
+
+
+def _revisar_horario(
+    sesion: Session,
+    *,
+    fila_id: int,
+    hora_elegida: datetime,
+    duracion: timedelta,
+    ahora: datetime,
+    sin_turno_id: int | None = None,
+) -> None:
+    fecha = tiempo.hora_local(hora_elegida).date()
+    libres = horarios_libres(
+        sesion,
+        fila_id=fila_id,
+        fecha=fecha,
+        duracion=duracion,
+        ahora=ahora,
+        sin_turno_id=sin_turno_id,
+    )
+    if hora_elegida not in libres:
+        raise HorarioNoDisponible(
+            f"Para {cuando_sera(tiempo.hora_local(hora_elegida), tiempo.hora_local(ahora).date())} "
+            "ya no hay cupo. Elige otra hora."
+        )
+
+
+def _siguiente_consecutivo(sesion: Session, fila_id: int, fecha: date) -> int:
+    ultimo = sesion.scalar(
+        select(func.max(Turno.consecutivo)).where(Turno.fila_id == fila_id, Turno.fecha == fecha)
+    )
+    return (ultimo or 0) + 1
+
+
+def _dicho_de_la_reserva(momento: datetime, ahora: datetime) -> str:
+    """ "hoy a las 10:30 a.m.", "mañana a las 7:30 a.m.", "el 25 de noviembre a las..." """
+    hoy = tiempo.hora_local(ahora).date()
+    local = tiempo.hora_local(momento)
+    texto = cuando_sera(local, hoy)
+    return f"hoy a {texto}" if local.date() == hoy else texto
+
+
+def reservar(
+    sesion: Session,
+    *,
+    vehiculo_id: int,
+    hora_elegida: datetime,
+    origen: OrigenTurno,
+    servicio_id: int | None = None,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> Reserva:
+    """Reserva un día y una hora. El turno queda Reservado: a esa hora entra a la fila de
+    primero (`activar_reservas`). Cada horario tiene tantos cupos como puestos activos.
+
+    Por WhatsApp, máximo un turno activo por teléfono en cada fila (también cuenta una
+    reserva). Se puede reservar aunque el local esté cerrado ahora.
+    """
+    ahora = ahora or tiempo.ahora()
+    parametros = leer_parametros(sesion)
+    vehiculo = sesion.get(Vehiculo, vehiculo_id)
+    if vehiculo is None:
+        raise NoExiste(f"No existe el vehículo {vehiculo_id}.")
+    tipo = sesion.get(TipoVehiculo, vehiculo.tipo_vehiculo_id)
+    fila = datos.bloquear_fila(sesion, tipo.fila_id)
+    por_whatsapp = origen == OrigenTurno.WHATSAPP
+    if por_whatsapp:
+        activos = datos.activos_del_cliente(sesion, vehiculo.cliente_id, fila.id)
+        if len(activos) >= parametros.turnos_activos_por_telefono:
+            primero = activos[0]
+            raise YaTieneTurnoActivo(
+                primero.id, reglas.numero_de_turno(fila.prefijo, primero.consecutivo)
+            )
+    if servicio_id is not None:
+        _servicio_valido(sesion, servicio_id, fila.id, tipo.id)
+    duracion = duracion_del_turno(sesion, fila.id, servicio_id, tipo.id)
+    _revisar_horario(
+        sesion, fila_id=fila.id, hora_elegida=hora_elegida, duracion=duracion, ahora=ahora
+    )
+
+    fecha = tiempo.hora_local(hora_elegida).date()
+    turno = Turno(
+        fila_id=fila.id,
+        fecha=fecha,
+        consecutivo=_siguiente_consecutivo(sesion, fila.id, fecha),
+        cliente_id=vehiculo.cliente_id,
+        vehiculo_id=vehiculo.id,
+        servicio_id=servicio_id,
+        estado=EstadoTurno.RESERVADO,
+        origen=origen,
+        en_fila_desde=hora_elegida,
+        hora_reservada=hora_elegida,
+    )
+    sesion.add(turno)
+    sesion.flush()
+    numero = reglas.numero_de_turno(fila.prefijo, turno.consecutivo)
+    _registrar(
+        sesion,
+        turno,
+        None,
+        EstadoTurno.RESERVADO,
+        actor=Actor.CLIENTE if por_whatsapp else Actor.ADMINISTRADOR,
+        ahora=ahora,
+        administrador_id=administrador_id,
+        detalle=f"Turno {numero}, reservado para {_dicho_de_la_reserva(hora_elegida, ahora)}",
+    )
+    # Si la reserva es pronto, desde ya se le guarda el puesto.
+    _revisar_fila(sesion, fila, ahora, parametros)
+    return Reserva(turno=turno, numero=numero, hora=hora_elegida)
+
+
+# Desde estos estados se puede cambiar la hora: todavía no llega al local.
+SE_PUEDE_REAGENDAR = frozenset({EstadoTurno.RESERVADO, EstadoTurno.EN_FILA, EstadoTurno.LLAMADO})
+
+
+def reagendar(
+    sesion: Session,
+    turno_id: int,
+    *,
+    hora_elegida: datetime,
+    actor: Actor,
+    administrador_id: int | None = None,
+    ahora: datetime | None = None,
+) -> Reserva:
+    """Cambia el día o la hora: el turno queda Reservado para `hora_elegida`. Sirve para una
+    reserva y también para quien estaba en la fila y ya no alcanza a venir hoy. Deja libre
+    el cupo de antes; si estaba en la fila, la fila avanza. Si cambia de día, el turno
+    toma un número de ese día."""
+    ahora = ahora or tiempo.ahora()
+    parametros = leer_parametros(sesion)
+    turno = datos.bloquear_turno(sesion, turno_id)
+    if turno.estado not in SE_PUEDE_REAGENDAR:
+        raise CambioNoPermitido(
+            f"El turno está en «{NOMBRE_DEL_ESTADO[turno.estado]}»: ya no se le puede "
+            "cambiar la hora."
+        )
+    if turno.estado != EstadoTurno.RESERVADO and not reglas.puede_cambiar(
+        turno.estado, EstadoTurno.RESERVADO, actor
+    ):
+        raise CambioNoPermitido(_por_que_no(turno.estado, EstadoTurno.RESERVADO, actor))
+    vehiculo = sesion.get(Vehiculo, turno.vehiculo_id)
+    duracion = duracion_del_turno(
+        sesion, turno.fila_id, turno.servicio_id, vehiculo.tipo_vehiculo_id
+    )
+    _revisar_horario(
+        sesion,
+        fila_id=turno.fila_id,
+        hora_elegida=hora_elegida,
+        duracion=duracion,
+        ahora=ahora,
+        sin_turno_id=turno.id,
+    )
+    fila = sesion.get(Fila, turno.fila_id)
+    numero_antes = reglas.numero_de_turno(fila.prefijo, turno.consecutivo)
+    fecha = tiempo.hora_local(hora_elegida).date()
+    if fecha != turno.fecha:
+        turno.consecutivo = _siguiente_consecutivo(sesion, fila.id, fecha)
+        turno.fecha = fecha
+    numero = reglas.numero_de_turno(fila.prefijo, turno.consecutivo)
+    detalle = f"Cambió la hora: {_dicho_de_la_reserva(hora_elegida, ahora)}"
+    if numero != numero_antes:
+        detalle += f" (antes {numero_antes})"
+    if turno.estado == EstadoTurno.RESERVADO:
+        _registrar(
+            sesion,
+            turno,
+            turno.estado,
+            turno.estado,
+            actor=actor,
+            ahora=ahora,
+            administrador_id=administrador_id,
+            detalle=detalle,
+        )
+    else:
+        _cambiar_estado(
+            sesion,
+            turno,
+            EstadoTurno.RESERVADO,
+            actor=actor,
+            ahora=ahora,
+            administrador_id=administrador_id,
+            detalle=detalle,
+        )
+    turno.hora_reservada = hora_elegida
+    turno.en_fila_desde = hora_elegida
+    turno.prioridad = False
+    turno.recordado_en = None
+    turno.llamado_en = None
+    turno.gracia_hasta = None
+    turno.aviso_anticipado_en = None
+    turno.en_camino = False
+    # Una reserva nueva empieza de cero: si no llega a su hora, pasa al final (como dice el
+    # mensaje de la reserva), aunque antes ya lo hubieran llamado una vez sin llegar.
+    turno.intentos_sin_llegar = 0
+    sesion.flush()
+    _revisar_fila(sesion, fila, ahora, parametros)
+    return Reserva(
+        turno=turno,
+        numero=numero,
+        hora=hora_elegida,
+        numero_anterior=numero_antes if numero != numero_antes else None,
+    )
+
+
+@dataclass(frozen=True)
+class ReservaQueEntra:
+    turno_id: int
+    numero: str
+
+
+def activar_reservas(sesion: Session, *, ahora: datetime | None = None) -> list[ReservaQueEntra]:
+    """Lo que hace el reloj en cada vuelta: a las reservas que les llegó la hora, entran a la
+    fila de primero (o, si ya están en el local, pasan de primeros). Si hay un puesto libre,
+    se les llama de una vez.
+
+    Si el servidor estuvo apagado (de noche, en el plan gratis de Render) y el día de una
+    reserva ya pasó, no se le llama hoy por la reserva de ayer: queda en No llegó, sin
+    mensaje."""
+    ahora = ahora or tiempo.ahora()
+    hoy = tiempo.hora_local(ahora).date()
+    parametros = leer_parametros(sesion)
+    pendientes = select(Turno.fila_id).where(
+        Turno.hora_reservada <= ahora,
+        Turno.prioridad.is_(False),
+        Turno.estado.in_((EstadoTurno.RESERVADO, EstadoTurno.LLEGO)),
+    )
+    resultados = []
+    for fila_id in sorted(set(sesion.scalars(pendientes))):
+        fila = datos.bloquear_fila(sesion, fila_id)
+        consulta = (
+            select(Turno)
+            .where(
+                Turno.fila_id == fila_id,
+                Turno.hora_reservada <= ahora,
+                Turno.prioridad.is_(False),
+                Turno.estado.in_((EstadoTurno.RESERVADO, EstadoTurno.LLEGO)),
+            )
+            .order_by(Turno.hora_reservada, Turno.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        for turno in sesion.scalars(consulta).all():
+            if (
+                turno.estado == EstadoTurno.RESERVADO
+                and tiempo.hora_local(turno.hora_reservada).date() < hoy
+            ):
+                _cambiar_estado(
+                    sesion,
+                    turno,
+                    EstadoTurno.NO_LLEGO,
+                    actor=Actor.SISTEMA,
+                    ahora=ahora,
+                    detalle="Su reserva era de un día que ya pasó",
+                )
+                continue
+            turno.prioridad = True
+            if turno.estado == EstadoTurno.RESERVADO:
+                turno.en_fila_desde = turno.hora_reservada
+                _cambiar_estado(
+                    sesion,
+                    turno,
+                    EstadoTurno.EN_FILA,
+                    actor=Actor.SISTEMA,
+                    ahora=ahora,
+                    detalle="Llegó la hora de su reserva: entra a la fila de primero",
+                )
+            else:
+                _registrar(
+                    sesion,
+                    turno,
+                    turno.estado,
+                    turno.estado,
+                    actor=Actor.SISTEMA,
+                    ahora=ahora,
+                    detalle="Llegó la hora de su reserva: pasa de primero",
+                )
+            resultados.append(ReservaQueEntra(turno.id, _numero(sesion, turno)))
+        sesion.flush()
+        _revisar_fila(sesion, fila, ahora, parametros)
+    return resultados
+
+
+# WhatsApp deja escribirle sin plantilla hasta 24 horas después de su último mensaje. Con
+# este margen, el recordatorio no queda justo en el límite.
+VENTANA_PARA_ESCRIBIR = timedelta(hours=24) - timedelta(minutes=5)
+
+
+def _le_escribio_hace_poco(sesion: Session, telefono: str, ahora: datetime) -> bool:
+    ultimo = sesion.scalar(
+        select(func.max(MensajeEntrante.recibido_en)).where(MensajeEntrante.telefono == telefono)
+    )
+    return ultimo is not None and ultimo >= ahora - VENTANA_PARA_ESCRIBIR
+
+
+def recordar_reservas(sesion: Session, *, ahora: datetime | None = None) -> int:
+    """Lo que hace el reloj en cada vuelta: a quien le falta `recordar_reserva` (1 hora) para
+    su reserva, se le recuerda una vez. Solo si WhatsApp lo deja (escribió en las últimas
+    24 horas): si no, no se manda nada, porque Meta lo rechazaría. Devuelve cuántos
+    recordatorios dejó en la bandeja de salida."""
+    ahora = ahora or tiempo.ahora()
+    parametros = leer_parametros(sesion)
+    if parametros.recordar_reserva <= timedelta(0):
+        return 0
+    consulta = (
+        select(Turno)
+        .where(
+            Turno.estado == EstadoTurno.RESERVADO,
+            Turno.recordado_en.is_(None),
+            Turno.hora_reservada > ahora,
+            Turno.hora_reservada <= ahora + parametros.recordar_reserva,
+        )
+        .order_by(Turno.hora_reservada, Turno.id)
+        .with_for_update(skip_locked=True)
+    )
+    enviados = 0
+    for turno in sesion.scalars(consulta).all():
+        turno.recordado_en = ahora
+        cliente = sesion.get(Cliente, turno.cliente_id)
+        if cliente is None or cliente.telefono is None:
+            continue
+        if not _le_escribio_hace_poco(sesion, cliente.telefono, ahora):
+            continue
+        _avisar(
+            sesion,
+            turno,
+            TipoAviso.RECORDATORIO,
+            ahora,
+            hora_reservada=turno.hora_reservada.isoformat(),
+        )
+        enviados += 1
+    sesion.flush()
+    return enviados

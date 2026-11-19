@@ -129,6 +129,7 @@ def test_con_gemini_mejor_lo_pienso_en_el_resumen_tambien_lo_ofrece(sesion: Sess
     cliente_con_vehiculo(sesion, telefono=CELULAR, nombre="Ana Ruiz", placa="ABC123")
     cliente = chat(sesion)
     cliente.escribe("hola").toca("Pedir turno").toca("Básico")  # el único vehículo que tiene
+    cliente.toca("Lo antes posible")
     assert paso(sesion) == "confirmar"
     cliente.gemini.entendidos.append(Interpretacion(Intencion.LO_PIENSO))
 

@@ -10,6 +10,8 @@ from enum import StrEnum
 class EstadoTurno(StrEnum):
     """Los estados posibles de un turno. La base de datos rechaza cualquier otro."""
 
+    # Reservó un día y una hora: a esa hora entra a la fila, de primero.
+    RESERVADO = "reservado"
     EN_FILA = "en_fila"
     LLAMADO = "llamado"
     LLEGO = "llego"
@@ -22,6 +24,7 @@ class EstadoTurno(StrEnum):
 
 # Cómo se le muestra cada estado a la persona.
 NOMBRE_DEL_ESTADO = {
+    EstadoTurno.RESERVADO: "Reservado",
     EstadoTurno.EN_FILA: "En fila",
     EstadoTurno.LLAMADO: "Llamado",
     EstadoTurno.LLEGO: "Llegó",
@@ -35,6 +38,7 @@ NOMBRE_DEL_ESTADO = {
 # Un turno en estos estados todavía está "vivo" en el lavadero.
 ESTADOS_ACTIVOS = frozenset(
     {
+        EstadoTurno.RESERVADO,
         EstadoTurno.EN_FILA,
         EstadoTurno.LLAMADO,
         EstadoTurno.LLEGO,
@@ -44,6 +48,7 @@ ESTADOS_ACTIVOS = frozenset(
 )
 
 # Los que esperan puesto: todavía no entran a lavarse. Juntos forman la fila de espera.
+# Una reserva no está en la fila hasta que llega su hora.
 ESTADOS_EN_ESPERA = frozenset({EstadoTurno.EN_FILA, EstadoTurno.LLAMADO, EstadoTurno.LLEGO})
 
 
@@ -75,3 +80,4 @@ class TipoAviso(StrEnum):
     PASA_AL_FINAL = "pasa_al_final"  # no llegaste a tiempo: pasaste al final
     NO_LLEGO = "no_llego"  # segunda vez sin llegar: perdiste el turno
     VEHICULO_LISTO = "vehiculo_listo"  # ya puedes recogerlo y pagar en el local
+    RECORDATORIO = "recordatorio"  # te esperamos hoy a las 10:30 a.m. (su reserva)

@@ -87,15 +87,20 @@ para qué la manda, es otro.
 intencion:
 - saludo: solo saluda ("hola", "buenas tardes", "hola, ¿cómo estás?").
 - despedida: se despide o agradece sin pedir nada más ("gracias", "listo, chao").
-- pedir_turno: quiere lavar su vehículo o pedir un turno ("quiero lavar la moto", "me \
-separa un turno", "hay cupo para ahorita?").
+- pedir_turno: quiere lavar su vehículo, pedir un turno o reservar un día y una hora \
+("quiero lavar la moto", "me separa un turno", "hay cupo para ahorita?", "me reservas \
+para el sábado a las 10?").
 - ver_fila: pregunta cómo está la fila o cuánto tendría que esperar ("está muy lleno?").
 - precios: pregunta cuánto vale algo, qué servicios hay o qué incluye uno ("cuánto vale \
 lavar la camionetica", "qué incluye el general").
 - mi_turno: pregunta por un turno que ya pidió ("ya casi me toca?", "ya está lista mi \
 moto?").
-- cancelar: quiere cancelar su turno o avisa que ya no va ("ya no voy a poder ir"). Ojo: \
-en Colombia "cancelar" también es pagar: "¿puedo cancelar con Nequi?" es una pregunta.
+- cancelar: quiere cancelar su turno, sin pedir otro día ("cancela mi turno", "ya no lo \
+necesito"). Ojo: en Colombia "cancelar" también es pagar: "¿puedo cancelar con Nequi?" es \
+una pregunta.
+- reagendar: quiere cambiar el día o la hora de un turno que ya pidió o reservó, o avisa \
+que ese día ya no puede ("ya no puedo ir hoy", "mejor mañana a las 10", "me cambias la \
+hora?", "puedo llegar más tarde?"). El bot le ofrece otros días y también cancelar.
 - llegue: avisa que ya está en el lavadero ("ya llegué", "estoy afuera").
 - en_camino: avisa que va para allá ("voy saliendo", "ya voy en camino").
 - pico_y_placa: pregunta por el pico y placa.

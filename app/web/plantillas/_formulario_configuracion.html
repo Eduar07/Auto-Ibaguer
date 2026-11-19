@@ -32,7 +32,7 @@
         {{ error_de("hora_apertura") }}
       </div>
       <div class="campo">
-        <label for="hora_cierre">Cierra (deja de dar turnos)</label>
+        <label for="hora_cierre">Cierra (deja de dar turnos; 12:00 a.m. es a las 12 de la noche)</label>
         <input id="hora_cierre" name="hora_cierre" type="time" value="{{ valores.hora_cierre }}" {{ invalido("hora_cierre") }}>
         {{ error_de("hora_cierre") }}
       </div>
@@ -50,6 +50,24 @@
       {{ error_de("dias_atencion") }}
     </fieldset>
     <p class="ayuda">Los vehículos que ya están en la fila a la hora de cierre se atienden igual; el cierre solo frena los turnos nuevos por WhatsApp.</p>
+    <h3 class="subtitulo-configuracion">Reservas por WhatsApp</h3>
+    <p class="ayuda">El cliente elige un día y una hora. En cada horario caben tantos vehículos como puestos prendidos tenga la fila; a su hora entra a la fila de primero.</p>
+    <div class="tres-columnas">
+      {% for campo, etiqueta, unidad, minimo, maximo in [
+           ("minutos_entre_horarios", "Un horario cada", "minutos", 15, 240),
+           ("dias_para_reservar", "Se reserva hasta", "días adelante", 0, 30),
+           ("recordar_reserva_minutos", "Recordar la reserva", "minutos antes", 0, 240)] %}
+      <div class="campo">
+        <label for="{{ campo }}">{{ etiqueta }}</label>
+        <span class="campo-con-unidad">
+          <input id="{{ campo }}" name="{{ campo }}" type="number" inputmode="numeric" min="{{ minimo }}" max="{{ maximo }}" value="{{ valores[campo] }}" {{ invalido(campo) }}>
+          <span>{{ unidad }}</span>
+        </span>
+        {{ error_de(campo) }}
+      </div>
+      {% endfor %}
+    </div>
+    <p class="ayuda">El recordatorio solo sale si el cliente escribió en las últimas 24 horas: WhatsApp no deja escribirle después. Con 0 no se recuerda.</p>
   </section>
 
   <section id="bot" class="panel seccion-configuracion" aria-labelledby="t-bot">

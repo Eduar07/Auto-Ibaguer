@@ -1358,3 +1358,12 @@ form:not(:has(input[name="rol"][value="cajero"]:checked)) .solo-si-es-cajero { d
 .diagnostico__datos dd { margin: 0; overflow-wrap: anywhere; }
 .diagnostico__linea { display: block; margin-bottom: 4px; }
 .diagnostico form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* Configuración: las reservas, dentro del horario */
+.subtitulo-configuracion { margin: 20px 0 4px; font-size: 1rem; }
+
+/* Fila en vivo: reservas */
+.turno--reserva { border-left: 3px solid var(--azul, #2563eb); }
+.proxima { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--borde, #e5e7eb); }
+.proxima:last-child { border-bottom: 0; }
+.proxima__cuando { font-weight: 600; }

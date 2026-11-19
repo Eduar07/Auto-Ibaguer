@@ -30,6 +30,13 @@ LIMITES = {
     "avisar_cuando_falten": (1, 5),
     "sesion_bot_minutos": (10, 120),
 }
+# Las reservas. Si el formulario no las trae, quedan como estaban.
+LIMITES_DE_LAS_RESERVAS = {
+    "minutos_entre_horarios": (15, 240),
+    "dias_para_reservar": (0, 30),
+    "recordar_reserva_minutos": (0, 240),  # 0: no se recuerda
+}
+MEDIANOCHE = time(0)
 PRECIO_MAXIMO = 5_000_000
 LARGO_DE_LA_FICHA = 2000  # caracteres: lo que Gemini lee en cada respuesta que escribe
 # El nombre de un modelo de Gemini: "gemini-3.5-flash-lite", "gemini-flash-latest"...
@@ -87,8 +94,11 @@ def validar_parametros(formulario: Mapping[str, Any]) -> dict[str, Any]:
         errores["hora_apertura"] = "Escribe la hora en que abre."
     if cierre is None:
         errores["hora_cierre"] = "Escribe la hora en que deja de dar turnos."
-    if apertura and cierre and cierre <= apertura:
-        errores["hora_cierre"] = "Debe ser después de la hora en que abre."
+    if apertura and cierre and cierre <= apertura and cierre != MEDIANOCHE:
+        errores["hora_cierre"] = (
+            "Debe ser después de la hora en que abre (si cierras a las 12 de la noche, pon "
+            "12:00 a.m.)."
+        )
     if apertura and cierre:
         limpios["hora_apertura"] = apertura.strftime("%H:%M")
         limpios["hora_cierre"] = cierre.strftime("%H:%M")
@@ -112,6 +122,15 @@ def validar_parametros(formulario: Mapping[str, Any]) -> dict[str, Any]:
 
     for clave, (minimo, maximo) in LIMITES.items():
         valor = _numero_entre(str(formulario.get(clave, "")), minimo, maximo)
+        if valor is None:
+            errores[clave] = f"Escribe un número entre {minimo} y {maximo}."
+        limpios[clave] = valor
+
+    for clave, (minimo, maximo) in LIMITES_DE_LAS_RESERVAS.items():
+        escrito = formulario.get(clave)
+        if escrito is None:
+            continue
+        valor = _numero_entre(str(escrito), minimo, maximo)
         if valor is None:
             errores[clave] = f"Escribe un número entre {minimo} y {maximo}."
         limpios[clave] = valor

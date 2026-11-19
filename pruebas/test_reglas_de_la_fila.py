@@ -44,6 +44,10 @@ def min_(cantidad: int) -> timedelta:
         (E.EN_FILA, E.LLAMADO, Actor.SISTEMA),
         (E.LLAMADO, E.EN_FILA, Actor.SISTEMA),
         (E.LLAMADO, E.NO_LLEGO, Actor.SISTEMA),
+        (E.RESERVADO, E.EN_FILA, Actor.SISTEMA),  # llegó la hora de su reserva
+        (E.RESERVADO, E.LLEGO, Actor.CLIENTE),  # llegó antes de su hora
+        (E.RESERVADO, E.NO_LLEGO, Actor.SISTEMA),  # su día pasó con el servidor apagado
+        (E.EN_FILA, E.RESERVADO, Actor.CLIENTE),  # ya no alcanza: otro día
     ],
 )
 def test_cambios_permitidos(actual, nuevo, actor):
@@ -62,6 +66,8 @@ def test_cambios_permitidos(actual, nuevo, actor):
         (E.EN_LAVADO, E.PAGADO, Actor.ADMINISTRADOR),  # se cobra cuando está listo
         (E.PAGADO, E.CANCELADO, Actor.ADMINISTRADOR),
         (E.NO_LLEGO, E.EN_FILA, Actor.SISTEMA),
+        (E.RESERVADO, E.EN_FILA, Actor.CLIENTE),  # a la fila entra a su hora, no antes
+        (E.LLEGO, E.RESERVADO, Actor.CLIENTE),  # ya en el local: se resuelve allá
     ],
 )
 def test_cambios_no_permitidos(actual, nuevo, actor):

@@ -29,6 +29,9 @@
       {% if t.intentos_sin_llegar %}<span class="insignia insignia--pendiente">Ya pasó al final una vez</span>{% endif %}
     </div>
     {% endif %}
+    {% if t.prioridad and t.hora_reservada %}
+    <div class="marcas"><span class="insignia insignia--azul">Reservó a {{ t.hora_reservada|hora }}: va de primero</span></div>
+    {% endif %}
   </div>
   <div class="turno__servicio"><span class="turno__etiqueta">Servicio</span><strong>{{ partes.servicio_y_precio(t) }}</strong></div>
   {#- El estado y los botones van juntos: si no caben en la línea, bajan juntos. -#}
@@ -70,6 +73,28 @@
     {% endif %}
     {{ menu_del_turno(t) }}
   </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro reserva(t, con_dia=False) %}
+<div class="turno turno--reserva" id="turno-{{ t.id }}">
+  <span class="numero">{{ t.numero }}</span>
+  <div class="turno__quien">
+    <strong>{{ t.nombre }}</strong>
+    <span>{{ partes.vehiculo(t) }} · {{ "por WhatsApp" if t.por_whatsapp else "creado en el local" }}</span>
+  </div>
+  <div class="turno__servicio"><span class="turno__etiqueta">Servicio</span><strong>{{ partes.servicio_y_precio(t) }}</strong></div>
+  <div class="turno__lado">
+    <div class="turno__estado">
+      <span class="insignia insignia--azul">{{ iconos.icono("reloj", 14, 2.5) }}{% if con_dia %}{{ cuando(t.hora_reservada) }}{% else %}Reservado · {{ t.hora_reservada|hora }}{% endif %}</span>
+    </div>
+    <div class="turno__acciones">
+      <button type="button" class="boton boton--borde" hx-post="/turnos/{{ t.id }}/llegada"
+              hx-target="#tablero" hx-disabled-elt="this">Llegó</button>
+      <button type="button" class="boton boton--borde peligro" hx-get="/turnos/{{ t.id }}/cancelar"
+              hx-target="#dialogo-contenido">Cancelar</button>
+    </div>
   </div>
 </div>
 {% endmacro %}
@@ -201,6 +226,18 @@
           <p class="lista__vacia">Nadie en espera.</p>
         {% endfor %}
       </div>
+
+      {% if fila.reservas %}
+      <div class="lista">
+        <div class="lista__cabeza">
+          <h3>Reservas de hoy</h3>
+          <span class="suave">A su hora entran a la fila de primeros</span>
+        </div>
+        {% for t in fila.reservas %}
+          {{ reserva(t) }}
+        {% endfor %}
+      </div>
+      {% endif %}
     </section>
     {% endfor %}
   </div>
@@ -232,6 +269,18 @@
       {% if tablero.por_cobrar and not tablero.caja %}
       <div class="nota nota--suelta">{{ iconos.icono("info", 20) }}<span>La caja está cerrada: para cobrar, primero <a href="/caja">abre la caja</a>.</span></div>
       {% endif %}
+    </section>
+
+    <section class="panel" aria-labelledby="titulo-proximas">
+      <h2 id="titulo-proximas" class="panel__titulo">{{ iconos.icono("reloj", 20) }}Próximas reservas</h2>
+      {% for t in tablero.proximas %}
+        <div class="proxima">
+          <span class="proxima__cuando">{{ cuando(t.hora_reservada) }}</span>
+          <span><strong>{{ t.numero }}</strong> · {{ t.nombre }} · {{ t.tipo_vehiculo }}{% if t.servicio %} · {{ t.servicio }}{% endif %}</span>
+        </div>
+      {% else %}
+      <p class="suave">No hay reservas para los próximos días.</p>
+      {% endfor %}
     </section>
 
     <section class="panel" aria-labelledby="titulo-caja">

@@ -8,7 +8,7 @@ import heapq
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, tzinfo
 
 from app.caja.reglas import VALOR_MAXIMO_DE_UN_COBRO, sin_ceros_de_mas
 from app.formato import pesos
@@ -20,6 +20,15 @@ _A = Actor
 
 # Quién puede mover un turno de un estado a otro. Lo que no aparece aquí, no se permite.
 TRANSICIONES: dict[tuple[EstadoTurno, EstadoTurno], frozenset[Actor]] = {
+    # A la hora de la reserva entra a la fila; si llega antes, ya está en el local.
+    (_E.RESERVADO, _E.EN_FILA): frozenset({_A.SISTEMA}),
+    (_E.RESERVADO, _E.LLEGO): frozenset({_A.CLIENTE, _A.ADMINISTRADOR}),
+    (_E.RESERVADO, _E.CANCELADO): frozenset({_A.CLIENTE, _A.ADMINISTRADOR}),
+    # El día de la reserva pasó sin que el reloj corriera (el servidor estaba apagado).
+    (_E.RESERVADO, _E.NO_LLEGO): frozenset({_A.SISTEMA}),
+    # Cambiar la hora: quien está en la fila (o ya lo llamaron) puede reservar para después.
+    (_E.EN_FILA, _E.RESERVADO): frozenset({_A.CLIENTE, _A.ADMINISTRADOR}),
+    (_E.LLAMADO, _E.RESERVADO): frozenset({_A.CLIENTE, _A.ADMINISTRADOR}),
     (_E.EN_FILA, _E.LLAMADO): frozenset({_A.SISTEMA}),
     (_E.EN_FILA, _E.LLEGO): frozenset({_A.CLIENTE, _A.ADMINISTRADOR}),
     (_E.EN_FILA, _E.CANCELADO): frozenset({_A.CLIENTE, _A.ADMINISTRADOR}),
@@ -46,15 +55,99 @@ def numero_de_turno(prefijo: str, consecutivo: int) -> str:
     return f"{prefijo}-{consecutivo:02d}"
 
 
+# Cerrar "a las 12:00 a.m." es cerrar a las 12 de la noche: al final del día, no al comienzo.
+MEDIANOCHE = time(0)
+
+
 def esta_en_horario(
     momento_local: datetime, apertura: time, cierre: time, dias: frozenset[int]
 ) -> bool:
     """¿Se dan turnos por WhatsApp en este momento?
 
     `momento_local` va en hora de Bogotá y `dias` usa 1 = lunes ... 7 = domingo.
-    Abre a la hora de apertura en punto; a la hora de cierre en punto ya no da turnos.
+    Abre a la hora de apertura en punto; a la hora de cierre en punto ya no da turnos. Un
+    cierre a las 12:00 a.m. es a las 12 de la noche: abierto hasta que termina el día.
     """
-    return momento_local.isoweekday() in dias and apertura <= momento_local.time() < cierre
+    hora = momento_local.time()
+    antes_del_cierre = cierre == MEDIANOCHE or hora < cierre
+    return momento_local.isoweekday() in dias and apertura <= hora and antes_del_cierre
+
+
+def cierre_del_dia(fecha: date, cierre: time, zona: tzinfo) -> datetime:
+    """Cuándo cierra ese día. A las 12 de la noche es el comienzo del día siguiente."""
+    if cierre == MEDIANOCHE:
+        return datetime.combine(fecha + timedelta(days=1), MEDIANOCHE, zona)
+    return datetime.combine(fecha, cierre, zona)
+
+
+# --- Reservas: los horarios y los cupos --------------------------------------------------
+
+
+def horarios_del_dia(
+    fecha: date,
+    *,
+    apertura: time,
+    cierre: time,
+    dias: frozenset[int],
+    cada: timedelta,
+    duracion: timedelta,
+    zona: tzinfo,
+) -> list[datetime]:
+    """Las horas que se pueden reservar ese día: desde que abren, cada `cada` (6:30, 7:30,
+    8:30...), mientras el servicio (`duracion`) alcance a terminar antes del cierre. Un día
+    en que no abren no tiene horarios."""
+    if fecha.isoweekday() not in dias or cada <= timedelta(0):
+        return []
+    hora = datetime.combine(fecha, apertura, zona)
+    fin = cierre_del_dia(fecha, cierre, zona)
+    horas = []
+    while hora + duracion <= fin:
+        horas.append(hora)
+        hora += cada
+    return horas
+
+
+def cabe_otra_reserva(
+    inicio: datetime,
+    duracion: timedelta,
+    reservas: Sequence[tuple[datetime, timedelta]],
+    capacidad: int,
+) -> bool:
+    """¿Cabe una reserva más de `inicio` a `inicio + duracion` sin que a ningún momento haya
+    más vehículos reservados que puestos (`capacidad`)? `reservas` son las que ya hay:
+    (hora, duración). Una reserva de 45 minutos a las 6:30 no choca con una de las 7:30."""
+    if capacidad <= 0:
+        return False
+    fin = inicio + duracion
+    cruzadas = [
+        (hora, hora + dura) for hora, dura in reservas if hora < fin and hora + dura > inicio
+    ]
+    # Donde más reservas se juntan es al comienzo de alguna: basta revisar esos momentos.
+    momentos = [inicio, *(hora for hora, _ in cruzadas if inicio < hora < fin)]
+    return all(
+        sum(1 for desde, hasta in cruzadas if desde <= momento < hasta) < capacidad
+        for momento in momentos
+    )
+
+
+def puestos_para_reservas(
+    liberados: Sequence[datetime], reservas: Sequence[datetime], libres: int
+) -> int:
+    """Cuántos de los puestos `libres` se guardan para las reservas que vienen: así a quien
+    reservó no le quita el puesto alguien que entró justo antes.
+
+    `reservas` son las horas de las reservas que llegan antes de que termine un lavado que
+    empezara ya. `liberados` dice cuándo termina cada puesto ocupado: si uno se libera antes
+    de la hora de una reserva, esa reserva entra ahí y no hace falta guardarle uno libre.
+    """
+    ocupados = sorted(liberados)
+    guardar = 0
+    for hora in sorted(reservas):
+        if ocupados and ocupados[0] <= hora:
+            ocupados.pop(0)
+        else:
+            guardar += 1
+    return min(guardar, max(libres, 0))
 
 
 # --- Llamados y avisos -----------------------------------------------------------------
@@ -67,6 +160,8 @@ class TurnoEnEspera:
     id: int
     estado: EstadoTurno
     avisado: bool  # ya se le pidió que saliera hacia el lavadero
+    # Le llegó la hora de su reserva: va de primero y puede usar los puestos guardados.
+    prioridad: bool = False
 
 
 @dataclass(frozen=True)
@@ -77,18 +172,27 @@ class Llamados:
 
 
 def decidir_llamados(
-    espera: Sequence[TurnoEnEspera], puestos_libres: int, avisar_cuando_falten: int
+    espera: Sequence[TurnoEnEspera],
+    puestos_libres: int,
+    avisar_cuando_falten: int,
+    guardados: int = 0,
 ) -> Llamados:
     """Quién pasa a Llamado y quién recibe el aviso anticipado.
 
-    `espera` va en el orden de la fila. Cada puesto libre le corresponde a uno de los
-    primeros de la fila: si ese turno sigue En fila, se llama y empieza su tiempo de
-    gracia. Los que ya fueron llamados o ya llegaron no se llaman otra vez.
+    `espera` va en el orden de la fila: primero los que tienen prioridad (les llegó la hora
+    de su reserva). Cada puesto libre le corresponde a uno de los primeros de la fila: si
+    ese turno sigue En fila, se llama y empieza su tiempo de gracia. Los que ya fueron
+    llamados o ya llegaron no se llaman otra vez. `guardados` son los puestos libres que se
+    guardan para reservas que vienen (`puestos_para_reservas`): esos solo los usa quien
+    tiene prioridad.
 
     A quien sigue En fila con `avisar_cuando_falten` turnos o menos adelante se le
     avisa, una sola vez, que salga hacia el lavadero.
     """
-    primeros = espera[: max(puestos_libres, 0)]
+    libres = max(puestos_libres, 0)
+    con_prioridad = min(sum(1 for t in espera if t.prioridad), libres)
+    para_los_demas = max(0, libres - con_prioridad - max(guardados, 0))
+    primeros = espera[: con_prioridad + para_los_demas]
     llamar = tuple(t.id for t in primeros if t.estado == EstadoTurno.EN_FILA)
     avisar = tuple(
         (t.id, adelante)
@@ -126,6 +230,7 @@ ESTADOS_DONDE_SIRVE_EL_AVISO = {
     TipoAviso.PASA_AL_FINAL: frozenset({_E.EN_FILA, _E.LLAMADO}),
     TipoAviso.NO_LLEGO: frozenset({_E.NO_LLEGO}),
     TipoAviso.VEHICULO_LISTO: frozenset({_E.LISTO}),
+    TipoAviso.RECORDATORIO: frozenset({_E.RESERVADO}),
 }
 
 
@@ -136,6 +241,8 @@ def aviso_sigue_vigente(
     gracia_hasta: datetime | None,
     gracia_del_aviso: datetime | None,
     ahora: datetime,
+    hora_reservada: datetime | None = None,
+    hora_del_aviso: datetime | None = None,
 ) -> bool:
     """¿Todavía sirve enviar este aviso?
 
@@ -149,6 +256,10 @@ def aviso_sigue_vigente(
     if tipo == TipoAviso.LLAMADO:
         mismo_llamado = gracia_del_aviso is None or gracia_del_aviso == gracia_hasta
         return mismo_llamado and gracia_hasta is not None and ahora < gracia_hasta
+    if tipo == TipoAviso.RECORDATORIO:
+        # Si cambió la hora, este recordatorio ya no es el suyo; y después de la hora, sobra.
+        misma_hora = hora_del_aviso is None or hora_del_aviso == hora_reservada
+        return misma_hora and hora_reservada is not None and ahora < hora_reservada
     return True
 
 
@@ -164,7 +275,11 @@ class Estimacion:
 
 
 def estimar_fila(
-    libres_desde: Sequence[datetime], duraciones: Sequence[timedelta], ahora: datetime
+    libres_desde: Sequence[datetime],
+    duraciones: Sequence[timedelta],
+    ahora: datetime,
+    reservas: Sequence[tuple[datetime, timedelta]] = (),
+    duracion_nueva: timedelta | None = None,
 ) -> Estimacion:
     """Simula los puestos para estimar cuándo le toca a cada turno.
 
@@ -173,6 +288,11 @@ def estimar_fila(
     puesto que se libere primero y lo ocupa lo que dure su servicio (`duraciones`, en
     el mismo orden de la fila).
 
+    Las `reservas` que vienen (hora, duración) se atienden a su hora: si un turno de la
+    fila no alcanza a terminar antes de que llegue una, ese puesto se queda para la
+    reserva y el turno espera el siguiente. `duracion_nueva` es lo que duraría un turno
+    nuevo (para `siguiente`); sin ella, lo que dura el último de la fila o 1 hora.
+
     Es la regla del documento (sumar lo de adelante y repartirlo entre los puestos),
     pero contando también lo que les falta a los que ya se están lavando.
     """
@@ -180,12 +300,25 @@ def estimar_fila(
         return Estimacion(inicios=(), siguiente=None)
     puestos = [max(momento, ahora) for momento in libres_desde]
     heapq.heapify(puestos)
-    inicios = []
-    for duracion in duraciones:
+    pendientes = sorted(reservas)
+
+    def entrar(duracion: timedelta) -> datetime:
+        # Antes de este turno, las reservas que llegarían mientras se lava.
+        while pendientes and pendientes[0][0] < puestos[0] + duracion:
+            hora, dura = pendientes.pop(0)
+            libre = heapq.heappop(puestos)
+            heapq.heappush(puestos, max(hora, libre) + dura)
         inicio = heapq.heappop(puestos)
-        inicios.append(inicio)
         heapq.heappush(puestos, inicio + duracion)
-    return Estimacion(inicios=tuple(inicios), siguiente=puestos[0])
+        return inicio
+
+    inicios = tuple(entrar(duracion) for duracion in duraciones)
+    nueva = duracion_nueva or (duraciones[-1] if duraciones else timedelta(hours=1))
+    while pendientes and pendientes[0][0] < puestos[0] + nueva:
+        hora, dura = pendientes.pop(0)
+        libre = heapq.heappop(puestos)
+        heapq.heappush(puestos, max(hora, libre) + dura)
+    return Estimacion(inicios=inicios, siguiente=puestos[0])
 
 
 def minutos_hasta(momento: datetime | None, ahora: datetime) -> int | None:

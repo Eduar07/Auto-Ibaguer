@@ -5,7 +5,7 @@ precio, y calcula lo que la pantalla necesita (cuánto lleva cada lavado, quién
 entrar al próximo puesto, cuánto se ha cobrado hoy). Solo lee: no cambia nada.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, time
 
 from sqlalchemy import func, select
@@ -48,6 +48,8 @@ class TurnoEnPantalla:
     listo_desde: datetime | None
     adelante: int | None  # turnos adelante en la fila de espera
     espera_min: int | None  # minutos estimados para entrar a un puesto
+    hora_reservada: datetime | None = None  # si reservó: el día y la hora
+    prioridad: bool = False  # le llegó la hora de su reserva: va de primero
 
     @property
     def placa_pendiente(self) -> bool:
@@ -89,6 +91,8 @@ class FilaEnPantalla:
     siguiente_id: int | None  # quien debería entrar al próximo puesto libre
     espera_nuevo_min: int | None  # cuánto esperaría un turno nuevo
     aviso_puesto_no_espera: str | None
+    # Las reservas de hoy que todavía no llegan a su hora, por hora.
+    reservas: list[TurnoEnPantalla] = field(default_factory=list)
 
     @property
     def libres(self) -> list[PuestoEnPantalla]:
@@ -120,6 +124,8 @@ class Tablero:
     bot_activo: bool
     # La caja abierta del lavadero: sin ella no se cobra (el tablero lo avisa).
     caja: Caja | None = None
+    # Las reservas de los próximos días (las de hoy van en su fila), por día y hora.
+    proximas: list[TurnoEnPantalla] = field(default_factory=list)
 
     @property
     def en_lavado(self) -> int:
@@ -177,6 +183,13 @@ def _mensaje_puesto_libre(candidato: TurnoEnPantalla | None) -> str:
     return f"Sigue {candidato.numero}."
 
 
+def _mensaje_puesto_guardado(reserva: TurnoEnPantalla | None) -> str:
+    if reserva is None or reserva.hora_reservada is None:
+        return "Guardado para una reserva."
+    limite = hora_con_articulo(tiempo.hora_local(reserva.hora_reservada))
+    return f"Guardado para {reserva.numero}, que reservó a {limite}."
+
+
 def _aviso_puesto_no_espera(fila: list[TurnoEnPantalla], siguiente_id: int | None) -> str | None:
     """El aviso de la regla "el puesto no espera", cuando aplica."""
     if not fila or siguiente_id is None or fila[0].id == siguiente_id:
@@ -195,10 +208,22 @@ def _aviso_puesto_no_espera(fila: list[TurnoEnPantalla], siguiente_id: int | Non
 def _texto_del_movimiento(numero: str, paso: TurnoHistorial) -> str:
     anterior, nuevo = paso.estado_anterior, paso.estado_nuevo
     detalle = paso.detalle or ""
+    if nuevo == EstadoTurno.RESERVADO:
+        if anterior is None:
+            # "Turno C-01, reservado para mañana a las 7:30 a.m."
+            cuando = detalle.partition("reservado para ")[2]
+            por = "por WhatsApp" if paso.actor == Actor.CLIENTE else "en el local"
+            return f"{numero} reservó {por}" + (f" para {cuando}" if cuando else "")
+        # "Cambió la hora: mañana a las 7:30 a.m." -> "cambió la hora: ..."
+        return f"{numero} {detalle[:1].lower()}{detalle[1:]}"
     if anterior is None:
         if paso.actor == Actor.CLIENTE:
             return f"{numero} pidió turno por WhatsApp"
         return f"{numero} creado en el local"
+    if detalle.startswith("Llegó la hora de su reserva"):
+        return f"{numero}: llegó la hora de su reserva"
+    if detalle.startswith("No llegó a la hora de su reserva"):
+        return f"{numero} no llegó a su reserva: pasó al final"
     if anterior == nuevo:
         return f"{numero} corregido: {detalle}"
     textos = {
@@ -213,6 +238,8 @@ def _texto_del_movimiento(numero: str, paso: TurnoHistorial) -> str:
         EstadoTurno.NO_LLEGO: f"{numero} no llegó: perdió el turno",
         EstadoTurno.EN_FILA: f"{numero} no llegó a tiempo: pasó al final",
     }
+    if nuevo == EstadoTurno.LLEGO and anterior == EstadoTurno.RESERVADO:
+        return f"{numero} llegó antes de su reserva"
     return textos[nuevo]
 
 
@@ -242,6 +269,7 @@ def armar_tablero(
     movimientos: int = 8,
 ) -> Tablero:
     ahora = ahora or tiempo.ahora()
+    hoy = tiempo.hora_local(ahora).date()
     parametros = parametros or leer_parametros(sesion)
     filas = list(sesion.scalars(select(Fila).order_by(Fila.id)))
     prefijos = {fila.id: fila.prefijo for fila in filas}
@@ -299,6 +327,8 @@ def armar_tablero(
             listo_desde=listos.get(turno.id),
             adelante=foto.adelante_de(turno.id),
             espera_min=reglas.minutos_hasta(foto.inicio_de(turno.id), ahora),
+            hora_reservada=turno.hora_reservada,
+            prioridad=turno.prioridad,
         )
 
     filas_en_pantalla = []
@@ -309,10 +339,31 @@ def armar_tablero(
             turno.puesto_id: en_pantalla[turno.id] for turno in datos.en_lavado(sesion, fila.id)
         }
         candidatos = iter(espera)
+        activos = datos.puestos_activos(sesion, fila.id)
+        # Los últimos puestos libres se guardan para las reservas que vienen.
+        reservas_que_vienen = iter(
+            sorted(
+                (
+                    t
+                    for t in en_pantalla.values()
+                    if t.fila_id == fila.id and t.estado == EstadoTurno.RESERVADO
+                ),
+                key=lambda t: (t.hora_reservada, t.id),
+            )
+        )
+        libres = [p for p in activos if p.id not in turnos_en_puesto]
+        guardados = (
+            {p.id for p in libres[len(libres) - foto.guardados :]} if foto.guardados else set()
+        )
         puestos = []
-        for puesto in datos.puestos_activos(sesion, fila.id):
+        for puesto in activos:
             ocupante = turnos_en_puesto.get(puesto.id)
-            mensaje = "" if ocupante else _mensaje_puesto_libre(next(candidatos, None))
+            if ocupante:
+                mensaje = ""
+            elif puesto.id in guardados:
+                mensaje = _mensaje_puesto_guardado(next(reservas_que_vienen, None))
+            else:
+                mensaje = _mensaje_puesto_libre(next(candidatos, None))
             puestos.append(PuestoEnPantalla(puesto.id, puesto.nombre, ocupante, mensaje))
         siguiente_id = reglas.elegir_siguiente_para_puesto(
             [reglas.TurnoEnEspera(t.id, t.estado, t.avisado) for t in espera]
@@ -328,12 +379,31 @@ def armar_tablero(
                 aviso_puesto_no_espera=_aviso_puesto_no_espera(espera, siguiente_id)
                 if any(p.turno is None for p in puestos)
                 else None,
+                reservas=sorted(
+                    (
+                        t
+                        for t in en_pantalla.values()
+                        if t.fila_id == fila.id
+                        and t.estado == EstadoTurno.RESERVADO
+                        and tiempo.hora_local(t.hora_reservada).date() <= hoy
+                    ),
+                    key=lambda t: (t.hora_reservada, t.id),
+                ),
             )
         )
 
     por_cobrar = sorted(
         (t for t in en_pantalla.values() if t.estado == EstadoTurno.LISTO),
         key=lambda t: (t.listo_desde or ahora, t.id),
+    )
+    proximas = sorted(
+        (
+            t
+            for t in en_pantalla.values()
+            if t.estado == EstadoTurno.RESERVADO
+            and tiempo.hora_local(t.hora_reservada).date() > hoy
+        ),
+        key=lambda t: (t.hora_reservada, t.id),
     )
     cobrado, cobros = sesion.execute(
         select(func.coalesce(func.sum(Pago.precio_cobrado), 0), func.count(Pago.id)).where(
@@ -350,4 +420,5 @@ def armar_tablero(
         actividad=_actividad(sesion, ahora, movimientos),
         bot_activo=parametros.bot_activo,
         caja=caja_del_lavadero.caja_abierta(sesion),
+        proximas=proximas,
     )

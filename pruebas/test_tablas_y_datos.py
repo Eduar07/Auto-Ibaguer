@@ -5,6 +5,7 @@ from alembic import command
 from sqlalchemy import Engine, inspect, select
 from sqlalchemy.orm import Session
 
+from app.catalogo import datos_iniciales
 from app.catalogo.datos_iniciales import cargar_datos_iniciales
 from app.catalogo.tablas import (
     Configuracion,
@@ -16,6 +17,7 @@ from app.catalogo.tablas import (
 )
 from app.cli import configuracion_alembic
 from pruebas.base_de_pruebas import URL_PRUEBAS
+from pruebas.catalogo_de_prueba import SERVICIOS_DE_PRUEBA
 
 TABLAS_DE_LA_FASE_1 = {
     # Negocio (13)
@@ -52,6 +54,7 @@ TODAS_LAS_TABLAS |= {"salida_de_caja"}
 # El resultado del mes (0014): gastos por fuera de la caja y meses cerrados.
 TODAS_LAS_TABLAS |= {"gasto_fuera_de_caja", "cierre_de_mes"}
 
+# El menú con que corren las pruebas (pruebas.catalogo_de_prueba).
 MENU_ESPERADO = {
     ("Básico", "Automóvil"): 40_000,
     ("Básico", "Camioneta"): 50_000,
@@ -112,6 +115,26 @@ def test_menu_con_precios_y_duracion(sesion: Session):
     assert duraciones == {60}
 
 
+def test_el_menu_del_negocio():
+    """El menú de verdad, el que carga preparar-base: por ahora Básico y Encerado, 45 min."""
+    menu = {
+        (fila, servicio, tipo): precio
+        for fila, servicio, _, precios in datos_iniciales.SERVICIOS
+        for tipo, precio in precios.items()
+    }
+    assert menu == {
+        ("Carros", "Básico", "Automóvil"): 30_000,
+        ("Carros", "Básico", "Camioneta"): 40_000,
+        ("Carros", "Encerado", "Automóvil"): 60_000,
+        ("Carros", "Encerado", "Camioneta"): 70_000,
+        ("Motos", "Básico", "Moto"): 15_000,
+        ("Motos", "Encerado", "Moto"): 20_000,
+    }
+    assert datos_iniciales.DURACION_ESTIMADA_MIN == 45
+    encerado = datos_iniciales.SERVICIOS[1][2]
+    assert "polichadora" in encerado and "Morita de B-Max" in encerado
+
+
 def test_cada_tipo_de_vehiculo_va_a_su_fila(sesion: Session):
     tipos = sesion.execute(
         select(TipoVehiculo.nombre, Fila.nombre).join(Fila, Fila.id == TipoVehiculo.fila_id)
@@ -132,7 +155,7 @@ def test_parametros_del_negocio(sesion: Session):
 
 def test_cargar_los_datos_otra_vez_no_duplica_nada(sesion: Session):
     antes = contar_registros(sesion)
-    creados = cargar_datos_iniciales(sesion)
+    creados = cargar_datos_iniciales(sesion, servicios=SERVICIOS_DE_PRUEBA)
     assert set(creados.values()) == {0}
     assert contar_registros(sesion) == antes
 
@@ -142,7 +165,7 @@ def test_cargar_los_datos_no_borra_cambios_del_administrador(sesion: Session):
     gracia.valor = 20
     sesion.flush()
 
-    cargar_datos_iniciales(sesion)
+    cargar_datos_iniciales(sesion, servicios=SERVICIOS_DE_PRUEBA)
 
     sesion.refresh(gracia)
     assert gracia.valor == 20

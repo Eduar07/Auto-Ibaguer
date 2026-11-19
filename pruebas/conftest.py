@@ -27,6 +27,7 @@ from app.web import entrar, sesiones
 from app.web.administradores import guardar_administrador
 from app.web.tablas import Administrador
 from pruebas.base_de_pruebas import URL_PRUEBAS, recrear_base
+from pruebas.catalogo_de_prueba import DURACION_DE_PRUEBA, SERVICIOS_DE_PRUEBA
 from pruebas.correo_falso import ServidorFalso
 from pruebas.fabricas import LUNES_8AM
 from pruebas.navegador import CLAVE
@@ -44,7 +45,7 @@ def motor() -> Iterator[Engine]:
     migrar(URL_PRUEBAS, configurar_logs=False)
     motor = create_engine(URL_PRUEBAS)
     with Session(motor) as sesion, sesion.begin():
-        cargar_datos_iniciales(sesion)
+        cargar_datos_iniciales(sesion, servicios=SERVICIOS_DE_PRUEBA, duracion=DURACION_DE_PRUEBA)
     yield motor
     motor.dispose()
 

@@ -89,6 +89,12 @@ def revisar(sesion: Session) -> list[Grupo]:
                     "/configuracion#negocio",
                 ),
                 Punto(
+                    "Dirección del lavadero",
+                    bool(recibo.direccion),
+                    "El bot la dice cuando le preguntan dónde quedan y al dar un turno.",
+                    "/configuracion#recibo",
+                ),
+                Punto(
                     "NIT y dirección en el recibo",
                     bool(recibo.nit and recibo.direccion),
                     "Salen en el recibo de cada lavado.",

@@ -376,8 +376,10 @@ def guardar_recibo(
     ancho_ticket: Annotated[str, Form()] = "",
     imprimir_al_cobrar: Annotated[str, Form()] = "",
     correos_reporte: Annotated[str, Form()] = "",
+    mapa: Annotated[str, Form()] = "",
 ) -> Response:
-    """Lo que sale en el recibo del lavadero y a quién le llega su reporte del día."""
+    """Lo que sale en el recibo del lavadero y a quién le llega su reporte del día. La
+    dirección y el enlace del mapa también los usa el bot."""
     escrito = AjustesDelRecibo(
         nit=nit,
         direccion=direccion,
@@ -385,6 +387,7 @@ def guardar_recibo(
         ancho_ticket=entero(ancho_ticket.strip()) or 0,
         imprimir_al_cobrar=imprimir_al_cobrar == "si",
         correos_reporte=correos_reporte,
+        mapa=mapa,
     )
     try:
         guardar_ajustes_del_recibo(sesion, escrito)

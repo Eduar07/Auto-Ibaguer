@@ -57,6 +57,9 @@ def numero_de_turno(prefijo: str, consecutivo: int) -> str:
 
 # Cerrar "a las 12:00 a.m." es cerrar a las 12 de la noche: al final del día, no al comienzo.
 MEDIANOCHE = time(0)
+# Una reserva para hoy queda, mínimo, media hora adelante: que alcance a llegar sin afán
+# (el negocio no quiere dar la cita "muy encima").
+ANTICIPACION_MINIMA = timedelta(minutes=30)
 
 
 def esta_en_horario(

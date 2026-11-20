@@ -345,10 +345,13 @@ def test_la_ficha_trae_los_datos_del_sistema_sin_precios(sesion: Session):
         "Horario: da turnos todos los días de 5:30 a.m. a 7:30 p.m. (abre lunes, martes, "
         "miércoles, jueves, viernes, sábado y domingo). Los vehículos que ya están en la fila "
         "a la hora de cierre se atienden igual.",
-        "Turnos: se piden por WhatsApp para el mismo día y se atienden en el orden de la fila; "
-        "no se apartan para otro día ni para una hora exacta. Cuando llaman al cliente, tiene "
-        "15 minutos para llegar; si no llega, pasa al final de la fila, y la segunda vez "
-        "pierde el turno.",
+        "Turnos: por WhatsApp se pide turno para hoy, lo antes posible (se atiende en el orden "
+        "de la fila), o se reserva un día y una hora, hasta 7 días adelante, con al menos 30 "
+        "minutos de anticipación, en las horas libres que muestra el bot (un horario cada "
+        "hora). A la hora de la reserva, el cliente entra de primero a la fila. Cuando llaman "
+        "al cliente, tiene 15 minutos para llegar; si no llega, pierde la reserva (si tenía) y "
+        "pasa al final de la fila, y la segunda vez pierde el turno. La hora se cambia con el "
+        "botón Cambiar hora o escribiéndole al bot.",
         "Teléfono: 322 755 6850.",
         "Vehículos que lava: Automóvil, Camioneta y Moto. Para otros vehículos no hay "
         "servicios ni precios.",

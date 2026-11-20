@@ -25,7 +25,7 @@ import string
 from collections.abc import Mapping
 from typing import Any
 
-from app.bot.mensajes import Opcion
+from app.bot.mensajes import MAX_TEXTO_INTERACTIVO, Opcion
 from app.formato import duracion
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,10 @@ TEXTOS: dict[str, str] = {
     "pedir_cuando_cerrado": "Ahora estamos cerrados (abrimos {apertura}), pero te reservo el "
     "turno de una vez. ¿Qué día quieres venir?",
     "reagendar_cuando": "Claro. ¿Para cuándo movemos tu turno *{numero}*?",
-    "pedir_hora": "Estas son las horas libres para {dia}. ¿A qué hora vienes?",
+    "pedir_hora": "Estas son las horas libres para *{dia}*:\n\n{horas}\n\nElige la hora en *Ver "
+    "horas* o escríbemela, por ejemplo: *{ejemplo}*.",
+    "pedir_hora_parte": "Estas son las horas libres para {dia} {parte}. ¿A qué hora vienes?",
+    "direccion": "📍 Estamos en *{direccion}*. Atendemos {horario}.",
     "hora_no_disponible": "A esa hora ya no tenemos cupo.",
     "hora_muy_pronto": "Para hoy reservamos con al menos {minutos} minutos de anticipación.",
     "hora_no_exacta": "A esa hora no tenemos turno, pero mira las más cercanas.",
@@ -301,6 +304,7 @@ BOTONES: dict[str, str] = {
     "ver_dias": "Ver días",
     "ver_horas": "Ver horas",
     "mas_horas": "Más tarde",
+    "todo_el_dia": "Ver todo el día",
     "otro_dia": "Otro día",
 }
 
@@ -315,6 +319,28 @@ EMOJI_DEL_VEHICULO = {
 }
 # WhatsApp corta lo que no cabe: un botón muestra hasta 20 caracteres.
 LARGO_DE_UN_BOTON = 20
+
+
+def donde_queda(direccion: str, mapa: str = "") -> str:
+    """ "📍 *Dirección:* Calle 10 # 5-20, Bucaramanga" y, si hay enlace de Google Maps, cómo
+    llegar. Sin dirección (no la han escrito en Configuración), nada."""
+    if not direccion:
+        return ""
+    lineas = [f"📍 *Dirección:* {direccion}"]
+    if mapa:
+        lineas.append(f"🗺️ *Cómo llegar:* {mapa}")
+    return "\n".join(lineas)
+
+
+def con_la_direccion(
+    texto: str, direccion: str, mapa: str = "", maximo: int = MAX_TEXTO_INTERACTIVO
+) -> str:
+    """El mensaje con la dirección al final, para que sepa a dónde llegar. Si con el enlace
+    del mapa no cabe en WhatsApp, va sin el enlace; si tampoco, el mensaje queda como venía."""
+    for bloque in (donde_queda(direccion, mapa), donde_queda(direccion)):
+        if bloque and len(texto) + 2 + len(bloque) <= maximo:
+            return f"{texto}\n\n{bloque}"
+    return texto
 
 
 def con_emoji(tipo_vehiculo: str, titulo: str | None = None) -> str:

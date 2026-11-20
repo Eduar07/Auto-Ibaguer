@@ -57,6 +57,10 @@ DATOS: dict[str, str] = {
     "dia_y_hora": "cuándo viene: lo antes posible o el día y la hora que reservó",
     "dia": "el día que eligió para reservar",
     "recordatorio": "si se le recuerda la reserva por aquí, y cuánto antes",
+    "horas": "las horas libres del día, por mañana, tarde y noche",
+    "ejemplo": "una de las horas libres, como la escribiría el cliente",
+    "parte": "la parte del día que eligió: en la mañana, en la tarde o en la noche",
+    "direccion": "la dirección del lavadero (Configuración > Recibo y reporte)",
 }
 
 _MENU = (BOTONES["pedir"], BOTONES["fila"], BOTONES["precios"])
@@ -124,6 +128,14 @@ GRUPOS: tuple[Grupo, ...] = (
                 "Saludo a un cliente que ya conoce",
                 "Cuando escribe alguien que ya pidió turno antes.",
                 opcionales=frozenset({"nombre"}),
+                botones=_MENU,
+            ),
+            Editable(
+                "direccion",
+                "Dónde queda el lavadero",
+                "Cuando preguntan la dirección o cómo llegar. Si pusiste el enlace de Google "
+                "Maps, va debajo.",
+                opcionales=frozenset({"horario"}),
                 botones=_MENU,
             ),
             Editable(
@@ -267,7 +279,15 @@ GRUPOS: tuple[Grupo, ...] = (
             Editable(
                 "pedir_hora",
                 "Pregunta la hora",
-                "Con las horas libres del día que eligió.",
+                "Con todas las horas libres del día que eligió, por mañana, tarde y noche.",
+                opcionales=frozenset({"ejemplo"}),
+                maximo=350,
+                lista=BOTONES["ver_horas"],
+            ),
+            Editable(
+                "pedir_hora_parte",
+                "Pregunta la hora de una parte del día",
+                "Cuando elige la mañana, la tarde o la noche (o escribe una hora que no está).",
                 lista=BOTONES["ver_horas"],
             ),
             Editable(
@@ -753,6 +773,11 @@ def ejemplos(parametros: Parametros) -> dict[str, object]:
         "dia_y_hora": "el viernes 20 de noviembre a las 10:30 a.m.",
         "dia": "el viernes 20 de noviembre",
         "recordatorio": "Una hora antes te lo recordamos por aquí. ",
+        "horas": "🌅 *En la mañana:* 6:30 · 7:30 · 8:30 · 9:30\n"
+        "☀️ *En la tarde:* 12:30 · 1:30 · 3:30 · 5:30\n🌙 *En la noche:* 6:30 · 7:30 · 9:30",
+        "ejemplo": "3:30 pm",
+        "parte": "en la tarde",
+        "direccion": p.direccion or "Calle 10 # 5-20, Bucaramanga",
     }
 
 

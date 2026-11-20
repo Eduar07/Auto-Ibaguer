@@ -52,7 +52,9 @@ def mensaje_del_aviso(tipo: str, contenido: dict[str, Any], parametros: Parametr
             hoy = tiempo.hora_local(tiempo.ahora()).date()
             cuando = cuando_sera(reservada, hoy)
             dia_y_hora = f"hoy a {cuando}" if reservada.date() == hoy else cuando
+            # Con la dirección: es el mensaje que lee justo antes de salir para el lavadero.
+            recordatorio = texto("aviso_recordatorio", turno=turno, dia_y_hora=dia_y_hora)
             return Mensaje(
-                texto("aviso_recordatorio", turno=turno, dia_y_hora=dia_y_hora),
+                textos.con_la_direccion(recordatorio, parametros.direccion, parametros.mapa),
                 botones=textos.botones_de_la_reserva(),
             )

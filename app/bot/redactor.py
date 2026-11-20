@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from app import formato
 from app.bot.interprete import Catalogo
 from app.catalogo.parametros import Parametros
+from app.turnos.reglas import ANTICIPACION_MINIMA
 
 LARGO_MAXIMO = 400  # caracteres: se lee de un vistazo en WhatsApp
 EMOJIS_MAXIMOS = 1  # con más, se le quitan todos: un emoji sí, pero con moderación
@@ -30,6 +31,24 @@ def _y(cosas: Sequence[str]) -> str:
 def _sin_la_pregunta(aviso: str) -> str:
     """El aviso de datos sin el "¿Aceptas?" del final: en la ficha es información."""
     return re.sub(r"\s*¿[^?]*\?\s*$", "", aviso.strip())
+
+
+def _turnos(parametros: Parametros, minutos: int) -> str:
+    """Cómo funcionan los turnos y las reservas, con los números de Configuración."""
+    dias = parametros.dias_para_reservar
+    hasta = "solo para hoy" if dias == 0 else f"hasta {dias} día{'s' if dias != 1 else ''} adelante"
+    cada = int(parametros.entre_horarios.total_seconds() // 60)
+    horarios = "cada hora" if cada == 60 else f"cada {cada} minutos"
+    anticipacion = int(ANTICIPACION_MINIMA.total_seconds() // 60)
+    return (
+        "Turnos: por WhatsApp se pide turno para hoy, lo antes posible (se atiende en el "
+        f"orden de la fila), o se reserva un día y una hora, {hasta}, con al menos "
+        f"{anticipacion} minutos de anticipación, en las horas libres que muestra el bot "
+        f"(un horario {horarios}). A la hora de la reserva, el cliente entra de primero a la "
+        f"fila. Cuando llaman al cliente, tiene {minutos} minutos para llegar; si no llega, "
+        "pierde la reserva (si tenía) y pasa al final de la fila, y la segunda vez pierde el "
+        "turno. La hora se cambia con el botón Cambiar hora o escribiéndole al bot."
+    )
 
 
 def ficha_completa(
@@ -51,14 +70,17 @@ def ficha_completa(
         f"Nombre: {parametros.nombre_negocio}.",
         f"Horario: da turnos {horario} ({dias}). Los vehículos que ya están en la fila a "
         "la hora de cierre se atienden igual.",
-        "Turnos: se piden por WhatsApp para el mismo día y se atienden en el orden de la "
-        "fila; no se apartan para otro día ni para una hora exacta. Cuando llaman al "
-        f"cliente, tiene {minutos} minutos para llegar; si no llega, pasa al final de la "
-        "fila, y la segunda vez pierde el turno.",
+        _turnos(parametros, minutos),
         f"Teléfono: {formato.telefono(parametros.telefono_contacto)}.",
-        f"Vehículos que lava: {_y(catalogo.vehiculos)}. Para otros vehículos no hay "
-        "servicios ni precios.",
     ]
+    if parametros.direccion:
+        lineas.append(f"Dirección: {parametros.direccion}.")
+        if parametros.mapa:
+            lineas.append(f"Cómo llegar (enlace de Google Maps): {parametros.mapa}")
+    lineas.append(
+        f"Vehículos que lava: {_y(catalogo.vehiculos)}. Para otros vehículos no hay "
+        "servicios ni precios."
+    )
     if servicios:
         lineas.append("Servicios y qué incluyen (los precios los da el bot):")
         lineas.extend(f"- {linea}" for linea in servicios)

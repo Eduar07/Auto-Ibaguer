@@ -79,6 +79,7 @@ from app.bot.mensajes import (
     IMAGEN,
     MAX_DESCRIPCION_OPCION,
     MAX_OPCIONES_LISTA,
+    MAX_TEXTO_INTERACTIVO,
     Entrada,
     Lista,
     Mensaje,
@@ -602,9 +603,103 @@ def _pide_reagendar(normal: str) -> bool:
     return any(frase in con_espacios for frase in REAGENDAR)
 
 
-# Cuántas horas se muestran a la vez (con "Más tarde" y "Otro día" quedan 10, lo que cabe
-# en una lista de WhatsApp).
-HORAS_POR_PAGINA = 8
+# Las horas libres de un día se muestran todas de una vez en el mensaje, por partes del día.
+# Cada parte empieza como en app.bot.cuando ("en la tarde" es desde las 12):
+# (clave, dibujito, cómo se nombra).
+PARTES_DEL_DIA = (
+    ("manana", "🌅", "en la mañana"),
+    ("tarde", "☀️", "en la tarde"),
+    ("noche", "🌙", "en la noche"),
+)
+_PARTE = {clave: (emoji, nombre) for clave, emoji, nombre in PARTES_DEL_DIA}
+# En una lista de WhatsApp caben 10 opciones: si las horas del día caben con "Otro día", se
+# eligen de una; si no, primero la parte del día y después la hora.
+HORAS_EN_UNA_LISTA = MAX_OPCIONES_LISTA - 1
+# Las horas de una parte del día caben con "Ver todo el día" y "Otro día"; si son más
+# (horarios cada 15 o 30 minutos), van de a 7 con "Más tarde".
+HORAS_DE_UNA_PARTE = MAX_OPCIONES_LISTA - 2
+HORAS_POR_PAGINA = MAX_OPCIONES_LISTA - 3
+
+# Pregunta dónde queda el lavadero. Frases completas: "dónde" solo también es "¿dónde pago?",
+# y "ya estoy ubicado afuera" es que llegó.
+DIRECCION = (
+    "direccion",
+    "ubicacion",
+    "estan ubicados",
+    "estan ubicadas",
+    "esta ubicado",
+    "esta ubicada",
+    "localizacion",
+    "donde quedan",
+    "donde queda",
+    "donde estan",
+    "como llego",
+    "como llegar",
+    "como llegamos",
+    "como hago para llegar",
+    "por donde queda",
+    "por donde quedan",
+    "en que barrio",
+    "en que sector",
+    "en que parte quedan",
+    "donde los encuentro",
+    "mapa",
+    "google maps",
+    "waze",
+)
+# Si además pregunta otra cosa ("¿dónde quedan y cuánto vale?"), la pregunta la lee Gemini.
+OTRA_PREGUNTA = frozenset(
+    {"cuanto", "cuesta", "cuestan", "vale", "valen", "valor", "precio", "precios", "turno"}
+    | {"turnos", "fila", "hora", "horas", "horario", "abren", "cierran", "cancelar"}
+    | {"reservar", "reserva", "servicio", "servicios", "pago", "pagar"}
+)
+
+
+def _habla_de_la_direccion(normal: str) -> bool:
+    """Pregunta dónde queda el lavadero y nada más ("¿dónde están los precios?" es otra
+    cosa)."""
+    con_espacios = f" {normal} "
+    return any(f" {frase} " in con_espacios for frase in DIRECCION) and not (
+        OTRA_PREGUNTA & set(normal.split())
+    )
+
+
+def _pregunta_la_direccion(normal: str) -> bool:
+    """Una pregunta corta por la dirección: "¿dónde quedan?", "buenas, ¿cuál es la
+    dirección?", "¿me manda la ubicación?". El bot la contesta sin Gemini; una más larga la
+    lee Gemini, que también sabe la dirección (está en la ficha)."""
+    palabras = [palabra for palabra in normal.split() if palabra not in _RELLENO]
+    return _habla_de_la_direccion(normal) and len(palabras) <= 8
+
+
+def _parte_del_dia(momento: datetime) -> str:
+    local = tiempo.hora_local(momento).time()
+    if local >= FRANJAS["noche"]:
+        return "noche"
+    return "tarde" if local >= FRANJAS["tarde"] else "manana"
+
+
+def _hora_sin_sufijo(momento: datetime) -> str:
+    """ "3:30": junto a "En la tarde" no hace falta el "p.m."."""
+    local = tiempo.hora_local(momento)
+    return f"{local.hour % 12 or 12}:{local.minute:02d}"
+
+
+def _hora_para_escribir(momento: datetime) -> str:
+    """ "3:30 pm": como la escribiría el cliente (el ejemplo del mensaje)."""
+    local = tiempo.hora_local(momento)
+    return f"{_hora_sin_sufijo(momento)} {'am' if local.hour < 12 else 'pm'}"
+
+
+def _horas_seguidas(horas: list[datetime]) -> str:
+    """Para la descripción de una parte del día en la lista: "6:30 · 7:30 · 8:30" o, si no
+    cabe, "21 horas libres, de 6:30 a 11:30 a.m."."""
+    seguidas = " · ".join(_hora_sin_sufijo(momento) for momento in horas)
+    if len(seguidas) <= MAX_DESCRIPCION_OPCION:
+        return seguidas
+    primera, ultima = tiempo.hora_local(horas[0]), tiempo.hora_local(horas[-1])
+    return f"{len(horas)} horas libres, de {_hora_sin_sufijo(primera)} a {hora(ultima)}"
+
 
 # Así empieza una pregunta, no un nombre.
 PALABRAS_DE_PREGUNTA = frozenset(
@@ -973,6 +1068,8 @@ class _Atencion:
             return self._llego_por_el_qr()
         if self._puede_reagendar_aqui() and _pide_reagendar(normal) and not _pide_cancelar(normal):
             return self._cambiar_hora(self._dicho(escrito))
+        if self.parametros.direccion and _pregunta_la_direccion(normal):
+            return self._la_direccion()
         if not _es_corto(normal):
             return None
         if _pide_cancelar(normal):
@@ -1005,6 +1102,10 @@ class _Atencion:
         if self.paso in PASOS_DE_CUANDO:
             dicho = self._dicho(escrito)
             if dicho is not None:
+                dia = self._dia_elegido() if self.paso == Paso.HORA else None
+                if dia is not None and dicho.fecha is None and not dicho.ya:
+                    # Ya eligió el día: "a las 3" es a las 3 de ese día, no de hoy.
+                    dicho = dataclasses.replace(dicho, fecha=dia)
                 return self._con_lo_dicho(dicho)
         if self.paso == Paso.NOMBRE:
             nombre = _el_nombre(escrito, normal)
@@ -1145,6 +1246,8 @@ class _Atencion:
             return self._mis_lavadas()
         if _dice(normal, LO_PIENSO):
             return self._lo_piensa()
+        if self.parametros.direccion and _habla_de_la_direccion(normal):
+            return self._la_direccion()
         if DESPEDIDAS & set(palabras) and len(palabras) <= 4:
             return self._despedida()
         return None
@@ -2144,56 +2247,136 @@ class _Atencion:
             )
             self.paso = Paso.CUANDO
             return [_con_nota(nota_del_dia, self._pregunta())]
-        desde = 0
-        if cerca_de is not None:
-            objetivo = cerca_de
-            desde = min(
-                range(len(libres)),
-                key=lambda i: abs(tiempo.hora_local(libres[i]).replace(tzinfo=None) - objetivo),
-            )
-            desde = max(0, desde - 1)
         self.paso = Paso.HORA
         self.datos["dia"] = fecha.isoformat()
-        self.datos["desde"] = desde
+        self.datos["parte"] = None
+        self.datos["desde"] = 0
+        if cerca_de is not None and len(libres) > HORAS_EN_UNA_LISTA:
+            # Dijo una hora o una parte del día: la lista abre en esa parte del día, desde la
+            # hora libre más cercana. El resto del día está a un toque ("Ver todo el día").
+            cercana = min(
+                libres, key=lambda m: abs(tiempo.hora_local(m).replace(tzinfo=None) - cerca_de)
+            )
+            parte = _parte_del_dia(cercana)
+            en_la_parte = [m for m in libres if _parte_del_dia(m) == parte]
+            self.datos["parte"] = parte
+            if len(en_la_parte) > HORAS_DE_UNA_PARTE:
+                self.datos["desde"] = max(0, en_la_parte.index(cercana) - 1)
         pregunta = self._pregunta()
         return [_con_nota(nota, pregunta) if nota else pregunta]
 
-    def _pregunta_hora(self) -> Mensaje:
+    def _dia_elegido(self) -> date | None:
         try:
-            fecha = date.fromisoformat(str(self.datos.get("dia")))
+            return date.fromisoformat(str(self.datos.get("dia")))
         except ValueError:
-            fecha = self._hoy()
+            return None
+
+    def _pregunta_hora(self) -> Mensaje:
+        fecha = self._dia_elegido() or self._hoy()
         libres = self._horarios_libres(fecha)
-        desde = int(self.datos.get("desde") or 0)
-        if desde >= len(libres):
-            desde = max(0, len(libres) - HORAS_POR_PAGINA)
-        pagina = libres[desde : desde + HORAS_POR_PAGINA]
-        if not pagina:
+        otro_dia = Opcion("hora.dias", BOTONES["otro_dia"], "Elegir otro día")
+        if not libres:
             # Mientras elegía, se ocuparon las que quedaban: solo puede elegir otro día.
             return Mensaje(
-                self.texto("dia_sin_horarios"),
-                lista=Lista(
-                    BOTONES["ver_dias"],
-                    (Opcion("hora.dias", BOTONES["otro_dia"], "Elegir otro día"),),
-                ),
+                self.texto("dia_sin_horarios"), lista=Lista(BOTONES["ver_dias"], (otro_dia,))
             )
-        opciones = [
-            Opcion(
-                f"hora.{tiempo.hora_local(momento):%Y%m%d%H%M}", hora(tiempo.hora_local(momento))
-            )
-            for momento in pagina
-        ]
-        if desde + HORAS_POR_PAGINA < len(libres):
-            opciones.append(Opcion("hora.mas", BOTONES["mas_horas"], "Más horas ese día"))
-        opciones.append(Opcion("hora.dias", BOTONES["otro_dia"], "Elegir otro día"))
+        parte = self.datos.get("parte")
+        en_la_parte = [m for m in libres if _parte_del_dia(m) == parte]
+        if not en_la_parte:
+            return self._horas_del_dia(fecha, libres, otro_dia)
+        # Eligió una parte del día (o dijo una hora): sus horas, para tocar una.
+        cupo, desde = HORAS_DE_UNA_PARTE, 0
+        if len(en_la_parte) > HORAS_DE_UNA_PARTE:
+            cupo = HORAS_POR_PAGINA
+            desde = int(self.datos.get("desde") or 0)
+            if desde >= len(en_la_parte):
+                desde = max(0, len(en_la_parte) - cupo)
+        opciones = [self._opcion_de_hora(momento) for momento in en_la_parte[desde : desde + cupo]]
+        nombre = _PARTE[parte][1]
+        if desde + cupo < len(en_la_parte):
+            opciones.append(Opcion("hora.mas", BOTONES["mas_horas"], f"Más horas {nombre}"))
+        opciones.append(
+            Opcion("hora.todo", BOTONES["todo_el_dia"], "Todas las horas libres de ese día")
+        )
+        opciones.append(otro_dia)
         return Mensaje(
-            self.texto("pedir_hora", dia=self._el_dia(fecha)),
+            self.texto("pedir_hora_parte", dia=self._el_dia(fecha), parte=nombre),
             lista=Lista(BOTONES["ver_horas"], tuple(opciones)),
         )
+
+    def _horas_del_dia(self, fecha: date, libres: list[datetime], otro_dia: Opcion) -> Mensaje:
+        """Todas las horas libres del día de una vez, en el mensaje, por partes del día. En la
+        lista: las horas, si caben; si no, las partes del día (y después la hora)."""
+        if len(libres) <= HORAS_EN_UNA_LISTA:
+            opciones = [self._opcion_de_hora(momento) for momento in libres]
+        else:
+            opciones = []
+            for clave, emoji, nombre in PARTES_DEL_DIA:
+                horas = [momento for momento in libres if _parte_del_dia(momento) == clave]
+                if horas:
+                    titulo = f"{emoji} {nombre[:1].upper()}{nombre[1:]}"
+                    opciones.append(Opcion(f"hora.parte.{clave}", titulo, _horas_seguidas(horas)))
+        opciones.append(otro_dia)
+        datos = {
+            "dia": self._el_dia_completo(fecha),
+            "ejemplo": _hora_para_escribir(libres[len(libres) // 2]),
+        }
+        texto = self.texto("pedir_hora", horas=self._horas_en_texto(fecha, libres), **datos)
+        if len(texto) > MAX_TEXTO_INTERACTIVO:
+            # Muchísimos horarios (cada 15 minutos): cada parte del día en una línea corta.
+            texto = self.texto(
+                "pedir_hora", horas=self._horas_en_texto(fecha, libres, corto=True), **datos
+            )
+        return Mensaje(texto, lista=Lista(BOTONES["ver_horas"], tuple(opciones)))
+
+    def _horas_en_texto(self, fecha: date, libres: list[datetime], corto: bool = False) -> str:
+        """Las horas libres del día por partes del día, para leerlas de una vez:
+
+        🌅 *En la mañana:* 6:30 · 7:30 · 8:30
+        ☀️ *En la tarde:* sin cupo
+
+        Una parte del día que ya pasó (hoy) no sale; una que está llena, dice "sin cupo"."""
+        limite = self.ahora + casos.ANTICIPACION_MINIMA
+        por_venir = [momento for momento in self._horarios_del_dia(fecha) if momento >= limite]
+        lineas = []
+        for clave, emoji, nombre in PARTES_DEL_DIA:
+            horas = [momento for momento in libres if _parte_del_dia(momento) == clave]
+            if horas:
+                cuales = (
+                    _horas_seguidas(horas) if corto else " · ".join(map(_hora_sin_sufijo, horas))
+                )
+            elif any(_parte_del_dia(momento) == clave for momento in por_venir):
+                cuales = "sin cupo"
+            else:
+                continue
+            lineas.append(f"{emoji} *{nombre[:1].upper()}{nombre[1:]}:* {cuales}")
+        return "\n".join(lineas)
+
+    def _opcion_de_hora(self, momento: datetime) -> Opcion:
+        local = tiempo.hora_local(momento)
+        return Opcion(f"hora.{local:%Y%m%d%H%M}", hora(local))
+
+    def _el_dia_completo(self, fecha: date) -> str:
+        """ "hoy, jueves 19 de noviembre", "mañana, viernes 20 de noviembre" o "el sábado 21
+        de noviembre"."""
+        dia = f"{DIAS[fecha.weekday()]} {dia_y_mes(fecha)}"
+        cerca = self._el_dia(fecha)
+        return f"{cerca}, {dia}" if cerca in ("hoy", "mañana") else f"el {dia}"
 
     def _eligio_hora(self, eleccion: str) -> list[Mensaje]:
         if eleccion == "dias":
             self.paso = Paso.CUANDO
+            return [self._pregunta()]
+        if eleccion == "todo":
+            self.datos["parte"] = None
+            self.datos["desde"] = 0
+            return [self._pregunta()]
+        if eleccion.startswith("parte."):
+            parte = eleccion.removeprefix("parte.")
+            if parte not in _PARTE:
+                return [_con_nota(self.texto("toca_una_opcion"), self._pregunta())]
+            self.datos["parte"] = parte
+            self.datos["desde"] = 0
             return [self._pregunta()]
         if eleccion == "mas":
             self.datos["desde"] = int(self.datos.get("desde") or 0) + HORAS_POR_PAGINA
@@ -2322,7 +2505,7 @@ class _Atencion:
         if respuesta == "cambiar":
             for clave in ("vehiculo_id", "tipo_vehiculo_id", "placa", "servicio_id"):
                 self.datos.pop(clave, None)
-            for clave in ("cuando", "dia", "desde"):
+            for clave in ("cuando", "dia", "parte", "desde"):
                 self.datos.pop(clave, None)
             return self._preguntar_vehiculo(aunque_lo_conozca=True)
         no_hay = self._no_hay_turnos()
@@ -2432,17 +2615,31 @@ class _Atencion:
         return f"{cuanto} antes te lo recordamos por aquí. "
 
     def _reserva_confirmada(self, reserva: casos.Reserva) -> Mensaje:
-        return Mensaje(
-            self.texto(
-                "reserva_confirmada",
-                nombre=_primer_nombre(self.cliente),
-                numero=reserva.numero,
-                dia_y_hora=self._dia_y_hora(reserva.hora),
-                gracia=int(self.parametros.gracia.total_seconds() // 60),
-                recordatorio=self._recordatorio(reserva.hora),
-            ),
-            botones=textos.botones_de_la_reserva(),
+        texto = self.texto(
+            "reserva_confirmada",
+            nombre=_primer_nombre(self.cliente),
+            numero=reserva.numero,
+            dia_y_hora=self._dia_y_hora(reserva.hora),
+            gracia=int(self.parametros.gracia.total_seconds() // 60),
+            recordatorio=self._recordatorio(reserva.hora),
         )
+        return Mensaje(self._con_la_direccion(texto), botones=textos.botones_de_la_reserva())
+
+    def _con_la_direccion(self, texto: str) -> str:
+        """Al dar un turno, dónde queda el lavadero (y cómo llegar), para que sepa a dónde ir."""
+        return textos.con_la_direccion(texto, self.parametros.direccion, self.parametros.mapa)
+
+    def _la_direccion(self) -> list[Mensaje]:
+        """Preguntó dónde queda el lavadero. Si iba en algo (pidiendo un turno), sigue ahí."""
+        self.traza.notas.append("Preguntó dónde queda el lavadero: le dio la dirección.")
+        texto = self.texto(
+            "direccion", direccion=self.parametros.direccion, horario=self._horario()
+        )
+        if self.parametros.mapa:
+            texto += f"\n\n🗺️ Cómo llegar: {self.parametros.mapa}"
+        if self.paso == Paso.MENU:
+            return [_con_el_menu(texto)]
+        return [_con_nota(texto, self._pregunta())]
 
     # --- Cambiar la hora (reagendar) ----------------------------------------------------------
 
@@ -2593,16 +2790,14 @@ class _Atencion:
                 else "",
                 avisar=self.parametros.avisar_cuando_falten,
             )
-        return Mensaje(
-            self.texto(
-                "turno_confirmado",
-                nombre=_primer_nombre(self.cliente),
-                numero=nuevo.numero,
-                situacion=situacion,
-                gracia=int(self.parametros.gracia.total_seconds() // 60),
-            ),
-            botones=botones,
+        texto = self.texto(
+            "turno_confirmado",
+            nombre=_primer_nombre(self.cliente),
+            numero=nuevo.numero,
+            situacion=situacion,
+            gracia=int(self.parametros.gracia.total_seconds() // 60),
         )
+        return Mensaje(self._con_la_direccion(texto), botones=botones)
 
     # --- Segundo turno ---------------------------------------------------------------------
 

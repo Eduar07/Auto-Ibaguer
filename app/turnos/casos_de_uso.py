@@ -896,8 +896,8 @@ def agregar_puesto(sesion: Session, fila_id: int, *, ahora: datetime | None = No
 
 # --- Reservas ----------------------------------------------------------------------------
 
-# Una reserva para hoy queda, mínimo, media hora adelante: que alcance a llegar sin afán.
-ANTICIPACION_MINIMA = timedelta(minutes=30)
+# Una reserva para hoy queda, mínimo, media hora adelante (app.turnos.reglas).
+ANTICIPACION_MINIMA = reglas.ANTICIPACION_MINIMA
 
 
 @dataclass(frozen=True)

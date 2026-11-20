@@ -14,9 +14,16 @@
         <span class="ayuda">Solo el número, con el dígito de verificación. En el recibo sale "NIT 900.123.456-7".</span>
       </div>
       <div class="campo">
-        <label for="recibo-direccion">Dirección <span class="suave">(opcional)</span></label>
-        <input id="recibo-direccion" name="direccion" maxlength="80" value="{{ recibo.direccion }}">
+        <label for="recibo-direccion">Dirección del lavadero</label>
+        <input id="recibo-direccion" name="direccion" maxlength="80" placeholder="Calle 10 # 5-20, Bucaramanga" value="{{ recibo.direccion }}">
+        <span class="ayuda">Con la ciudad. El bot la dice cuando le preguntan dónde quedan y al dar un turno; también sale en el recibo.</span>
       </div>
+    </div>
+    <div class="campo">
+      <label for="recibo-mapa">Enlace de Google Maps <span class="suave">(opcional)</span></label>
+      <input id="recibo-mapa" name="mapa" type="url" inputmode="url" maxlength="200" autocomplete="off"
+             placeholder="https://maps.app.goo.gl/..." value="{{ recibo.mapa }}">
+      <span class="ayuda">En Google Maps busca el lavadero, toca Compartir y copia el enlace. El bot lo manda junto a la dirección para que lleguen con un toque.</span>
     </div>
     <div class="campo">
       <label for="recibo-pie">Texto al final del recibo</label>

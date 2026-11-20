@@ -21,6 +21,8 @@ _VALORES_INICIALES: dict[str, Any] = {clave: valor for clave, valor, _ in CONFIG
 # Cada texto del bot que el administrador cambió es una fila con esta clave adelante
 # ("texto_bot.saludo"). Los que no tienen fila usan el original (app.bot.textos).
 PREFIJO_TEXTO_DEL_BOT = "texto_bot."
+# Dónde queda el lavadero: se escribe en Configuración > Recibo y reporte (app.turnos.recibo).
+CLAVE_DIRECCION, CLAVE_MAPA = "lavadero.direccion", "lavadero.mapa"
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,10 @@ class Parametros:
     ficha_negocio: str
     # Los textos del bot que cambió el administrador: nombre del texto -> cómo quedó.
     textos_bot: Mapping[str, str] = field(default_factory=dict, hash=False)
+    # Dónde queda el lavadero y el enlace de Google Maps (vacíos si no los han escrito): el
+    # bot los dice cuando le preguntan y al dar un turno.
+    direccion: str = ""
+    mapa: str = ""
 
 
 def leer_parametros(sesion: Session) -> Parametros:
@@ -83,4 +89,6 @@ def leer_parametros(sesion: Session) -> Parametros:
         modelo_gemini=str(valor("modelo_gemini")),
         ficha_negocio=str(valor("ficha_negocio")),
         textos_bot=textos_bot,
+        direccion=str(guardados.get(CLAVE_DIRECCION) or "").strip(),
+        mapa=str(guardados.get(CLAVE_MAPA) or "").strip(),
     )

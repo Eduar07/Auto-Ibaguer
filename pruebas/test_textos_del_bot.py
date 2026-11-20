@@ -82,6 +82,12 @@ LARGO_DE_CADA_DATO = {
     "dia_y_hora": 70,  # "lo antes posible (hay puesto libre, puedes venir ya)" o una fecha
     "dia": 40,  # "el miércoles 25 de noviembre"
     "recordatorio": 60,  # "Una hora antes te lo recordamos por aquí. "
+    # Las horas libres de un día: con horarios cada 15 minutos de 6:30 a.m. a 12 de la
+    # noche, unas 67 horas de "10:30 · " más las tres partes del día.
+    "horas": 600,
+    "ejemplo": 8,  # "10:30 pm"
+    "parte": 12,  # "en la mañana"
+    "direccion": 80,  # lo más largo que deja guardar Configuración
 }
 
 

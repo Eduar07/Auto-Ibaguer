@@ -21,7 +21,7 @@ from app.bot.mensajes import Lista
 from app.turnos import casos_de_uso as casos
 from app.turnos.estados import EstadoTurno, OrigenTurno
 from app.turnos.tablas import Turno
-from pruebas.fabricas import BOGOTA, LUNES_8AM, cliente_con_vehiculo, estado, minutos
+from pruebas.fabricas import BOGOTA, LUNES_8AM, cliente_con_vehiculo, estado, minutos, puesto
 from pruebas.test_bot import CELULAR, Chat, paso, poner, turnos_de
 
 E = EstadoTurno
@@ -85,13 +85,31 @@ def test_reservar_mañana_a_una_hora_de_punta_a_punta(sesion: Session):
     assert dias.opciones[2].descripcion == "Martes 27 de octubre · 14 horas libres"
 
     chat.toca("Mañana")
-    assert chat.texto == "Estas son las horas libres para mañana. ¿A qué hora vienes?"
+    # Todas las horas del día de una vez, por mañana, tarde y noche.
+    assert chat.texto == (
+        "Estas son las horas libres para *mañana, martes 27 de octubre*:\n\n"
+        "🌅 *En la mañana:* 5:30 · 6:30 · 7:30 · 8:30 · 9:30 · 10:30 · 11:30\n"
+        "☀️ *En la tarde:* 12:30 · 1:30 · 2:30 · 3:30 · 4:30 · 5:30\n"
+        "🌙 *En la noche:* 6:30\n\n"
+        "Elige la hora en *Ver horas* o escríbemela, por ejemplo: *12:30 pm*."
+    )
+    # En una lista de WhatsApp caben 10: con 14 horas, primero la parte del día.
+    horas = la_lista(chat)
+    assert horas.boton == "Ver horas"
+    assert [(o.titulo, o.descripcion) for o in horas.opciones] == [
+        ("🌅 En la mañana", "5:30 · 6:30 · 7:30 · 8:30 · 9:30 · 10:30 · 11:30"),
+        ("☀️ En la tarde", "12:30 · 1:30 · 2:30 · 3:30 · 4:30 · 5:30"),
+        ("🌙 En la noche", "6:30"),
+        ("Otro día", "Elegir otro día"),
+    ]
+
+    chat.toca("🌅 En la mañana")
+    assert chat.texto == "Estas son las horas libres para mañana en la mañana. ¿A qué hora vienes?"
     assert chat.opciones == [
         *MAÑANA_TEMPRANO,
         "10:30 a.m.",
         "11:30 a.m.",
-        "12:30 p.m.",
-        "Más tarde",
+        "Ver todo el día",
         "Otro día",
     ]
 
@@ -144,13 +162,13 @@ def test_nunca_da_la_cita_muy_encima(sesion: Session):
 
     assert chat.texto == (
         "Para hoy reservamos con al menos 30 minutos de anticipación.\n\n"
-        "Estas son las horas libres para hoy. ¿A qué hora vienes?"
+        "Estas son las horas libres para hoy en la mañana. ¿A qué hora vienes?"
     )
-    assert chat.opciones[0] == "9:30 a.m."
+    assert chat.opciones[:3] == ["9:30 a.m.", "10:30 a.m.", "11:30 a.m."]
 
 
 def test_si_se_demora_en_elegir_y_la_hora_queda_encima_no_la_reserva(sesion: Session):
-    chat = hasta_cuando(sesion).toca("Hoy").toca("8:30 a.m.")  # a las 8:00 sí se podía
+    chat = hasta_cuando(sesion).toca("Hoy").toca("🌅 En la mañana").toca("8:30 a.m.")
     assert "*Cuándo:* hoy a las 8:30 a.m." in chat.texto
 
     chat.pasan(5).toca("Confirmar turno")  # 8:05: ya no hay media hora
@@ -162,11 +180,12 @@ def test_si_se_demora_en_elegir_y_la_hora_queda_encima_no_la_reserva(sesion: Ses
 def test_una_hora_que_no_esta_muestra_las_mas_cercanas(sesion: Session):
     chat = hasta_cuando(sesion).escribe("mañana a las 10")
 
+    # La lista abre en esa parte del día: 9:30 y 10:30 a un toque.
     assert chat.texto == (
         "A esa hora no tenemos turno, pero mira las más cercanas.\n\n"
-        "Estas son las horas libres para mañana. ¿A qué hora vienes?"
+        "Estas son las horas libres para mañana en la mañana. ¿A qué hora vienes?"
     )
-    assert chat.opciones[:3] == ["8:30 a.m.", "9:30 a.m.", "10:30 a.m."]
+    assert {"9:30 a.m.", "10:30 a.m.", "Ver todo el día", "Otro día"} <= set(chat.opciones)
 
 
 def test_una_hora_sin_cupo_muestra_las_de_al_lado(sesion: Session):
@@ -175,27 +194,102 @@ def test_una_hora_sin_cupo_muestra_las_de_al_lado(sesion: Session):
 
     chat = hasta_cuando(sesion).escribe("mañana a las 10:30")
 
-    assert chat.texto.startswith("A esa hora ya no tenemos cupo.\n\nEstas son las horas libres")
-    assert chat.opciones[:3] == ["8:30 a.m.", "9:30 a.m.", "11:30 a.m."]
+    assert chat.texto == (
+        "A esa hora ya no tenemos cupo.\n\n"
+        "Estas son las horas libres para mañana en la mañana. ¿A qué hora vienes?"
+    )
+    assert chat.opciones == [*MAÑANA_TEMPRANO, "11:30 a.m.", "Ver todo el día", "Otro día"]
 
 
-def test_mas_tarde_y_otro_dia(sesion: Session):
-    chat = hasta_cuando(sesion).toca("Mañana").toca("Más tarde")
+def test_otra_parte_del_dia_y_otro_dia(sesion: Session):
+    chat = hasta_cuando(sesion).toca("Mañana").toca("☀️ En la tarde")
+    assert chat.texto == "Estas son las horas libres para mañana en la tarde. ¿A qué hora vienes?"
     assert chat.opciones == [
+        "12:30 p.m.",
         "1:30 p.m.",
         "2:30 p.m.",
         "3:30 p.m.",
         "4:30 p.m.",
         "5:30 p.m.",
-        "6:30 p.m.",  # termina a las 7:30 p.m., cuando cierran
+        "Ver todo el día",
         "Otro día",
     ]
 
+    chat.toca("Ver todo el día")
+    assert chat.texto.startswith("Estas son las horas libres para *mañana, martes 27 de octubre*:")
+    assert chat.opciones[-1] == "Otro día"
+
     chat.toca("Otro día")
     assert chat.texto.startswith("¿Cuándo quieres venir?")
-    chat.toca("Miércoles 28").toca("7:30 a.m.").toca("Confirmar turno")
+    chat.toca("Miércoles 28")
+    assert chat.texto.startswith("Estas son las horas libres para *el miércoles 28 de octubre*:")
+    chat.toca("🌅 En la mañana").toca("7:30 a.m.").toca("Confirmar turno")
 
     assert "quedó reservado para el miércoles 28 de octubre a las 7:30 a.m." in chat.texto
+
+
+def test_escribir_la_hora_despues_de_elegir_el_dia_es_de_ese_dia(sesion: Session):
+    """Eligió el miércoles y escribe "a las 3:30": es el miércoles, no hoy."""
+    chat = hasta_cuando(sesion).toca("Miércoles 28").escribe("a las 3:30")
+
+    assert "*Cuándo:* el miércoles 28 de octubre a las 3:30 p.m.\n" in chat.texto
+
+
+def test_con_pocas_horas_libres_se_eligen_de_una(sesion: Session):
+    """Hoy a las 2 de la tarde quedan 5 horas: caben en la lista, sin elegir la parte del día.
+    La mañana ya pasó: no sale."""
+    chat = hasta_cuando(sesion, ahora=LUNES_8AM.replace(hour=14)).toca("Hoy")
+
+    assert chat.texto == (
+        "Estas son las horas libres para *hoy, lunes 26 de octubre*:\n\n"
+        "☀️ *En la tarde:* 2:30 · 3:30 · 4:30 · 5:30\n"
+        "🌙 *En la noche:* 6:30\n\n"
+        "Elige la hora en *Ver horas* o escríbemela, por ejemplo: *4:30 pm*."
+    )
+    assert chat.opciones == [
+        "2:30 p.m.",
+        "3:30 p.m.",
+        "4:30 p.m.",
+        "5:30 p.m.",
+        "6:30 p.m.",
+        "Otro día",
+    ]
+
+
+def test_una_parte_del_dia_llena_dice_sin_cupo(sesion: Session):
+    casos.cambiar_puesto(sesion, puesto(sesion, "C2").id, activo=False, ahora=LUNES_8AM)
+    for hora_de_la_mañana in range(5, 12):  # un puesto: 7 reservas llenan la mañana
+        reserva_de(sesion, el(MARTES, hora_de_la_mañana, 30))
+
+    chat = hasta_cuando(sesion).toca("Mañana")
+
+    assert "🌅 *En la mañana:* sin cupo\n" in chat.texto
+    assert chat.opciones[0] == "12:30 p.m."  # quedan 7: caben en la lista
+
+
+def test_con_horarios_cada_media_hora_la_parte_del_dia_va_por_paginas(sesion: Session):
+    poner(sesion, "minutos_entre_horarios", 30)
+
+    chat = hasta_cuando(sesion).toca("Mañana")
+    [mañana, *_] = la_lista(chat).opciones
+    assert mañana.descripcion == "13 horas libres, de 5:30 a 11:30 a.m."
+
+    chat.toca("🌅 En la mañana")
+    assert chat.opciones == [
+        "5:30 a.m.",
+        "6:00 a.m.",
+        "6:30 a.m.",
+        "7:00 a.m.",
+        "7:30 a.m.",
+        "8:00 a.m.",
+        "8:30 a.m.",
+        "Más tarde",
+        "Ver todo el día",
+        "Otro día",
+    ]
+    chat.toca("Más tarde")
+    assert chat.opciones[:2] == ["9:00 a.m.", "9:30 a.m."]
+    assert chat.opciones[-3:] == ["11:30 a.m.", "Ver todo el día", "Otro día"]
 
 
 def test_de_madrugada_reserva_desde_que_abren(sesion: Session):
@@ -207,7 +301,7 @@ def test_de_madrugada_reserva_desde_que_abren(sesion: Session):
     )
     assert chat.opciones[:2] == ["Hoy", "Mañana"]  # sin "Lo antes posible"
     chat.toca("Hoy")
-    assert chat.opciones[:2] == ["5:30 a.m.", "6:30 a.m."]
+    assert "🌅 *En la mañana:* 5:30 · 6:30 · 7:30" in chat.texto
 
 
 def test_si_cierran_a_las_12_de_la_noche_atiende_hasta_esa_hora(sesion: Session):
@@ -223,9 +317,18 @@ def test_si_cierran_a_las_12_de_la_noche_atiende_hasta_esa_hora(sesion: Session)
     # Abierto: puede venir ya. Hoy ya no hay horas para reservar (la última es 10:30 p.m.).
     assert chat.opciones[:2] == ["Lo antes posible", "Mañana"]
     chat.toca("Mañana")
-    assert chat.opciones[0] == "6:30 a.m."
-    chat.toca("Más tarde").toca("Más tarde")
-    assert chat.opciones == ["10:30 p.m.", "Otro día"]  # a las 11:30 p.m. ya no alcanza
+    assert "🌅 *En la mañana:* 6:30 · 7:30 · 8:30 · 9:30 · 10:30 · 11:30\n" in chat.texto
+    assert "🌙 *En la noche:* 6:30 · 7:30 · 8:30 · 9:30 · 10:30\n" in chat.texto
+    chat.toca("🌙 En la noche")
+    assert chat.opciones == [
+        "6:30 p.m.",
+        "7:30 p.m.",
+        "8:30 p.m.",
+        "9:30 p.m.",
+        "10:30 p.m.",  # a las 11:30 p.m. ya no alcanza
+        "Ver todo el día",
+        "Otro día",
+    ]
 
 
 # --- Su reserva ------------------------------------------------------------------------------
@@ -283,8 +386,9 @@ def test_cambiar_hora_con_el_boton(sesion: Session):
     assert chat.opciones[0] == "Hoy"  # quien cambia la hora elige una hora
     assert chat.opciones[-1] == "Cancelar el turno"
     chat.toca("Mañana")
-    assert "10:30 a.m." in chat.opciones  # su propio cupo sigue disponible para él
-    chat.toca("11:30 a.m.")
+    # Su propio cupo de las 10:30 sigue disponible para él.
+    assert "🌅 *En la mañana:* 5:30 · 6:30 · 7:30 · 8:30 · 9:30 · 10:30 · 11:30" in chat.texto
+    chat.escribe("a las 11:30")  # escrita: es de mañana, el día que eligió
 
     assert chat.texto == "¡Listo! Tu turno *C-01* quedó para mañana a las 11:30 a.m. Te esperamos."
     assert chat.opciones == ["Cambiar hora", "Cancelar"]

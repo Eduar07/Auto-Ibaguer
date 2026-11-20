@@ -4,8 +4,12 @@ El nombre y el teléfono del negocio son los de Configuración (los mismos que d
 aquí van el NIT, la dirección, el texto del final del recibo, el ancho del papel de la
 impresora, si el recibo se imprime solo al cobrar y los correos de los jefes. Se guardan en
 la tabla `configuracion` con la clave "lavadero." adelante, como los del parqueadero.
+
+La dirección (y el enlace de Google Maps, si lo pusieron) también la usa el bot: la dice
+cuando le preguntan dónde queda el lavadero y al dar un turno (app.catalogo.parametros).
 """
 
+import re
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -23,7 +27,8 @@ PREFIJO = "lavadero."
 # clave (sin el prefijo), valor inicial, para qué sirve
 VALORES_INICIALES: tuple[tuple[str, Any, str], ...] = (
     ("nit", "", "NIT del lavadero en el recibo (solo el número, con su dígito de verificación)"),
-    ("direccion", "", "Dirección del lavadero en el recibo"),
+    ("direccion", "", "Dirección del lavadero: la dice el bot y sale en el recibo"),
+    ("mapa", "", "Enlace de Google Maps del lavadero: el bot lo manda con la dirección"),
     ("pie_recibo", "Gracias por preferirnos.", "Texto al final del recibo del lavadero"),
     ("ancho_ticket", 80, "Ancho del papel de la impresora del lavadero, en milímetros"),
     ("imprimir_al_cobrar", False, "Si el recibo del lavadero se imprime solo al cobrar un turno"),
@@ -32,7 +37,9 @@ VALORES_INICIALES: tuple[tuple[str, Any, str], ...] = (
 _INICIALES = {clave: valor for clave, valor, _ in VALORES_INICIALES}
 
 # Lo más largo que cabe bien en el recibo (en el de 58 mm, unas tres o cuatro líneas).
-LARGO_MAXIMO = {"direccion": 80, "pie_recibo": 240}
+LARGO_MAXIMO = {"direccion": 80, "pie_recibo": 240, "mapa": 200}
+# Un enlace que se abre en el celular: https:// y sin espacios.
+_ENLACE = re.compile(r"https://\S+")
 _DESCRIPCIONES = {clave: descripcion for clave, _, descripcion in VALORES_INICIALES}
 
 
@@ -48,6 +55,7 @@ class AjustesDelRecibo:
     ancho_ticket: int
     imprimir_al_cobrar: bool
     correos_reporte: str = ""  # "jefe@gmail.com, socio@gmail.com"
+    mapa: str = ""  # "https://maps.app.goo.gl/..." (opcional)
 
     @property
     def destinos_del_reporte(self) -> list[str]:
@@ -65,6 +73,7 @@ def leer_ajustes(sesion: Session) -> AjustesDelRecibo:
         ancho_ticket=int(valores["ancho_ticket"]),
         imprimir_al_cobrar=bool(valores["imprimir_al_cobrar"]),
         correos_reporte=str(valores["correos_reporte"]),
+        mapa=str(valores["mapa"]),
     )
 
 
@@ -75,15 +84,23 @@ def guardar_ajustes(sesion: Session, ajustes: AjustesDelRecibo) -> None:
     for clave, muy_largo in (
         ("direccion", "La dirección es muy larga"),
         ("pie_recibo", "El texto del final es muy largo"),
+        ("mapa", "El enlace del mapa es muy largo"),
     ):
         if len(getattr(ajustes, clave).strip()) > LARGO_MAXIMO[clave]:
             raise AjustesInvalidos(f"{muy_largo}: máximo {LARGO_MAXIMO[clave]} letras.")
+    mapa = ajustes.mapa.strip()
+    if mapa and not _ENLACE.fullmatch(mapa):
+        raise AjustesInvalidos(
+            "El enlace del mapa debe empezar por https:// (en Google Maps, toca Compartir y "
+            "copia el enlace)."
+        )
     try:
         limpios = replace(
             ajustes,
             nit=limpiar_nit(ajustes.nit),
-            direccion=ajustes.direccion.strip(),
+            direccion=" ".join(ajustes.direccion.split()),
             pie_recibo=ajustes.pie_recibo.strip(),
+            mapa=mapa,
             correos_reporte=limpiar_correos(ajustes.correos_reporte),
         )
     except ReglaDelNegocio as error:

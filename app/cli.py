@@ -25,7 +25,8 @@ from sqlalchemy.orm import Session
 
 from app import tiempo
 from app.bot import redactor
-from app.bot.conversacion import catalogo_del_bot, servicios_de_la_ficha
+from app.bot.conversacion import catalogo_del_bot, servicios_de_la_ficha, videos_de_la_ficha
+from app.bot.cuando import entender as entender_cuando
 from app.bot.frases_de_prueba import FRASES, FraseDePrueba
 from app.bot.interprete import OTRO_SERVICIO, SI, Contexto, Intencion, Interpretacion
 from app.bot.textos import Textos
@@ -297,6 +298,13 @@ def _como_salio(frase: FraseDePrueba, entendido: Interpretacion | None) -> str |
         faltas.append(f"servicio {frase.servicio}")
     if frase.si_o_no and entendido.si_o_no != frase.si_o_no:
         faltas.append(f"que conteste {'sí' if frase.si_o_no == SI else 'no'}")
+    if frase.cuando:
+        ahora = tiempo.hora_local(tiempo.ahora())
+        dicho = entender_cuando(entendido.cuando, ahora.date(), ahora)
+        if dicho is None or (frase.cuando == "ya") != dicho.ya:
+            faltas.append(f"cuándo viene ({frase.cuando})")
+    if frase.pide_video and not entendido.pide_video:
+        faltas.append("que pide un video")
     return "esperaba " + ", ".join(faltas) if faltas else None
 
 
@@ -304,6 +312,10 @@ def _lo_que_entendio(entendido: Interpretacion) -> str:
     partes = [entendido.intencion.value, entendido.vehiculo, entendido.servicio]
     if entendido.si_o_no:
         partes.append(f"contesta {entendido.si_o_no}")
+    if entendido.cuando:
+        partes.append(f"viene: {entendido.cuando}")
+    if entendido.pide_video:
+        partes.append("pide un video")
     return ", ".join(parte for parte in partes if parte)
 
 
@@ -351,7 +363,8 @@ def probar_gemini(modelo: str | None, pausa: float) -> int:
         parametros = leer_parametros(sesion)
         catalogo = catalogo_del_bot(sesion)
         servicios = servicios_de_la_ficha(sesion)
-    ficha = redactor.ficha_completa(parametros, catalogo, servicios)
+        videos = videos_de_la_ficha(sesion)
+    ficha = redactor.ficha_completa(parametros, catalogo, servicios, videos)
     textos = Textos(parametros.textos_bot)
     horario = horario_legible(
         parametros.dias_atencion, parametros.hora_apertura, parametros.hora_cierre

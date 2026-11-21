@@ -131,14 +131,15 @@ def test_carro_sin_decir_cual_se_pregunta_si_tiene_dos(sesion: Session):
     assert cliente.texto == TEXTOS["pedir_vehiculo_conocido"]  # no se adivina cuál
 
 
-def test_si_dice_carro_y_solo_tiene_una_moto_se_le_pregunta(sesion: Session):
+def test_si_dice_carro_y_solo_tiene_una_moto_se_le_pregunta_cual_carro(sesion: Session):
     cliente_con_vehiculo(sesion, tipo="Moto", telefono=CELULAR, nombre="Ana", placa="ABC12D")
     cliente = chat(sesion, Interpretacion(PIDE_TURNO, vehiculo="carro"))
 
     cliente.escribe("quiero lavar el carro")
 
-    assert cliente.texto == TEXTOS["pedir_vehiculo_conocido"]  # no le pone la moto
-    assert cliente.opciones == ["Moto ABC12D", "Otro vehículo"]
+    # No le pone la moto: dijo carro, y automóvil y camioneta cuestan distinto.
+    assert cliente.texto == TEXTOS["pedir_cual_carro"]
+    assert cliente.opciones == ["Automóvil", "Camioneta"]
 
 
 def test_una_placa_que_no_es_de_ese_vehiculo_se_pregunta_sin_regannar(sesion: Session):

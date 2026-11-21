@@ -81,6 +81,7 @@ TEXTOS: dict[str, str] = {
     "315 123 4567) o toca *Ahora no*.",
     "pedir_vehiculo": "¿Qué vehículo traes?",
     "pedir_vehiculo_conocido": "¿Para cuál vehículo es el turno?",
+    "pedir_cual_carro": "¿Tu carro es automóvil o camioneta?",
     "pedir_placa": "¿Cuál es la placa de tu {vehiculo}? La pedimos por seguridad: así te "
     "entregamos el vehículo solo a ti. Si no la tienes a mano, toca *Ahora no* y la anotamos "
     "cuando llegues.",
@@ -91,6 +92,27 @@ TEXTOS: dict[str, str] = {
     "servicio_no_disponible": "Ese servicio ya no está disponible. Elige otro, por favor.",
     # Debajo del video del servicio (si el servicio tiene video: app.catalogo.videos).
     "video_del_servicio": "🎬 Así es el lavado *{servicio}* para tu {vehiculo}, paso a paso.",
+    # --- Cuando pide un video ("¿me pasas el video del encerado?") ---
+    "pedir_cual_video": "¡Claro! ¿De cuál servicio quieres ver el video?",
+    "video_cuando_elija": "¡Claro! Apenas elijas el servicio te mando su video.",
+    "sin_video": "Del *{servicio}* todavía no tenemos video.",
+    "sin_video_incluye": "Del *{servicio}* todavía no tenemos video. Incluye: {incluye}.",
+    "sin_videos": "Todavía no tenemos videos para {vehiculo}.",
+    "sin_ningun_video": "Todavía no tenemos videos de los servicios. En *Servicios y precios* "
+    "te cuento qué incluye cada uno.",
+    # --- Si lo que escribe no contesta la pregunta: cómo contestarla ---
+    "ayuda_cuando": "No alcancé a entender cuándo vienes. Escríbelo así: *ya*, *hoy a las 4 pm* "
+    "o *mañana a las 10 am*, o elige en *Ver días*.",
+    "ayuda_hora": "No alcancé a entender la hora. Escríbela así: *a las 4 pm*, o elige en *Ver "
+    "horas*.",
+    "ayuda_servicio": "Elige el servicio en *Ver servicios* o escribe su nombre, por ejemplo: "
+    "*{ejemplo}*.",
+    "ayuda_vehiculo": "Toca tu vehículo o escríbelo, por ejemplo: *moto* o *camioneta*.",
+    "ayuda_confirmar": "Toca *Confirmar turno* para reservarlo, *Cambiar datos* si algo está mal "
+    "o *Mejor no*.",
+    # Preguntó el precio en medio del turno: se le da y el bot sigue con lo que iba.
+    "precio_del_servicio": "El *{servicio}* para {vehiculo} vale {precio}. El pago es en el local.",
+    "precios_en_el_camino": "Precios para {vehiculo}:\n{servicios}\n\nEl pago es en el local.",
     # --- Cuándo viene: lo antes posible o un día y una hora ---
     "pedir_cuando": "¿Cuándo quieres venir? Puede ser lo antes posible o el día y la hora que "
     "te queden bien.",
@@ -111,14 +133,12 @@ TEXTOS: dict[str, str] = {
     "resumen": "Revisa tu turno:\n\n*Nombre:* {nombre}\n*Vehículo:* {vehiculo}\n"
     "*Servicio:* {servicio}\n*Cuándo:* {dia_y_hora}\n\n¿Lo reservamos?",
     "mejor_no": "Listo, no reservamos nada. Cuando quieras, aquí estamos.",
-    "turno_confirmado": "¡Listo, {nombre}! Tu turno es *{numero}*.\n\n{situacion}\n\n"
-    "Cuando te llamemos tienes {gracia} minutos para llegar. Si no llegas, pasas al final de "
-    "la fila, y la segunda vez pierdes el turno. Escribe *mi turno* para ver cómo vas o "
-    "*cancelar* si no puedes venir.",
+    # Corto: el número y cuándo llegar (la dirección y el mapa van al final). La regla de los
+    # minutos para llegar va en el aviso de "¡Es tu turno!", que es cuando sirve.
+    "turno_confirmado": "¡Listo, {nombre}! Tu turno es *{numero}*.\n\n{situacion}",
     "reserva_confirmada": "¡Listo, {nombre}! Tu turno *{numero}* quedó reservado para "
-    "{dia_y_hora}.\n\nA esa hora entras de primero. Tienes {gracia} minutos para llegar; si "
-    "no llegas, pierdes la reserva y pasas al final de la fila. {recordatorio}Si no puedes "
-    "venir, toca *Cambiar hora* o escribe *cancelar*.",
+    "{dia_y_hora}.\n\nLlega a esa hora y entras de primero (tienes {gracia} minutos de "
+    "tolerancia). {recordatorio}",
     "reagendado": "¡Listo! Tu turno *{numero}* quedó para {dia_y_hora}. Te esperamos.",
     "reagendado_otro_numero": "¡Listo! Movimos tu turno para {dia_y_hora}. Como cambió de "
     "día, ahora es el *{numero}*. Te esperamos.",
@@ -308,6 +328,7 @@ BOTONES: dict[str, str] = {
     "mas_horas": "Más tarde",
     "todo_el_dia": "Ver todo el día",
     "otro_dia": "Otro día",
+    "ver_videos": "Ver videos",
 }
 
 # El dibujito de cada tipo de vehículo en los botones: así se reconoce de un vistazo.

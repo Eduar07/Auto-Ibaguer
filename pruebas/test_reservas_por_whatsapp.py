@@ -124,9 +124,7 @@ def test_reservar_mañana_a_una_hora_de_punta_a_punta(sesion: Session):
 
     assert chat.texto == (
         "¡Listo, Laura! Tu turno *C-01* quedó reservado para mañana a las 10:30 a.m.\n\n"
-        "A esa hora entras de primero. Tienes 15 minutos para llegar; si no llegas, pierdes la "
-        "reserva y pasas al final de la fila. Si no puedes venir, toca *Cambiar hora* o "
-        "escribe *cancelar*."
+        "Llega a esa hora y entras de primero (tienes 15 minutos de tolerancia)."
     )
     assert chat.opciones == ["Cambiar hora", "Cancelar"]
     [turno] = turnos_de(sesion)
@@ -147,9 +145,8 @@ def test_para_hoy_se_puede_escribir_la_hora_y_se_le_recuerda(sesion: Session):
     # Una hora antes es dentro de las 24 horas en que WhatsApp deja escribirle.
     assert chat.texto == (
         "¡Listo, Laura! Tu turno *C-01* quedó reservado para hoy a las 10:30 a.m.\n\n"
-        "A esa hora entras de primero. Tienes 15 minutos para llegar; si no llegas, pierdes la "
-        "reserva y pasas al final de la fila. Una hora antes te lo recordamos por aquí. Si no "
-        "puedes venir, toca *Cambiar hora* o escribe *cancelar*."
+        "Llega a esa hora y entras de primero (tienes 15 minutos de tolerancia). Una hora antes "
+        "te lo recordamos por aquí."
     )
 
 

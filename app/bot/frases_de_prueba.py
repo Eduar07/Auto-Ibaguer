@@ -49,10 +49,15 @@ class FraseDePrueba:
     en_que_va: str = ""  # lo que el bot está esperando
     tambien: tuple[Intencion, ...] = ()  # otras intenciones que también están bien
     prueba: str = ""  # la prueba del documento del hito 7c (A, B...), si es una
+    # Cuándo viene, como lo debe devolver Gemini para que el bot lo lea solo: "ya" (lo antes
+    # posible) u "hora" (un día o una hora). "" si la frase no dice cuándo.
+    cuando: str = ""
+    pide_video: bool = False  # si se espera que entienda que pide el video de un servicio
 
 
 VEHICULOS = ("Automóvil", "Camioneta", "Moto")
 SERVICIO = ("Básico", "General", "Encerado", "Lo decido en el local")
+CUANDO = ("Lo antes posible", "Mañana", "Domingo 22")
 CONFIRMAR = ("Confirmar turno", "Cambiar datos", "Mejor no")
 PERMISO = ("Sí, que me responda", "No, gracias")
 
@@ -318,5 +323,58 @@ FRASES: tuple[FraseDePrueba, ...] = (
         "para qué quieren mi número?",
         Q.PREGUNTA,
         en_que_va=esperando(Paso.PERMISO_CONTACTO, *PERMISO),
+    ),
+    # --- Cuándo viene, con sus palabras (el bot lee lo que devuelve Gemini en "cuando") ---
+    FraseDePrueba(
+        "Quiero venir ya en 30 hora",
+        Q.PEDIR_TURNO,
+        tambien=(Q.EN_CAMINO, Q.OTRO),
+        en_que_va=esperando(Paso.CUANDO, *CUANDO),
+        cuando="ya",
+    ),
+    FraseDePrueba(
+        "apenas salga del trabajo, tipo 6 de la tarde",
+        Q.PEDIR_TURNO,
+        tambien=(Q.OTRO,),
+        en_que_va=esperando(Paso.CUANDO, *CUANDO),
+        cuando="hora",
+    ),
+    FraseDePrueba(
+        "el domingo temprano tipo 8",
+        Q.PEDIR_TURNO,
+        tambien=(Q.OTRO,),
+        en_que_va=esperando(Paso.CUANDO, *CUANDO),
+        cuando="hora",
+    ),
+    # --- Cambiar de vehículo en medio del turno ---
+    FraseDePrueba(
+        "No, quiero un servicio de carro",
+        Q.PEDIR_TURNO,
+        vehiculo=CARRO,
+        tambien=(Q.OTRO,),
+        en_que_va=esperando(Paso.SERVICIO, *SERVICIO),
+    ),
+    # --- Pedir el video de un servicio ---
+    FraseDePrueba(
+        "Me puedes pasar el video del encerado?",
+        Q.PREGUNTA,
+        servicio="Encerado",
+        tambien=(Q.PRECIOS, Q.PEDIR_TURNO, Q.OTRO),
+        en_que_va=esperando(Paso.CONFIRMAR, *CONFIRMAR),
+        pide_video=True,
+    ),
+    FraseDePrueba(
+        "tienen videos de cómo lavan las motos?",
+        Q.PREGUNTA,
+        vehiculo="Moto",
+        tambien=(Q.PRECIOS,),
+        pide_video=True,
+    ),
+    FraseDePrueba(
+        "Quiero un servicio de encerado y muéstrame un video del servicio",
+        Q.PEDIR_TURNO,
+        servicio="Encerado",
+        en_que_va=esperando(Paso.SERVICIO, *SERVICIO),
+        pide_video=True,
     ),
 )

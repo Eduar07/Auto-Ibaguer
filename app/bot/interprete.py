@@ -112,6 +112,10 @@ class Interpretacion:
     # Para el administrador, en una línea: qué pide (en un pedido especial, una queja o
     # cuando pide hablar con una persona). "" si no aplica.
     resumen: str = ""
+    # Cuándo quiere venir, en palabras sencillas que el bot lee solo (app.bot.cuando): "ya",
+    # "hoy a las 4 pm", "mañana a las 10 am", "en 40 minutos". "" si no lo dice.
+    cuando: str = ""
+    pide_video: bool = False  # pide ver el video de un servicio (cómo lo lavan)
 
 
 class Interprete(Protocol):
@@ -142,6 +146,8 @@ def leer_respuesta(datos: Any, catalogo: Catalogo) -> Interpretacion | None:
     sabe = datos.get("sabe")
     lo_que_dice = datos.get("lo_que_dice")
     resumen = datos.get("resumen")
+    cuando = datos.get("cuando")
+    pide_video = datos.get("pide_video")
     validos = (*catalogo.vehiculos, CARRO, OTRO_VEHICULO)
     return Interpretacion(
         intencion,
@@ -155,6 +161,8 @@ def leer_respuesta(datos: Any, catalogo: Catalogo) -> Interpretacion | None:
         else "",
         servicio_que_no_hay=servicio == OTRO_SERVICIO,
         resumen=" ".join(resumen.split())[:LARGO_DEL_RESUMEN] if isinstance(resumen, str) else "",
+        cuando=" ".join(cuando.split())[:LARGO_DEL_CUANDO] if isinstance(cuando, str) else "",
+        pide_video=pide_video is True,
     )
 
 
@@ -168,6 +176,7 @@ _PLACA = re.compile(r"\b[A-Za-z]{3}[\s-]?\d{2}[0-9A-Za-z]\b")
 _NUMERO = re.compile(r"\+?\d[\d\s.\-]{6,}\d")
 LARGO_MAXIMO = 500  # un mensaje más largo se corta: para entender qué quiere, basta
 LARGO_DEL_RESUMEN = 200
+LARGO_DEL_CUANDO = 60  # "el sábado 28 de noviembre a las 10:30 am" cabe de sobra
 
 
 def ocultar_datos(mensaje: str) -> str:

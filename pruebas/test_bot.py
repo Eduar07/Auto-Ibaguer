@@ -15,7 +15,7 @@ from app.bot import conversacion
 from app.bot.avisos import mensaje_del_aviso
 from app.bot.mensajes import Entrada, Lista, Mensaje, Opcion
 from app.bot.tablas import SesionBot
-from app.bot.textos import EMOJI_DEL_VEHICULO
+from app.bot.textos import EMOJI_DEL_VEHICULO, TEXTOS
 from app.catalogo import configuracion
 from app.catalogo.parametros import leer_parametros
 from app.catalogo.tablas import Configuracion
@@ -200,7 +200,7 @@ def test_un_turno_sin_placa_ni_servicio_de_punta_a_punta(sesion: Session):
 
     assert "¡Listo, Laura! Tu turno es *C-01*." in chat.texto
     assert "Hay un puesto libre: ven ya. Tienes hasta las 8:15 a.m. para llegar." in chat.texto
-    assert "Cuando te llamemos tienes 15 minutos para llegar." in chat.texto
+    assert "Cuando te llamemos" not in chat.texto  # sin repetir cuánto tiene para llegar
     assert chat.opciones == ["En camino", "Ya estoy aquí"]
     [turno] = turnos_de(sesion)
     assert (turno.origen, turno.estado, turno.servicio_id) == (
@@ -331,7 +331,8 @@ def test_si_escribe_otra_cosa_le_repite_la_pregunta(sesion: Session):
 
     chat.escribe("no sé, uno grande")
 
-    assert chat.texto.startswith("Toca una de las opciones, por favor.\n\n¿Qué vehículo traes?")
+    # No "Toca una de las opciones": cómo contestar, con un ejemplo.
+    assert chat.texto.startswith(TEXTOS["ayuda_vehiculo"] + "\n\n¿Qué vehículo traes?")
     assert chat.opciones == ["Automóvil", "Camioneta", "Moto"]
 
 

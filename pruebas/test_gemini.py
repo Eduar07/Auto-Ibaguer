@@ -35,6 +35,7 @@ from app.bot.interprete import (
     ocultar_datos,
 )
 from app.bot.mensajes import Entrada
+from app.bot.textos import TEXTOS
 from app.catalogo.parametros import leer_parametros
 from app.config import obtener_entorno
 from app.integraciones import gemini
@@ -185,6 +186,8 @@ def test_una_sola_consulta_entiende_y_escribe_con_formato_fijo():
         "vehiculo",
         "servicio",
         "si_o_no",
+        "cuando",  # en palabras que el bot lee solo: "hoy a las 4 pm"
+        "pide_video",
         "sabe",
         "lo_que_dice",  # de un audio o una foto
         "resumen",  # para el administrador
@@ -653,13 +656,14 @@ def test_en_medio_de_una_pregunta_puede_cambiar_de_tema(sesion: Session):
     assert cliente.texto.startswith("Así está la fila ahora:")
 
 
-def test_preguntar_el_precio_mientras_pide_turno_repite_la_pregunta(sesion: Session):
+def test_preguntar_el_precio_sin_saber_el_vehiculo_repite_la_pregunta(sesion: Session):
     cliente = chat(sesion, None, Interpretacion(Q.PRECIOS))
     cliente.escribe("hola").toca("Pedir turno").toca("Acepto").escribe("Ana Ruiz")
 
     cliente.escribe("y eso cuánto vale?")
 
-    assert cliente.texto.startswith("Toca una de las opciones, por favor.")
+    # Sin "Toca una de las opciones": cómo contestar, con un ejemplo.
+    assert cliente.texto.startswith(TEXTOS["ayuda_vehiculo"])
     assert paso(sesion) == "vehiculo"
 
 
@@ -942,6 +946,8 @@ def test_el_comando_corre_las_frases_con_una_consulta_cada_una(
             si_o_no=f.si_o_no,
             respuesta=escribe.get(f.intencion, ""),
             servicio_que_no_hay=f.servicio == OTRO_SERVICIO,
+            cuando={"ya": "ya", "hora": "mañana a las 10 am"}.get(f.cuando, ""),
+            pide_video=f.pide_video,
         )
         for f in FRASES
     }

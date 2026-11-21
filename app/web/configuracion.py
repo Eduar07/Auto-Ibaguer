@@ -1,5 +1,5 @@
-"""La pantalla de configuración: negocio y horario, bot, puestos, menú y precios, el aviso
-de datos personales, y el recibo y el reporte del día.
+"""La pantalla de configuración: negocio y horario, bot, puestos, menú y precios (con el
+video de cada servicio), el aviso de datos personales, y el recibo y el reporte del día.
 
 Todo se guarda junto con un solo botón: si algo no sirve, no se guarda nada y cada campo
 dice qué le falta. Las reglas viven en app.catalogo.configuracion (parámetros, precios y
@@ -11,14 +11,14 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
 
 from app import formato, tiempo
-from app.catalogo import configuracion
+from app.catalogo import configuracion, videos
 from app.catalogo.parametros import leer_parametros
 from app.catalogo.tablas import Fila, Puesto, Servicio, ServicioPrecio, TipoVehiculo
 from app.config import obtener_entorno
@@ -55,6 +55,7 @@ class ServicioEnPantalla:
     precios: dict[int, int]  # tipo de vehículo -> precio vigente
     duracion_min: int | None
     real: tuple[int, int] | None  # (minutos en promedio, cuántos lavados)
+    video: videos.DatosDelVideo | None = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,7 @@ def _filas(sesion: Session) -> list[FilaEnConfiguracion]:
     reales = consultas.duracion_real_por_servicio(
         sesion, desde=tiempo.ahora() - timedelta(days=DIAS_DE_DURACION_REAL)
     )
+    con_video = videos.datos_de_los_videos(sesion, tiempo.ahora())
     vigentes: dict[int, dict[int, ServicioPrecio]] = {}
     for precio in sesion.scalars(select(ServicioPrecio).where(ServicioPrecio.activo)):
         vigentes.setdefault(precio.servicio_id, {})[precio.tipo_vehiculo_id] = precio
@@ -102,6 +104,7 @@ def _filas(sesion: Session) -> list[FilaEnConfiguracion]:
                     precios={tipo_id: p.precio for tipo_id, p in precios.items()},
                     duracion_min=max(duraciones) if duraciones else None,
                     real=reales.get(servicio.id),
+                    video=con_video.get(servicio.id),
                 )
             )
         puestos = sorted(
@@ -350,6 +353,92 @@ async def agregar_servicio(request: Request, sesion: SesionBD, _: Admin) -> Resp
         respuesta,
         cerrar_dialogo=True,
         aviso=f"{nombre} ya está en el menú de {fila.nombre.lower()}.",
+    )
+
+
+# --- El video de cada servicio ----------------------------------------------------------------
+
+
+def _servicio_o_404(sesion: Session, servicio_id: int) -> Servicio:
+    servicio = sesion.get(Servicio, servicio_id)
+    if servicio is None or not servicio.activo:
+        raise HTTPException(status_code=404, detail="Ese servicio no existe.")
+    return servicio
+
+
+def _dialogo_del_video(
+    request: Request,
+    sesion: Session,
+    servicio: Servicio,
+    *,
+    error: str | None = None,
+    con_la_celda: bool = False,
+) -> HTMLResponse:
+    """El diálogo del video. `con_la_celda`: también trae la celda de la tabla del menú, para
+    que se actualice sin recargar la página (hx-swap-oob)."""
+    video = videos.datos_de_los_videos(sesion, tiempo.ahora()).get(servicio.id)
+    contexto = {
+        "servicio": servicio,
+        "fila": sesion.get(Fila, servicio.fila_id),
+        "video": video,
+        "peso": videos.peso_para_mostrar(video.peso) if video else "",
+        "subido": formato.fecha(tiempo.hora_local(video.subido_en).date()) if video else "",
+        "error": error,
+        "con_la_celda": con_la_celda,
+    }
+    return html(request, "dialogos/video_del_servicio.html", contexto)
+
+
+@router.get("/configuracion/servicios/{servicio_id}/video", response_class=HTMLResponse)
+def dialogo_video(request: Request, sesion: SesionBD, _: Admin, servicio_id: int) -> Response:
+    return _dialogo_del_video(request, sesion, _servicio_o_404(sesion, servicio_id))
+
+
+@router.post("/configuracion/servicios/{servicio_id}/video", response_class=HTMLResponse)
+def subir_video(
+    request: Request,
+    sesion: SesionBD,
+    _: Admin,
+    servicio_id: int,
+    archivo: Annotated[UploadFile | None, File()] = None,
+) -> Response:
+    servicio = _servicio_o_404(sesion, servicio_id)
+    if archivo is None or not archivo.filename:
+        return _dialogo_del_video(request, sesion, servicio, error="Escoge el video (MP4).")
+    # Se lee un byte de más: así se sabe si pasa del límite sin leer todo lo que manden.
+    contenido = archivo.file.read(videos.PESO_MAXIMO + 1)
+    try:
+        videos.guardar(
+            sesion, servicio.id, nombre=archivo.filename, contenido=contenido, ahora=tiempo.ahora()
+        )
+        sesion.commit()
+    except videos.VideoInvalido as error:
+        sesion.rollback()
+        return _dialogo_del_video(request, sesion, servicio, error=str(error))
+    respuesta = _dialogo_del_video(request, sesion, servicio, con_la_celda=True)
+    return con_eventos(
+        respuesta,
+        aviso=f"Video de {servicio.nombre} guardado. El bot lo manda cuando lo escojan.",
+    )
+
+
+@router.post("/configuracion/servicios/{servicio_id}/video/quitar", response_class=HTMLResponse)
+def quitar_video(request: Request, sesion: SesionBD, _: Admin, servicio_id: int) -> Response:
+    servicio = _servicio_o_404(sesion, servicio_id)
+    videos.quitar(sesion, servicio.id)
+    sesion.commit()
+    respuesta = _dialogo_del_video(request, sesion, servicio, con_la_celda=True)
+    return con_eventos(respuesta, aviso=f"Se quitó el video de {servicio.nombre}.")
+
+
+@router.get("/configuracion/servicios/{servicio_id}/video.mp4")
+def ver_video(sesion: SesionBD, _: Admin, servicio_id: int) -> Response:
+    """El archivo, para verlo en el diálogo y en Probar el bot. Solo con sesión."""
+    video = videos.del_servicio(sesion, servicio_id, con_archivo=True)
+    if video is None:
+        raise HTTPException(status_code=404, detail="Ese servicio no tiene video.")
+    return Response(
+        video.contenido, media_type=video.tipo, headers={"Cache-Control": "private, no-store"}
     )
 
 

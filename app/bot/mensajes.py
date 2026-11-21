@@ -1,9 +1,10 @@
 """Lo que entra y sale del bot, sin saber nada de WhatsApp ni de la base de datos.
 
 Un `Mensaje` del bot es texto con hasta 3 botones, o texto con una lista desplegable
-(hasta 10 opciones), que es lo que WhatsApp deja mandar. Los límites de WhatsApp se
-revisan aquí, al armar cada mensaje: si un texto queda muy largo, falla en las pruebas y
-no cuando un cliente de verdad está esperando la respuesta.
+(hasta 10 opciones), que es lo que WhatsApp deja mandar. También puede ser el video de un
+servicio con su texto debajo (`video` es el id del servicio: app.catalogo.videos). Los
+límites de WhatsApp se revisan aquí, al armar cada mensaje: si un texto queda muy largo,
+falla en las pruebas y no cuando un cliente de verdad está esperando la respuesta.
 
 Cuando el cliente toca un botón o una opción de la lista, WhatsApp devuelve su `id`. Los
 ids llevan un prefijo con el paso de la conversación al que pertenecen ("vehiculo.3",
@@ -20,6 +21,7 @@ MAX_OPCIONES_LISTA = 10
 MAX_TITULO_OPCION = 24
 MAX_DESCRIPCION_OPCION = 72
 MAX_TEXTO_INTERACTIVO = 1024
+MAX_TEXTO_DEL_VIDEO = 1024
 MAX_TEXTO = 4096
 MAX_ID = 200
 
@@ -42,11 +44,16 @@ class Mensaje:
     texto: str
     botones: tuple[Opcion, ...] = ()
     lista: Lista | None = None
+    video: int | None = None  # el servicio cuyo video se manda, con el texto debajo
 
     def __post_init__(self) -> None:
         interactivo = bool(self.botones) or self.lista is not None
         _revisar(self.texto.strip() != "", "un mensaje sin texto")
-        maximo = MAX_TEXTO_INTERACTIVO if interactivo else MAX_TEXTO
+        _revisar(self.video is None or not interactivo, "un video con botones o con lista")
+        if self.video is not None:
+            maximo = MAX_TEXTO_DEL_VIDEO
+        else:
+            maximo = MAX_TEXTO_INTERACTIVO if interactivo else MAX_TEXTO
         _revisar(len(self.texto) <= maximo, f"un texto de más de {maximo} caracteres")
         _revisar(not (self.botones and self.lista), "botones y lista en el mismo mensaje")
         _revisar(len(self.botones) <= MAX_BOTONES, f"más de {MAX_BOTONES} botones")
@@ -76,6 +83,8 @@ class Mensaje:
 
     def a_datos(self) -> dict[str, Any]:
         datos: dict[str, Any] = {"texto": self.texto}
+        if self.video is not None:
+            datos["video"] = self.video
         if self.botones:
             datos["botones"] = [[boton.id, boton.titulo] for boton in self.botones]
         if self.lista is not None:
@@ -100,6 +109,7 @@ class Mensaje:
             )
             if lista
             else None,
+            video=datos.get("video"),
         )
 
 

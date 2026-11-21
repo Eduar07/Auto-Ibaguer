@@ -12,6 +12,9 @@
 {% macro del_bot(mensaje, telefono, etiqueta=None, de_una_persona=False) %}
 <div class="burbuja burbuja--bot">
   {% if etiqueta %}<span class="burbuja__etiqueta{% if de_una_persona %} burbuja__etiqueta--persona{% endif %}">{{ etiqueta }}</span>{% endif %}
+  {% if mensaje.video %}
+  <video class="burbuja__video" src="/configuracion/servicios/{{ mensaje.video }}/video.mp4" controls preload="metadata" playsinline></video>
+  {% endif %}
   <p>{{ mensaje.texto|whatsapp }}</p>
   {% if mensaje.botones %}
   <div class="burbuja__botones">

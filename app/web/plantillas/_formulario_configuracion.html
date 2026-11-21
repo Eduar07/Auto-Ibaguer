@@ -170,6 +170,7 @@
               {% for tipo in fila.tipos %}<th scope="col">{{ tipo.nombre }}</th>{% endfor %}
               <th scope="col">Duración estimada</th>
               <th scope="col">Real promedio</th>
+              <th scope="col">Video</th>
             </tr>
           </thead>
           <tbody id="servicios-{{ fila.id }}">
@@ -184,7 +185,7 @@
       {% endfor %}
     </div>
     {% endfor %}
-    <p class="ayuda">Un precio nuevo aplica a los cobros de ahora en adelante; los cobros anteriores no cambian. Con la duración estimada se calcula la espera de la fila; la real es el promedio de los últimos {{ dias_de_duracion_real }} días.</p>
+    <p class="ayuda">Un precio nuevo aplica a los cobros de ahora en adelante; los cobros anteriores no cambian. Con la duración estimada se calcula la espera de la fila; la real es el promedio de los últimos {{ dias_de_duracion_real }} días. El video de cada servicio lo manda el bot cuando el cliente lo escoge.</p>
   </section>
 
   <section id="datos" class="panel seccion-configuracion" aria-labelledby="t-datos">

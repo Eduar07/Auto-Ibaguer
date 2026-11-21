@@ -89,6 +89,8 @@ TEXTOS: dict[str, str] = {
     "escríbela otra vez, o toca *Ahora no* y lo resolvemos en el local.",
     "pedir_servicio": "¿Qué servicio quieres para tu {vehiculo}? El pago es en el local.",
     "servicio_no_disponible": "Ese servicio ya no está disponible. Elige otro, por favor.",
+    # Debajo del video del servicio (si el servicio tiene video: app.catalogo.videos).
+    "video_del_servicio": "🎬 Así es el lavado *{servicio}* para tu {vehiculo}, paso a paso.",
     # --- Cuándo viene: lo antes posible o un día y una hora ---
     "pedir_cuando": "¿Cuándo quieres venir? Puede ser lo antes posible o el día y la hora que "
     "te queden bien.",

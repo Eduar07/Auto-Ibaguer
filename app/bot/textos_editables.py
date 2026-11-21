@@ -264,6 +264,12 @@ GRUPOS: tuple[Grupo, ...] = (
                 lista=BOTONES["ver_servicios"],
             ),
             Editable(
+                "video_del_servicio",
+                "Texto del video del servicio",
+                "Va debajo del video que el bot manda al elegir un servicio que tiene video.",
+                opcionales=frozenset({"vehiculo"}),
+            ),
+            Editable(
                 "pedir_cuando",
                 "Pregunta cuándo viene",
                 "Después del servicio: lo antes posible (si está abierto) o un día para reservar.",

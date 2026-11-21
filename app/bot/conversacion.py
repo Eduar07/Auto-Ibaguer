@@ -90,6 +90,7 @@ from app.bot.redactor import ficha_completa, pide_ayuda_urgente, revisar_con_mot
 from app.bot.sesiones import PASO_INICIAL
 from app.bot.tablas import PausaDelBot, SesionBot
 from app.bot.textos import BOTONES, Textos, con_emoji
+from app.catalogo import videos
 from app.catalogo.parametros import Parametros, leer_parametros
 from app.catalogo.tablas import Fila, Servicio, ServicioPrecio, TipoVehiculo
 from app.clientes import servicio as clientes
@@ -118,7 +119,7 @@ from app.formato import (
     pesos,
 )
 from app.formato import telefono as telefono_legible
-from app.integraciones import historial
+from app.integraciones import bandeja_salida, historial
 from app.turnos import casos_de_uso as casos
 from app.turnos import consultas, reglas
 from app.turnos.consultas import PosicionDelTurno, ResumenDeLaFila
@@ -133,6 +134,9 @@ from app.turnos.estados import ESTADOS_ACTIVOS, NOMBRE_DEL_ESTADO, Actor, Estado
 from app.turnos.tablas import Turno
 
 E = EstadoTurno
+
+# El video de un servicio se le manda a cada cliente una vez cada 30 días (no cada turno).
+VIDEO_CADA = timedelta(days=30)
 
 logger = logging.getLogger(__name__)
 
@@ -2097,7 +2101,23 @@ class _Atencion:
             if servicio_id not in disponibles:
                 return [_con_nota(self.texto("servicio_no_disponible"), self._pregunta())]
             self.datos["servicio_id"] = servicio_id
-        return self._preguntar_cuando()
+        return self._video_del_servicio(self.datos["servicio_id"]) + self._preguntar_cuando()
+
+    def _video_del_servicio(self, servicio_id: int | None) -> list[Mensaje]:
+        """El video de cómo es el servicio, si tiene. No se le repite al mismo cliente antes
+        de VIDEO_CADA (pide turno seguido, cambia de servicio y vuelve...)."""
+        if servicio_id is None or not videos.tiene_video(self.sesion, servicio_id):
+            return []
+        desde = self.ahora - VIDEO_CADA
+        if bandeja_salida.video_enviado_desde(self.sesion, self.telefono, servicio_id, desde):
+            return []
+        servicio = self.sesion.get(Servicio, servicio_id)
+        if servicio is None:
+            return []
+        texto = self.texto(
+            "video_del_servicio", servicio=servicio.nombre, vehiculo=self._tipo().nombre.lower()
+        )
+        return [Mensaje(texto, video=servicio_id)]
 
     # --- Pedir turno: cuándo viene (lo antes posible, o un día y una hora) -------------------
 

@@ -53,6 +53,8 @@ TODAS_LAS_TABLAS |= {"correccion_cobro", "correccion_de_caja"}
 TODAS_LAS_TABLAS |= {"salida_de_caja"}
 # El resultado del mes (0014): gastos por fuera de la caja y meses cerrados.
 TODAS_LAS_TABLAS |= {"gasto_fuera_de_caja", "cierre_de_mes"}
+# Los videos de los servicios (0023): el bot manda el del servicio que escoge el cliente.
+TODAS_LAS_TABLAS |= {"video_del_servicio"}
 
 # El menú con que corren las pruebas (pruebas.catalogo_de_prueba).
 MENU_ESPERADO = {

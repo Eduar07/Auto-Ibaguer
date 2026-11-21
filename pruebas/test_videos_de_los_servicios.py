@@ -389,4 +389,4 @@ def test_en_mensajes_dice_que_salio_un_video(sesion: Session):
     mensaje = bandeja_salida.encolar_respuesta(
         sesion, telefono=CELULAR, mensaje=Mensaje("Así es el Básico", video=7), ahora=LUNES_8AM
     )
-    assert _lo_que_dice(mensaje) == "🎬 Video del servicio. Así es el Básico"
+    assert _lo_que_dice(mensaje) == "Video del servicio: Así es el Básico"

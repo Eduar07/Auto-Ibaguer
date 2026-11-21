@@ -1,7 +1,8 @@
 """Cuándo quiere venir, dicho con sus palabras (app.bot.cuando). El bot lo entiende solo,
 sin Gemini, para reservar o cambiar la hora: "mañana a las 10", "el sábado en la tarde"."""
 
-from datetime import date, time
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -112,3 +113,87 @@ def test_se_guarda_en_la_conversacion_y_se_lee_igual():
     assert Dicho.desde_dato(dicho.como_dato()) == dicho
     assert Dicho.desde_dato({"fecha": "no es una fecha"}) is None
     assert Dicho.desde_dato("cualquier cosa") is None
+
+
+# --- "Ya", "de una", "en 20 minutos": lo que falló en la prueba por WhatsApp (20 nov 2026) ---
+
+A_LAS_9_10 = datetime(2026, 11, 19, 21, 10, tzinfo=ZoneInfo("America/Bogota"))
+
+
+@pytest.mark.parametrize(
+    "escrito",
+    [
+        "Ya",
+        "ya!",
+        "ya porfa",
+        "de una",
+        "de una vez",
+        "ahora",
+        "ahora mismo",
+        "voy ya",
+        "ya voy para allá",
+        "puedo ir ya?",
+        "quiero ir ya",
+        "ya llegué",  # está afuera y quiere el turno: lo antes posible
+        "Quiero venir ya en 30 hora",  # "30 hora" es un error al escribir: cuenta el "ya"
+        "lo más pronto posible",
+    ],
+)
+def test_ya_es_lo_antes_posible(escrito):
+    assert entender(escrito, JUEVES, A_LAS_9_10) == Dicho(ya=True)
+
+
+def test_hoy_ya_es_lo_antes_posible_hoy():
+    assert entender("hoy ya", JUEVES, A_LAS_9_10) == Dicho(fecha=JUEVES, ya=True)
+
+
+@pytest.mark.parametrize(
+    "escrito",
+    [
+        "ya tengo turno",
+        "ya lo lavé",
+        "ya no puedo",
+        "ya más tarde",
+        "en un rato",  # cuánto es un rato: mejor preguntar
+        "se demora más de una hora?",
+        "en 30 hora",
+    ],
+)
+def test_un_ya_que_no_es_venir_ya_no_cuenta(escrito):
+    assert entender(escrito, JUEVES, A_LAS_9_10) is None
+
+
+@pytest.mark.parametrize(
+    "escrito", ["en 20 minutos", "en media hora", "ya en 30 minutos", "en 10 minuticos"]
+)
+def test_hasta_media_hora_es_venir_ya(escrito):
+    """Antes de media hora no se reserva: es la fila de hoy, lo antes posible."""
+    assert entender(escrito, JUEVES, A_LAS_9_10) == Dicho(ya=True)
+
+
+@pytest.mark.parametrize(
+    ("escrito", "fecha", "hora"),
+    [
+        ("en una hora", JUEVES, time(22, 10)),
+        ("dentro de 45 minutos", JUEVES, time(21, 55)),
+        ("en cuarenta y cinco minutos", JUEVES, time(21, 55)),
+        ("en hora y media", JUEVES, time(22, 40)),
+        ("en 2 horas y media", JUEVES, time(23, 40)),
+        ("en 3 horas", date(2026, 11, 20), time(0, 10)),  # pasa de la medianoche
+    ],
+)
+def test_en_un_rato_se_cuenta_desde_ahora(escrito, fecha, hora):
+    assert entender(escrito, JUEVES, A_LAS_9_10) == Dicho(fecha=fecha, hora=hora)
+
+
+def test_la_hora_se_redondea_a_cinco_minutos_hacia_adelante():
+    a_las_9_07 = A_LAS_9_10 - timedelta(minutes=3)
+    assert entender("en una hora", JUEVES, a_las_9_07) == Dicho(fecha=JUEVES, hora=time(22, 10))
+
+
+def test_sin_saber_que_hora_es_en_un_rato_no_se_entiende():
+    assert entender("en una hora", JUEVES) is None
+
+
+def test_una_hora_dicha_gana_al_en_un_rato():
+    assert entender("en una hora, a las 11 de la noche", JUEVES, A_LAS_9_10) == Dicho(hora=time(23))

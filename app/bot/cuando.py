@@ -11,12 +11,17 @@ mañana; de 12 a 5, en la tarde ("a las 3" son las 3 p.m.).
 Lo que dice que NO puede no cuenta: en "ya no puedo mañana, mejor el sábado a las 10" el día
 es el sábado. Si solo dice lo que no puede ("ya no puedo hoy"), no hay día: el bot le
 muestra los días para que elija. Equivocarse de día sería peor que preguntar.
+
+"Ya", "de una", "voy ya" o "ahora" son venir ya, lo antes posible, cuando eso es lo que
+contesta: "ya tengo turno" o "ya lo lavé" no lo son. "En 20 minutos" o "en una hora" se
+cuentan desde ahora (si quien llama dice qué hora es): hasta media hora es venir ya (antes
+no se puede reservar); más, es esa hora del día.
 """
 
 import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 DIAS = {
     "lunes": 0,
@@ -45,6 +50,63 @@ MESES = {
 # Partes del día: desde qué hora se le muestran los horarios.
 FRANJAS = {"manana": time(6), "tarde": time(12), "noche": time(18)}
 YA = ("ahorita", "ahora mismo", "ya mismo", "lo antes posible", "lo mas pronto", "de una vez")
+# "En 20 minutos": hasta esto es venir ya (lo antes posible). Es lo mínimo con que se
+# reserva una hora (app.turnos.reglas.ANTICIPACION_MINIMA): antes de eso, solo la fila.
+YA_HASTA = timedelta(minutes=30)
+
+# --- "Ya", "de una", "voy ya": venir ahora mismo ---------------------------------------------
+
+# Frases que quieren decir "ahora mismo": se cambian por "ya" antes de mirar el resto.
+_AHORA_EN_FRASE = re.compile(
+    r"\b(?:lo mas pronto posible|lo mas pronto|lo antes posible|lo mas rapido posible|"
+    r"lo mas rapido|de una vez|de una|de inmediato|en este momento|en seguida|cuanto antes|"
+    r"ya mismo|ahora mismo)\b"
+)
+_AHORA = frozenset(
+    {"ya", "yaa", "yaaa", "ahora", "ahorita", "ahoritica", "enseguida", "inmediatamente"}
+)
+# Lo que puede acompañar a un "ya" sin cambiarlo: "quiero ir ya", "ya voy para allá", "de una,
+# porfa", "hoy ya". Con cualquier otra palabra ("ya tengo turno", "ya más tarde") no es venir
+# ya: eso lo lee Gemini.
+_ACOMPANA_AL_YA = frozenset(
+    {"pues", "bueno", "listo", "si", "dale", "ok", "okey", "porfa", "por", "favor", "gracias"}
+    | {"hola", "buenas", "y", "eso", "mismo", "mismito", "bien", "yo", "nosotros", "hoy"}
+    | {"quiero", "quisiera", "queria", "puedo", "podria", "podemos", "me", "gustaria"}
+    | {"necesito", "voy", "vamos", "a", "ir", "venir", "vengo", "llegar", "llego", "llegue"}
+    | {"llegamos", "pasar", "paso", "caer", "caigo", "salgo", "saliendo", "para", "alla"}
+    | {"aca", "alli", "ahi", "hacia", "estoy", "aqui", "afuera", "lavar", "lavarla"}
+    | {"lavarlo", "la", "el", "lo", "mi", "moto", "carro", "camioneta", "turno", "un", "una"}
+)
+
+# --- "En 20 minutos", "en media hora", "en una hora": desde ahora ---------------------------
+
+_NUMEROS = {
+    "un": 1,
+    "una": 1,
+    "dos": 2,
+    "tres": 3,
+    "cuatro": 4,
+    "cinco": 5,
+    "diez": 10,
+    "quince": 15,
+    "veinte": 20,
+    "veinticinco": 25,
+    "treinta": 30,
+    "treinta y cinco": 35,
+    "cuarenta": 40,
+    "cuarenta y cinco": 45,
+    "cincuenta": 50,
+}
+# Primero las más largas: "cuarenta y cinco" antes que "cuarenta".
+_CUANTO = r"(\d{1,3}|" + "|".join(sorted(_NUMEROS, key=len, reverse=True)) + r")"
+_DENTRO_DE = r"\b(?:en|dentro de)\s+(?:unos?\s+|como\s+)?"
+_EN_HORA_Y_MEDIA = re.compile(_DENTRO_DE + r"(?:una\s+)?hora\s+y\s+media\b")
+_EN_MEDIA_HORA = re.compile(_DENTRO_DE + r"media\s*hora\b")
+_EN_MINUTOS = re.compile(_DENTRO_DE + _CUANTO + r"\s*(?:minutos?|minuticos?|minutitos?|mins?)\b")
+_EN_HORAS = re.compile(_DENTRO_DE + _CUANTO + r"\s*(?:horas?|horitas?)(\s+y\s+media)?\b")
+# Más que esto no es "en un rato": "en 30 hora" es un error al escribir, no mañana.
+_MINUTOS_MAXIMOS = 240
+_HORAS_MAXIMAS = 12
 
 
 @dataclass(frozen=True)
@@ -118,18 +180,71 @@ def _pedazos(escrito: str) -> list[str]:
     return correcciones + [p for p, corrige in validos if not corrige]
 
 
-def entender(escrito: str, hoy: date) -> Dicho | None:
-    """Lo que dijo de cuándo viene, o None si no dijo nada de eso."""
-    pedazos = _pedazos(escrito)
+def entender(
+    escrito: str, hoy: date, ahora: datetime | None = None, *, ya_hasta: timedelta = YA_HASTA
+) -> Dicho | None:
+    """Lo que dijo de cuándo viene, o None si no dijo nada de eso.
+
+    `ahora` (la hora local) sirve para "en 20 minutos" o "en una hora": sin ella, eso no se
+    entiende. Hasta `ya_hasta` es venir ya; más, esa hora del día (redondeada a 5 minutos)."""
+    pedazos = []
+    en_minutos = None
+    for pedazo in _pedazos(escrito):
+        minutos, resto = _desde_ahora(pedazo)
+        en_minutos = en_minutos if en_minutos is not None else minutos
+        pedazos.append(resto)
     ya = any(frase in pedazo for pedazo in pedazos for frase in YA)
+    ya = ya or any(_es_ya(pedazo) for pedazo in pedazos)
     fecha = next((f for p in pedazos if (f := _fecha(p, hoy)) is not None), None)
     hora = next((h for p in pedazos if (h := _hora(p)) is not None), None)
+    if en_minutos is not None and ahora is not None and hora is None:
+        if timedelta(minutes=en_minutos) <= ya_hasta:
+            ya = True
+        elif fecha is None:
+            llega = _en_punto_de_cinco(ahora + timedelta(minutes=en_minutos))
+            fecha, hora = llega.date(), llega.time().replace(tzinfo=None)
     franja = None
     if hora is None:
         franja = next((f for p in pedazos if (f := _franja(p)) is not None), None)
     if fecha is None and hora is None and franja is None and not ya:
         return None
     return Dicho(fecha=fecha, hora=hora, franja=franja, ya=ya and fecha in (None, hoy))
+
+
+def _es_ya(pedazo: str) -> bool:
+    """ "ya", "de una", "voy ya", "quiero ir ya porfa": ahora mismo. "ya tengo turno" no."""
+    palabras = _AHORA_EN_FRASE.sub("ya", pedazo).split()
+    return bool(_AHORA & set(palabras)) and set(palabras) <= _AHORA | _ACOMPANA_AL_YA
+
+
+def _desde_ahora(pedazo: str) -> tuple[int | None, str]:
+    """Los minutos de "en 20 minutos", "en media hora", "en una hora y media" (None si no
+    dice eso, o si es demasiado) y el pedazo sin esas palabras."""
+    for patron, minutos in (
+        (_EN_HORA_Y_MEDIA, lambda _: 90),
+        (_EN_MEDIA_HORA, lambda _: 30),
+        (_EN_MINUTOS, lambda m: _cuanto(m.group(1))),
+        (_EN_HORAS, lambda m: _cuanto(m.group(1)) * 60 + (30 if m.group(2) else 0)),
+    ):
+        encontrado = patron.search(pedazo)
+        if encontrado is None:
+            continue
+        resto = " ".join((pedazo[: encontrado.start()] + pedazo[encontrado.end() :]).split())
+        cuantos = minutos(encontrado)
+        maximo = _HORAS_MAXIMAS * 60 + 30 if patron is _EN_HORAS else _MINUTOS_MAXIMOS
+        return (cuantos if 0 < cuantos <= maximo else None), resto
+    return None, pedazo
+
+
+def _cuanto(numero: str) -> int:
+    return int(numero) if numero.isdigit() else _NUMEROS[numero]
+
+
+def _en_punto_de_cinco(momento: datetime) -> datetime:
+    """10:07 -> 10:10: la hora a la que llega, redondeada hacia adelante."""
+    momento = momento.replace(second=0, microsecond=0)
+    faltan = -momento.minute % 5
+    return momento + timedelta(minutes=faltan)
 
 
 def _fecha(texto: str, hoy: date) -> date | None:

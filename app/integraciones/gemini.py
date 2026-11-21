@@ -151,6 +151,16 @@ resumen: si la intención es pedido_especial, queja o hablar_con_persona, en una
 para el dueño del lavadero, qué pide o qué pasó ("Empresa pide precio para lavar 20 \
 camionetas cada semana"), sin nombres, placas ni números de celular. Si no, va vacío.
 
+cuando: si dice cuándo quiere venir o en cuánto llega, escríbelo en palabras sencillas, \
+con uno de estos formatos: "ya" (ahora mismo, lo antes posible, de una, ya voy), "hoy a las \
+4 pm", "mañana a las 10 am", "el sábado a las 9 am", "el sábado en la tarde", "el 28 de \
+noviembre a las 11 am", "en 40 minutos", "en 2 horas". Si lo escribe con errores, escribe lo \
+que quiso decir. Si no dice nada de cuándo, va vacío.
+
+pide_video: true si pide ver un video o que le muestren cómo es un servicio o cómo lo lavan \
+("mándame el video del encerado", "¿tienen videos?", "muéstrame cómo es el básico"). El bot \
+le manda el video: tú nunca digas que no hay videos. Si no, false.
+
 respuesta: lo que el bot le contesta.
 - Escríbela cuando la intención es saludo, despedida, felicitacion, pregunta, charla u \
 otro, y cuando el vehículo o el servicio es "otro". En lo demás va vacía: el bot contesta \
@@ -176,6 +186,7 @@ vuelve al lavadero igual.
 no está en el menú y cuáles servicios sí hay, según la FICHA (sin precios). Eso sí lo \
 sabes: sabe es true.
 - pedido_especial: la respuesta va vacía: el bot le dice que se lo pasa al dueño.
+- Si pide_video es true, la respuesta va vacía: el bot le manda el video.
 - Si EN QUÉ VA te pide una respuesta, escríbela aunque la intención sea otra.
 - Si el bot está esperando una respuesta (EN QUÉ VA), no repitas su pregunta: el bot la \
 vuelve a hacer después de tu respuesta.
@@ -227,6 +238,8 @@ def esquema(catalogo: Catalogo) -> dict[str, Any]:
                 "enum": [*catalogo.servicios, OTRO_SERVICIO, NINGUNO],
             },
             "si_o_no": {"type": "string", "enum": [SI, NO, NINGUNO]},
+            "cuando": {"type": "string"},
+            "pide_video": {"type": "boolean"},
             "sabe": {"type": "boolean"},
             "lo_que_dice": {"type": "string"},
             "resumen": {"type": "string"},
@@ -237,6 +250,8 @@ def esquema(catalogo: Catalogo) -> dict[str, Any]:
             "vehiculo",
             "servicio",
             "si_o_no",
+            "cuando",
+            "pide_video",
             "sabe",
             "lo_que_dice",
             "resumen",

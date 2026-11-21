@@ -131,14 +131,14 @@ def test_la_reserva_confirmada_dice_a_donde_llegar(sesion: Session):
     chat.toca("Confirmar turno")
 
     assert chat.texto.startswith("¡Listo, Laura! Tu turno *C-01* quedó reservado para mañana")
-    assert chat.texto.endswith(f"escribe *cancelar*.\n\n📍 *Dirección:* {DIRECCION}")
+    assert chat.texto.endswith(f"minutos de tolerancia).\n\n📍 *Dirección:* {DIRECCION}")
     assert chat.opciones == ["Cambiar hora", "Cancelar"]
 
 
 def test_sin_direccion_la_confirmacion_queda_como_siempre(sesion: Session):
     chat = pide_turno(Chat(sesion)).escribe("mañana a las 10:30").toca("Confirmar turno")
 
-    assert chat.texto.endswith("escribe *cancelar*.")
+    assert chat.texto.endswith("minutos de tolerancia).")
 
 
 def test_el_recordatorio_dice_a_donde_llegar(sesion: Session, monkeypatch):

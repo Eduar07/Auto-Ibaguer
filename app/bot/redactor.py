@@ -52,12 +52,17 @@ def _turnos(parametros: Parametros, minutos: int) -> str:
 
 
 def ficha_completa(
-    parametros: Parametros, catalogo: Catalogo, servicios: Sequence[str] = ()
+    parametros: Parametros,
+    catalogo: Catalogo,
+    servicios: Sequence[str] = (),
+    videos: Sequence[str] = (),
 ) -> str:
     """Todo lo que Gemini sabe del negocio: lo que dice el sistema y la ficha que escribió
     el administrador. Del sistema: el horario, cómo funcionan los turnos, el teléfono, qué
-    vehículos lava, qué incluye cada servicio (sin precios: esos los da el bot) y qué se
-    hace con los datos personales. `servicios`: una línea por fila (servicios_de_la_ficha).
+    vehículos lava, qué incluye cada servicio (sin precios: esos los da el bot), de cuáles
+    hay video y qué se hace con los datos personales. `servicios`: una línea por fila
+    (servicios_de_la_ficha); `videos`, igual, con los servicios que tienen video
+    (videos_de_la_ficha).
     """
     horario = formato.horario(
         parametros.dias_atencion, parametros.hora_apertura, parametros.hora_cierre
@@ -86,6 +91,11 @@ def ficha_completa(
         lineas.extend(f"- {linea}" for linea in servicios)
     else:
         lineas.append(f"Servicios: {_y(catalogo.servicios)}. Los precios los da el bot.")
+    if videos:
+        lineas.append(
+            "Videos: el bot manda por aquí el video de cómo se hace cada uno de estos "
+            f"servicios, cuando el cliente lo pide o lo escoge: {'; '.join(videos)}."
+        )
     lineas.append(
         f"Datos personales: {_sin_la_pregunta(parametros.aviso_datos)} Si alguien que no es "
         "cliente deja una queja o una pregunta, su número solo se guarda si acepta que el "

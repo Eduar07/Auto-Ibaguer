@@ -322,7 +322,7 @@ GRUPOS: tuple[Grupo, ...] = (
                 "turno_confirmado",
                 "Turno confirmado",
                 "Cuando el cliente confirma y queda en la fila.",
-                opcionales=frozenset({"nombre", "gracia"}),
+                opcionales=frozenset({"nombre"}),
                 botones=_LLAMADO,
             ),
             Editable(

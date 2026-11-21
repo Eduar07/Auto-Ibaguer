@@ -92,7 +92,7 @@ from app.bot.tablas import PausaDelBot, SesionBot
 from app.bot.textos import BOTONES, Textos, con_emoji
 from app.catalogo import videos
 from app.catalogo.parametros import Parametros, leer_parametros
-from app.catalogo.tablas import Fila, Servicio, ServicioPrecio, TipoVehiculo
+from app.catalogo.tablas import Fila, Servicio, ServicioPrecio, TipoVehiculo, VideoDelServicio
 from app.clientes import servicio as clientes
 from app.clientes.errores import NombreInvalido, PlacaDeOtroCliente, PlacaInvalida, TelefonoInvalido
 from app.clientes.reglas import (
@@ -169,6 +169,8 @@ class Paso(StrEnum):
     SEGUIMIENTO = "seguimiento"
     # Quiere cambiar la hora y tiene dos turnos (carro y moto): ¿cuál?
     REAGENDAR = "reagendar"
+    # Pidió un video sin decir de cuál servicio (y no se sabe su vehículo): ¿de cuál?
+    VIDEO = "video"
 
 
 # En estos pasos el bot espera que el cliente escriba; en los demás, que toque un botón.
@@ -197,6 +199,24 @@ PASOS_DEL_TURNO = frozenset(
 )
 # Los pasos en que el cliente elige cuándo viene: ahí entiende "mañana a las 10".
 PASOS_DE_CUANDO = frozenset({Paso.CUANDO, Paso.HORA})
+# Los pasos del turno en que ya se sabe el vehículo: si nombra otro ("es para el carro"),
+# se cambia.
+PASOS_CON_VEHICULO = frozenset({Paso.PLACA, Paso.SERVICIO, Paso.CUANDO, Paso.HORA, Paso.CONFIRMAR})
+# En la pregunta de cuándo viene, lo que entendió Gemini de cuándo ("hoy a las 4 pm") es la
+# respuesta si pide el turno, cambia la hora, avisa que va o pregunta si puede a esa hora.
+CONTESTAN_CUANDO = frozenset(
+    {
+        Intencion.PEDIR_TURNO,
+        Intencion.REAGENDAR,
+        Intencion.EN_CAMINO,
+        Intencion.LLEGUE,
+        Intencion.PREGUNTA,
+        Intencion.OTRO,
+    }
+)
+# Lo que se borra de cuándo viene al cambiar el vehículo o el servicio: hay que volver a ver
+# qué horas hay.
+CLAVES_DEL_CUANDO = ("cuando", "dia", "parte", "desde")
 
 # La memoria del bot: cuántos mensajes de lo último que se dijeron lee Gemini, y de cuánto
 # tiempo atrás (lo mismo que WhatsApp deja escribirle: 24 horas).
@@ -226,6 +246,7 @@ PASO_DEL_BOTON = {
     "responder": Paso.PERMISO_CONTACTO,
     "seguimiento": Paso.SEGUIMIENTO,
     "reagendar": Paso.REAGENDAR,
+    "video": Paso.VIDEO,
 }
 
 # Lo que el bot está esperando en cada paso, como se lo cuenta a Gemini (EN QUÉ VA): así
@@ -257,6 +278,7 @@ QUE_ESPERA: dict[Paso, str] = {
     "eso se guarda su número de WhatsApp, solo para responderle (pregunta de sí o no).",
     Paso.SEGUIMIENTO: "Dijo que lo iba a pensar. El bot le preguntó si quiere que le escriba "
     "después para contarle cómo va la fila (pregunta de sí o no).",
+    Paso.VIDEO: "Pidió ver un video: el bot le preguntó de cuál servicio.",
 }
 
 # Lo que el cliente pide con sus palabras mientras cuenta lo que pasó, y el bot también
@@ -431,12 +453,37 @@ VEHICULOS_POR_PALABRAS = (
 HORARIO = ("horario", "a que hora", "que horas", "hasta que hora", "abren", "cierran")
 
 
+def vehiculo_por_palabras(normal: str) -> str | None:
+    """ "la camionetica" -> "camioneta", "el carro" -> CARRO. None si no nombra uno."""
+    palabras = set(normal.split())
+    return next((cual for cual, formas in VEHICULOS_POR_PALABRAS if palabras & set(formas)), None)
+
+
+# "¿me pasas el video?", "tienen videos?", "un videito". "no me mandes videos" no.
+_VIDEO = re.compile(r"\b(?:videos?|videitos?|vidios?)\b")
+# Hablar de un video en una queja o al cancelar no es pedirlo.
+NO_ES_PEDIR_VIDEO = frozenset(
+    {
+        Intencion.QUEJA,
+        Intencion.CANCELAR,
+        Intencion.HABLAR_CON_PERSONA,
+        Intencion.PEDIDO_ESPECIAL,
+        Intencion.CRISIS,
+    }
+)
+
+
+def habla_de_un_video(normal: str) -> bool:
+    encontrado = _VIDEO.search(normal)
+    if encontrado is None:
+        return False
+    return not NEGACIONES & set(normal[: encontrado.start()].split()[-3:])
+
+
 def por_palabras(normal: str) -> Interpretacion | None:
     """Lo que el bot entiende solo, sin Gemini, de un mensaje del menú. None si nada."""
     palabras = set(normal.split())
-    vehiculo = next(
-        (cual for cual, formas in VEHICULOS_POR_PALABRAS if palabras & set(formas)), None
-    )
+    vehiculo = vehiculo_por_palabras(normal)
     for intencion, frases in POR_PALABRAS:
         if any(frase in normal for frase in frases):
             return Interpretacion(intencion, vehiculo=vehiculo)
@@ -710,6 +757,12 @@ PALABRAS_DE_PREGUNTA = frozenset(
     {"que", "porque", "como", "cuanto", "cuantos", "cuanta", "cuantas", "donde", "cuando"}
     | {"quien", "cual", "cuales", "puedo", "pueden", "tienen", "hay"}
 )
+# Palabras de un pedido que nunca van en un nombre: "quiero lavar el carro" en la pregunta
+# del nombre es un pedido, y lo lee Gemini.
+NUNCA_EN_UN_NOMBRE = frozenset(
+    {"quiero", "necesito", "lavar", "lavado", "turno", "servicio", "precio", "placa"}
+    | {forma for _, formas in VEHICULOS_POR_PALABRAS for forma in formas}
+)
 # "me llamo Ana", "soy Ana Ruiz", "a nombre de Ana": el nombre es lo que sigue.
 _ANTES_DEL_NOMBRE = re.compile(
     r"^(?:(?:hola|buenas|buenos d[ií]as|buenas tardes|buenas noches)\W+)?"
@@ -730,6 +783,8 @@ def _el_nombre(escrito: str, normal: str) -> str | None:
         return None
     if set(palabras) <= SOLO_SALUDO | SOLO_PARA_CERRAR:
         return None
+    if NUNCA_EN_UN_NOMBRE & set(palabras) or habla_de_un_video(normal):
+        return None  # "es para el carro", "muéstrame el video": un pedido, no un nombre
     nombre = _ANTES_DEL_NOMBRE.sub("", escrito).strip(" .,!¡")
     if not nombre or len(nombre.split()) > 5:
         return None
@@ -793,6 +848,10 @@ def _lo_que_entendio(entendido: Interpretacion) -> str:
     detalles = [dato for dato in (vehiculo, entendido.servicio) if dato]
     if entendido.si_o_no is not None:
         detalles.append("contesta que sí" if entendido.si_o_no == SI else "contesta que no")
+    if entendido.cuando:
+        detalles.append(f"viene: {entendido.cuando}")
+    if entendido.pide_video:
+        detalles.append("pide un video")
     if entendido.intencion == Intencion.PREGUNTA and not entendido.sabe:
         detalles.append("la ficha no lo dice")
     nombre = f"«{entendido.intencion.value.replace('_', ' ')}»"
@@ -892,6 +951,24 @@ def servicios_de_la_ficha(sesion: Session) -> tuple[str, ...]:
     return tuple(lineas)
 
 
+def videos_de_la_ficha(sesion: Session) -> tuple[str, ...]:
+    """Para la ficha que lee Gemini: de qué servicios hay video, una línea por fila ("Motos:
+    Básico y Encerado"). Así sabe que hay videos y no dice que no los tiene."""
+    con_video = select(VideoDelServicio.servicio_id)
+    lineas = []
+    for fila in sesion.scalars(select(Fila).order_by(Fila.id)):
+        nombres = list(
+            sesion.scalars(
+                select(Servicio.nombre)
+                .where(Servicio.fila_id == fila.id, Servicio.activo, Servicio.id.in_(con_video))
+                .order_by(Servicio.orden, Servicio.id)
+            )
+        )
+        if nombres:
+            lineas.append(f"{fila.nombre}: {_con_y(nombres)}")
+    return tuple(lineas)
+
+
 def _abrir_conversacion(sesion: Session, telefono: str, ahora: datetime) -> tuple[SesionBot, bool]:
     """La sesión del bot de ese teléfono, bloqueada mientras se atiende el mensaje.
 
@@ -917,11 +994,22 @@ def _abrir_conversacion(sesion: Session, telefono: str, ahora: datetime) -> tupl
     return conversacion, empieza
 
 
-def _pistas(entendido: Interpretacion, escrito: str, hoy: date) -> dict[str, object]:
+def _cuando_dicho(escrito: str, entendido: Interpretacion | None, ahora: datetime) -> Dicho | None:
+    """Cuándo quiere venir: lo que el bot entiende solo de lo que escribió ("mañana a las
+    10", "ya", "en una hora") o, si no, lo que entendió Gemini ("hoy a las 4 pm"), que el bot
+    lee igual. `ahora` es la hora de Colombia."""
+    hoy = ahora.date()
+    dicho = entender_cuando(escrito, hoy, ahora, ya_hasta=casos.ANTICIPACION_MINIMA)
+    if dicho is None and entendido is not None and entendido.cuando:
+        dicho = entender_cuando(entendido.cuando, hoy, ahora, ya_hasta=casos.ANTICIPACION_MINIMA)
+    return dicho
+
+
+def _pistas(entendido: Interpretacion, escrito: str, ahora: datetime) -> dict[str, object]:
     """Lo que el cliente ya dijo al pedir el turno con sus palabras: el vehículo y el
     servicio que entendió Gemini, la placa que escribió (a Gemini le llega tapada) y cuándo
-    quiere venir ("mañana a las 10")."""
-    dicho = entender_cuando(escrito, hoy)
+    quiere venir ("mañana a las 10"). `ahora` es la hora de Colombia."""
+    dicho = _cuando_dicho(escrito, entendido, ahora)
     pistas: dict[str, object] = {
         "vehiculo": entendido.vehiculo,
         "servicio": entendido.servicio,
@@ -1070,6 +1158,10 @@ class _Atencion:
         pagar, no cancelar el turno; "gracias, ¿abren mañana?" no es una despedida)."""
         if FRASE_DEL_QR in normal:
             return self._llego_por_el_qr()
+        if self.paso in PASOS_DE_CUANDO and self._dicho(escrito) is not None:
+            # "ya voy", "ya llegué", "mejor mañana": contesta cuándo viene (_respuesta_clara),
+            # no avisa que va en camino a un turno que todavía no tiene.
+            return None
         if self._puede_reagendar_aqui() and _pide_reagendar(normal) and not _pide_cancelar(normal):
             return self._cambiar_hora(self._dicho(escrito))
         if self.parametros.direccion and _pregunta_la_direccion(normal):
@@ -1103,14 +1195,11 @@ class _Atencion:
         elegida = elegir_por_texto(normal, pregunta)
         if elegida is not None:
             return self._boton(elegida)
-        if self.paso in PASOS_DE_CUANDO:
+        if self.paso in PASOS_DE_CUANDO and not habla_de_un_video(normal):
+            # "ya, y pásame el video" pide dos cosas: lo lee Gemini (_con_el_video).
             dicho = self._dicho(escrito)
             if dicho is not None:
-                dia = self._dia_elegido() if self.paso == Paso.HORA else None
-                if dia is not None and dicho.fecha is None and not dicho.ya:
-                    # Ya eligió el día: "a las 3" es a las 3 de ese día, no de hoy.
-                    dicho = dataclasses.replace(dicho, fecha=dia)
-                return self._con_lo_dicho(dicho)
+                return self._contesto_cuando(dicho)
         if self.paso == Paso.NOMBRE:
             nombre = _el_nombre(escrito, normal)
             return self._escribio_nombre(nombre) if nombre is not None else None
@@ -1147,9 +1236,19 @@ class _Atencion:
     def _con_lo_entendido(self, entendido: Interpretacion, escrito: str) -> list[Mensaje]:
         """Lo que entendió Gemini. En el menú, se hace. En medio de una pregunta del bot:
         si la contestó, vale como el botón; si cambió de tema, se cambia; si preguntó algo o
-        está conversando, se le contesta y el bot vuelve a hacer su pregunta."""
+        está conversando, se le contesta y el bot vuelve a hacer su pregunta. Si pide un
+        video, se lo manda; si nombra otro vehículo pidiendo el turno, se cambia."""
+        normal = normalizar(escrito)
+        escoge_el_video = self.paso == Paso.VIDEO and (entendido.servicio or entendido.vehiculo)
+        if self._pide_video(entendido, normal) or escoge_el_video:
+            return self._con_el_video(entendido, escrito, normal)
         if self.paso == Paso.MENU:
             return self._hacer(entendido, escrito)
+        if entendido.intencion in (Intencion.PEDIR_TURNO, Intencion.OTRO):
+            pistas = _pistas(entendido, escrito, tiempo.hora_local(self.ahora))
+            otro_vehiculo = self._otro_vehiculo(entendido.vehiculo, pistas)
+            if otro_vehiculo is not None:
+                return otro_vehiculo
         elegida = self._opcion_entendida(entendido)
         if elegida is not None:
             return self._boton(elegida)
@@ -1164,6 +1263,13 @@ class _Atencion:
             else:
                 nota = self.texto("toca_una_opcion")
             return [_con_nota(nota, pregunta)]
+        if self.paso in PASOS_DE_CUANDO and entendido.intencion in CONTESTAN_CUANDO:
+            # "Quiero venir ya en 30 hora": el bot solo no lo entendió, pero Gemini sí
+            # ("ya", "hoy a las 4 pm"), y eso el bot lo lee como si lo hubiera escrito así.
+            dicho = self._dicho(escrito, entendido)
+            if dicho is not None:
+                self.traza.notas.append(f"Gemini entendió cuándo viene: «{entendido.cuando}».")
+                return self._contesto_cuando(dicho)
         if self._cambia_de_tema(entendido):
             return self._hacer(entendido, escrito)
         match entendido.intencion:
@@ -1173,9 +1279,19 @@ class _Atencion:
                 return self._felicitacion(escrito, entendido)
             case Intencion.PREGUNTA | Intencion.CHARLA | Intencion.SALUDO | Intencion.OTRO:
                 return self._con_la_ficha(entendido, escrito)
-        # Pidió algo que no contesta la pregunta (otro turno, los precios mientras elige el
-        # servicio, que ya trae los precios): se le vuelve a hacer.
-        nota = self._de_gemini(entendido) or self._fijo("toca_una_opcion")
+            case Intencion.PRECIOS:
+                precio = self._precio_en_el_camino(entendido)
+                if precio is not None:
+                    return [_con_nota(precio, self._pregunta())]
+            case Intencion.PEDIR_TURNO:
+                otro_servicio = self._otro_servicio(entendido)
+                if otro_servicio is not None:
+                    return otro_servicio
+                # Lo que dijo de más (el vehículo, el servicio, cuándo) sirve más adelante.
+                self._sumar_pistas(_pistas(entendido, escrito, tiempo.hora_local(self.ahora)))
+        # Pidió algo que no contesta la pregunta: se le dice cómo contestarla y se le vuelve a
+        # hacer.
+        nota = self._de_gemini(entendido) or self._ayuda_del_paso()
         return [_con_nota(nota, self._pregunta())]
 
     def _sin_gemini(self, normal: str, escrito: str) -> list[Mensaje]:
@@ -1187,6 +1303,16 @@ class _Atencion:
             if palabra_clave is not None:
                 self.traza.notas.append("Siguió con una palabra que el bot reconoce solo.")
                 return palabra_clave
+            if self._pide_video(None, normal):
+                self.traza.notas.append("Entendió por la palabra «video» que pide un video.")
+                return self._con_el_video(None, escrito, normal)
+            if self.paso in PASOS_CON_VEHICULO and len(normal.split()) <= 8:
+                servicio = self._servicio_nombrado(normal)
+                otro_vehiculo = self._otro_vehiculo(
+                    vehiculo_por_palabras(normal), {"servicio": servicio} if servicio else {}
+                )
+                if otro_vehiculo is not None:
+                    return otro_vehiculo
         if self.paso in PASOS_DE_TEXTO:
             if self.paso == Paso.NOMBRE:
                 return [Mensaje(self._fijo("nombre_invalido"))]
@@ -1228,7 +1354,7 @@ class _Atencion:
             # Contó más de lo que pasó en vez de tocar un botón: se anota y se pregunta otra vez.
             self._anotar(escrito)
             return [_con_nota(self.texto("anotado"), self._pregunta())]
-        return [_con_nota(self._fijo("toca_una_opcion"), self._pregunta())]
+        return [_con_nota(self._ayuda_del_paso(), self._pregunta())]
 
     def _palabra_clave(self, normal: str, escrito: str) -> list[Mensaje] | None:
         """Sin Gemini, unas palabras alcanzan: "cancel" en cualquier parte, "gracias"..."""
@@ -1280,14 +1406,18 @@ class _Atencion:
         """Sin Gemini: "quiero un básico" justo después de ver los precios es pedir turno
         con ese servicio (y el vehículo cuyos precios vio). Solo en mensajes cortos: un
         servicio nombrado de pasada en una frase larga no es un pedido."""
-        palabras = set(normal.split())
-        if len(palabras) > 8:
+        if len(set(normal.split())) > 8:
             return None
-        servicio = next((s for s in self._catalogo().servicios if normalizar(s) in palabras), None)
+        servicio = self._servicio_nombrado(normal)
         if servicio is None:
             return None
         vista = (self.datos.get("pistas") or {}).get("precios_de")
         return Interpretacion(Intencion.PEDIR_TURNO, vehiculo=vista, servicio=servicio)
+
+    def _servicio_nombrado(self, normal: str) -> str | None:
+        """El servicio del menú que nombra ("el encerado"), sin Gemini. None si ninguno."""
+        palabras = set(normal.split())
+        return next((s for s in self._catalogo().servicios if normalizar(s) in palabras), None)
 
     def _catalogo(self) -> Catalogo:
         if self._el_catalogo is None:
@@ -1394,9 +1524,11 @@ class _Atencion:
             case Intencion.PEDIR_TURNO if entendido.vehiculo == OTRO_VEHICULO:
                 return self._vehiculo_que_no_lava(entendido)
             case Intencion.PEDIR_TURNO:
-                return self._empezar_turno(_pistas(entendido, escrito, self._hoy()))
+                return self._empezar_turno(
+                    _pistas(entendido, escrito, tiempo.hora_local(self.ahora))
+                )
             case Intencion.REAGENDAR:
-                return self._cambiar_hora(self._dicho(escrito))
+                return self._cambiar_hora(self._dicho(escrito, entendido))
             case Intencion.VER_FILA:
                 return self._ver_la_fila()
             case Intencion.PRECIOS if entendido.vehiculo == OTRO_VEHICULO:
@@ -1489,6 +1621,80 @@ class _Atencion:
             return pregunta.opciones[0].id
         return None
 
+    def _ayuda_del_paso(self) -> str:
+        """Lo que se le dice si lo que escribió no contesta la pregunta: cómo contestarla, con
+        un ejemplo (antes era siempre "Toca una de las opciones")."""
+        if self.paso == Paso.CUANDO:
+            return self._fijo("ayuda_cuando")
+        if self.paso == Paso.HORA:
+            return self._fijo("ayuda_hora")
+        if self.paso == Paso.SERVICIO and "tipo_vehiculo_id" in self.datos:
+            servicios = self._servicios(self._tipo())
+            if servicios:
+                return self._fijo("ayuda_servicio", ejemplo=servicios[0][0].nombre)
+        if self.paso == Paso.VEHICULO:
+            return self._fijo("ayuda_vehiculo")
+        if self.paso == Paso.CONFIRMAR:
+            return self._fijo("ayuda_confirmar")
+        return self._fijo("toca_una_opcion")
+
+    def _precio_en_el_camino(self, entendido: Interpretacion) -> str | None:
+        """Preguntó cuánto vale mientras pide el turno: el precio del servicio que nombra (o
+        del que eligió) para su vehículo; si no dice cuál, los de todos. None si no se sabe de
+        qué vehículo: ahí el bot sigue con la pregunta (la lista de servicios trae precios)."""
+        tipo = self._tipo_por_nombre(entendido.vehiculo)
+        if tipo is None and "tipo_vehiculo_id" in self.datos:
+            tipo = self._tipo()
+        if tipo is None:
+            return None
+        servicios = self._servicios(tipo)
+        if entendido.servicio:
+            nombre = normalizar(entendido.servicio)
+            elegidos = [(s, p) for s, p in servicios if normalizar(s.nombre) == nombre]
+        else:
+            elegidos = [(s, p) for s, p in servicios if s.id == self.datos.get("servicio_id")]
+        vehiculo = tipo.nombre.lower()
+        if elegidos:
+            servicio, precio = elegidos[0]
+            return self._fijo(
+                "precio_del_servicio",
+                servicio=servicio.nombre,
+                vehiculo=vehiculo,
+                precio=pesos(precio),
+            )
+        if not servicios:
+            return None
+        lista = "\n".join(f"• {servicio.nombre}: {pesos(precio)}" for servicio, precio in servicios)
+        return self._fijo("precios_en_el_camino", vehiculo=vehiculo, servicios=lista)
+
+    def _otro_servicio(self, entendido: Interpretacion) -> list[Mensaje] | None:
+        """Después de elegir el servicio, pide otro ("mejor el encerado"): se cambia, y como
+        dura distinto, se vuelve a ver cuándo viene. None si no nombra otro de su vehículo."""
+        if (
+            self.paso not in (Paso.CUANDO, Paso.HORA, Paso.CONFIRMAR)
+            or self.datos.get("reagendar")
+            or not entendido.servicio
+            or "tipo_vehiculo_id" not in self.datos
+        ):
+            return None
+        nombre = normalizar(entendido.servicio)
+        for servicio, _ in self._servicios(self._tipo()):
+            if normalizar(servicio.nombre) == nombre and servicio.id != self.datos.get(
+                "servicio_id"
+            ):
+                self.traza.notas.append(f"Pidió otro servicio ({servicio.nombre}): se cambia.")
+                for clave in CLAVES_DEL_CUANDO:
+                    self.datos.pop(clave, None)
+                self.paso = Paso.SERVICIO
+                return self._eligio_servicio(str(servicio.id))
+        return None
+
+    def _sumar_pistas(self, nuevas: dict[str, object]) -> None:
+        """Lo que dijo de más en medio del turno ("es para la moto, mañana a las 10") se guarda
+        para cuando llegue esa pregunta (_pista). Un diccionario nuevo: el leído no se toca."""
+        if nuevas:
+            self.datos["pistas"] = {**(self.datos.get("pistas") or {}), **nuevas}
+
     def _tipo_por_nombre(self, nombre: str | None) -> TipoVehiculo | None:
         if not nombre:
             return None
@@ -1575,6 +1781,7 @@ class _Atencion:
             "responder": self._permiso_para_responder,
             "seguimiento": self._acepta_el_seguimiento,
             "reagendar": self._eligio_cual_reagendar,
+            "video": self._eligio_video,
         }
         if prefijo == "placa":
             self.datos["placa"] = None
@@ -1713,6 +1920,7 @@ class _Atencion:
             Paso.PERMISO_CONTACTO: self._pregunta_permiso,
             Paso.SEGUIMIENTO: self._pregunta_seguimiento,
             Paso.REAGENDAR: self._pregunta_cual_reagendar,
+            Paso.VIDEO: self._pregunta_video,
         }
         pregunta = preguntas.get(self.paso)
         return pregunta() if pregunta is not None else self._mensaje_del_menu("menu")
@@ -1933,20 +2141,64 @@ class _Atencion:
 
     def _preguntar_vehiculo(self, *, aunque_lo_conozca: bool = False) -> list[Mensaje]:
         conocidos = self._vehiculos_conocidos()
+        self.datos.pop("solo_carros", None)
+        nombrado = None
         if aunque_lo_conozca:
             self.datos.pop("pistas", None)  # quiere cambiarlo: ahora lo elige él
         else:
-            nombro_otro = self._pista("vehiculo", usar=False) is not None
+            nombrado = self._pista("vehiculo", usar=False)
             dicho = self._vehiculo_dicho(conocidos)
             if dicho is not None:
                 return dicho
-            if len(conocidos) == 1 and not nombro_otro:
+            if len(conocidos) == 1 and nombrado is None:
                 # Si ya se conoce el vehículo, no se pregunta. Se puede cambiar en el resumen.
                 # Si nombró otro ("el carro", y el suyo es una moto), se le pregunta.
                 return self._usar_vehiculo(*conocidos[0])
         self.paso = Paso.VEHICULO
         self.datos["otro_vehiculo"] = not conocidos
+        if nombrado == CARRO and not any(tipo.nombre != "Moto" for _, tipo in conocidos):
+            # Dijo "carro" y no tiene uno registrado: ¿automóvil o camioneta? (cuestan distinto)
+            self.datos["otro_vehiculo"] = True
+            self.datos["solo_carros"] = True
         return [self._pregunta()]
+
+    def _otro_vehiculo(
+        self, vehiculo: str | None, pistas: dict[str, object]
+    ) -> list[Mensaje] | None:
+        """Pidiendo el turno nombró otro vehículo ("es para el carro", "mejor la camioneta"):
+        se cambia. Si tiene ese vehículo registrado, ese; si dijo "carro" y no tiene uno, se le
+        pregunta si es automóvil o camioneta. El servicio que había elegido (o el que dice
+        ahora) y lo que dice de cuándo viene se conservan. None si nombró el mismo o ninguno."""
+        if (
+            self.paso not in PASOS_CON_VEHICULO
+            or self.datos.get("reagendar")
+            or "tipo_vehiculo_id" not in self.datos
+            or vehiculo in (None, OTRO_VEHICULO)
+        ):
+            return None
+        actual = self._tipo()
+        if vehiculo == CARRO:
+            if actual.nombre != "Moto":
+                return None  # ya es un carro (automóvil o camioneta)
+        else:
+            tipo = self._tipo_por_nombre(vehiculo)
+            if tipo is None or tipo.id == actual.id:
+                return None
+        self.traza.notas.append(f"Nombró otro vehículo ({vehiculo}): el turno es para ese.")
+        elegido = self.sesion.get(Servicio, self.datos.get("servicio_id") or 0)
+        pistas = {clave: valor for clave, valor in pistas.items() if valor}
+        if elegido is not None and not pistas.get("servicio"):
+            pistas["servicio"] = elegido.nombre  # el encerado de la moto, ahora del carro
+        for clave in (
+            "vehiculo_id",
+            "tipo_vehiculo_id",
+            "placa",
+            "servicio_id",
+            *CLAVES_DEL_CUANDO,
+        ):
+            self.datos.pop(clave, None)
+        self.datos["pistas"] = {**pistas, "vehiculo": vehiculo}
+        return self._preguntar_vehiculo()
 
     def _pregunta_vehiculo(self) -> Mensaje:
         conocidos = self._vehiculos_conocidos()
@@ -1961,17 +2213,22 @@ class _Atencion:
             botones.append(Opcion("vehiculo.otro", BOTONES["otro_vehiculo"]))
             return Mensaje(self.texto("pedir_vehiculo_conocido"), botones=tuple(botones))
         tipos = list(self.sesion.scalars(select(TipoVehiculo).order_by(TipoVehiculo.id)))
+        texto = self.texto("pedir_vehiculo")
+        carros = [tipo for tipo in tipos if tipo.nombre != "Moto"]
+        if self.datos.get("solo_carros") and carros:
+            tipos, texto = carros, self.texto("pedir_cual_carro")
         opciones = tuple(
             Opcion(f"vehiculo.tipo.{tipo.id}", con_emoji(tipo.nombre)) for tipo in tipos
         )
         if len(opciones) <= 3:
-            return Mensaje(self.texto("pedir_vehiculo"), botones=opciones)
-        return Mensaje(self.texto("pedir_vehiculo"), lista=Lista("Ver vehículos", opciones[:10]))
+            return Mensaje(texto, botones=opciones)
+        return Mensaje(texto, lista=Lista("Ver vehículos", opciones[:10]))
 
     def _eligio_vehiculo(self, eleccion: str) -> list[Mensaje]:
         if eleccion == "otro":
             self.datos["otro_vehiculo"] = True
             return [self._pregunta()]
+        self.datos.pop("solo_carros", None)
         if eleccion.startswith("tipo."):
             tipo = self.sesion.get(TipoVehiculo, _entero(eleccion.removeprefix("tipo.")))
             if tipo is None:
@@ -1989,6 +2246,7 @@ class _Atencion:
 
     def _usar_vehiculo(self, vehiculo: Vehiculo, tipo: TipoVehiculo) -> list[Mensaje]:
         self.datos.pop("placa", None)
+        self.datos.pop("solo_carros", None)
         self.datos["vehiculo_id"] = vehiculo.id
         self.datos["tipo_vehiculo_id"] = tipo.id
         return self._seguir_con(tipo, placa_conocida=vehiculo.placa)
@@ -2101,32 +2359,221 @@ class _Atencion:
             if servicio_id not in disponibles:
                 return [_con_nota(self.texto("servicio_no_disponible"), self._pregunta())]
             self.datos["servicio_id"] = servicio_id
-        return self._video_del_servicio(self.datos["servicio_id"]) + self._preguntar_cuando()
+        # Si pidió el video antes de elegir ("muéstrame el video"), sale aunque ya lo haya visto.
+        pedido = bool(self._pista("video"))
+        video = self._video_del_servicio(self.datos["servicio_id"], pedido=pedido)
+        siguiente = self._preguntar_cuando()
+        if pedido and not video and self.datos.get("servicio_id") is not None:
+            servicio = self.sesion.get(Servicio, self.datos["servicio_id"])
+            siguiente[0] = _con_nota(self._sin_video(servicio), siguiente[0])
+        return video + siguiente
 
-    def _video_del_servicio(self, servicio_id: int | None) -> list[Mensaje]:
-        """El video de cómo es el servicio, si tiene. No se le repite al mismo cliente antes
-        de VIDEO_CADA (pide turno seguido, cambia de servicio y vuelve...)."""
+    def _video_del_servicio(
+        self, servicio_id: int | None, *, pedido: bool = False
+    ) -> list[Mensaje]:
+        """El video de cómo es el servicio, si tiene. Si no lo pidió, no se le repite al mismo
+        cliente antes de VIDEO_CADA (pide turno seguido, cambia de servicio y vuelve...)."""
         if servicio_id is None or not videos.tiene_video(self.sesion, servicio_id):
             return []
         desde = self.ahora - VIDEO_CADA
-        if bandeja_salida.video_enviado_desde(self.sesion, self.telefono, servicio_id, desde):
+        if not pedido and bandeja_salida.video_enviado_desde(
+            self.sesion, self.telefono, servicio_id, desde
+        ):
             return []
         servicio = self.sesion.get(Servicio, servicio_id)
         if servicio is None:
             return []
-        texto = self.texto(
-            "video_del_servicio", servicio=servicio.nombre, vehiculo=self._tipo().nombre.lower()
+        return [self._mensaje_del_video(servicio, self._tipo().nombre.lower())]
+
+    def _mensaje_del_video(self, servicio: Servicio, vehiculo: str) -> Mensaje:
+        texto = self.texto("video_del_servicio", servicio=servicio.nombre, vehiculo=vehiculo)
+        return Mensaje(texto, video=servicio.id)
+
+    # --- El video de un servicio, cuando lo pide ---------------------------------------------
+
+    def _pide_video(self, entendido: Interpretacion | None, normal: str) -> bool:
+        """ "¿me pasas el video del encerado?", "¿tienen videos?": lo dice Gemini, y la palabra
+        "video" basta (por si Gemini no lo marcó o no está). En una queja o al cancelar, no."""
+        if entendido is not None and (
+            entendido.intencion in NO_ES_PEDIR_VIDEO or entendido.vehiculo == OTRO_VEHICULO
+        ):
+            return False  # "¿tienen video de cómo lavan una tractomula?": esa no la lavan
+        return (entendido is not None and entendido.pide_video) or habla_de_un_video(normal)
+
+    def _con_el_video(
+        self, entendido: Interpretacion | None, escrito: str, normal: str
+    ) -> list[Mensaje]:
+        """Pidió el video de un servicio: se lo manda ya, aunque ya se lo haya mandado. Si en
+        el mismo mensaje pide el turno o elige el servicio ("quiero el encerado y muéstrame el
+        video"), eso también se hace y el video sale con el servicio. Después, el bot sigue con
+        lo que iba (o con el menú)."""
+        self.traza.notas.append("Pidió un video: se le manda aunque ya lo haya visto.")
+        pide_turno = entendido is not None and entendido.intencion == Intencion.PEDIR_TURNO
+        if pide_turno and self.paso == Paso.MENU:
+            pistas = _pistas(entendido, escrito, tiempo.hora_local(self.ahora))
+            return self._empezar_turno({**pistas, "video": True})
+        if pide_turno and self.paso == Paso.SERVICIO:
+            elegida = self._opcion_entendida(entendido)
+            if elegida is not None:
+                self._sumar_pistas({"video": True})
+                return self._boton(elegida)
+        servicios, vehiculo = self._servicios_del_video(entendido, normal)
+        if servicios is None:
+            if self.paso in PASOS_DEL_TURNO:
+                # Todavía no se sabe su vehículo: el video sale cuando elija el servicio.
+                self._sumar_pistas({"video": True})
+                return [_con_nota(self._fijo("video_cuando_elija"), self._pregunta())]
+            return self._preguntar_cual_video()
+        mensajes = [self._mensaje_del_video(s, vehiculo) for s in servicios if self._con_video(s)]
+        siguiente = self._despues_del_video(entendido, escrito)
+        if mensajes:
+            return [*mensajes, *siguiente]
+        nota = self._sin_video(servicios[0] if len(servicios) == 1 else None, vehiculo)
+        return [_con_nota(nota, siguiente[0]), *siguiente[1:]]
+
+    def _despues_del_video(self, entendido: Interpretacion | None, escrito: str) -> list[Mensaje]:
+        """Lo que sigue después del video: si además contestó la pregunta ("sí, y mándame el
+        video", "ya, y pásame el video"), eso se hace; si no, se le vuelve a hacer. En el menú
+        (o si preguntaba de cuál video), el menú."""
+        if self.paso in (Paso.MENU, Paso.VIDEO):
+            self._volver_al_menu()
+            return [self._mensaje_del_menu("menu")]
+        elegida = self._opcion_entendida(entendido) if entendido is not None else None
+        if elegida is not None and self.paso != Paso.SERVICIO:
+            return self._boton(elegida)
+        if self.paso in PASOS_DE_CUANDO:
+            dicho = self._dicho(escrito, entendido)
+            if dicho is not None:
+                return self._contesto_cuando(dicho)
+        return [self._pregunta()]
+
+    def _con_video(self, servicio: Servicio) -> bool:
+        return videos.tiene_video(self.sesion, servicio.id)
+
+    def _sin_video(self, servicio: Servicio | None, vehiculo: str = "") -> str:
+        """No hay video de eso: lo que incluye el servicio, para que se haga una idea."""
+        if servicio is None:
+            if vehiculo:
+                return self._fijo("sin_videos", vehiculo=vehiculo)
+            return self._fijo("sin_ningun_video")
+        incluye = " ".join(servicio.descripcion.split()).rstrip(".")
+        if incluye:
+            return self._fijo("sin_video_incluye", servicio=servicio.nombre, incluye=incluye)
+        return self._fijo("sin_video", servicio=servicio.nombre)
+
+    def _servicios_del_video(
+        self, entendido: Interpretacion | None, normal: str
+    ) -> tuple[list[Servicio] | None, str]:
+        """De cuáles servicios quiere el video, y cómo se llama su vehículo (para el texto del
+        video): el servicio que nombra, o el que eligió pidiendo el turno; si no dice cuál,
+        los que tienen video para su vehículo. None si no se sabe de qué vehículo."""
+        fila_id, vehiculo = self._fila_del_video(entendido, normal)
+        activos = select(Servicio).where(Servicio.activo).order_by(Servicio.orden, Servicio.id)
+        nombre = (entendido.servicio if entendido is not None else None) or self._servicio_nombrado(
+            normal
         )
-        return [Mensaje(texto, video=servicio_id)]
+        if nombre:
+            iguales = [
+                servicio
+                for servicio in self.sesion.scalars(activos)
+                if normalizar(servicio.nombre) == normalizar(nombre)
+                and (fila_id is None or servicio.fila_id == fila_id)
+            ]
+            if len(iguales) == 1:
+                return iguales, vehiculo or self._vehiculo_de_la_fila(iguales[0].fila_id)
+        elif self.datos.get("servicio_id") and "tipo_vehiculo_id" in self.datos:
+            elegido = self.sesion.get(Servicio, self.datos["servicio_id"])
+            if elegido is not None:
+                return [elegido], vehiculo
+        if fila_id is None:
+            return None, ""
+        de_la_fila = self.sesion.scalars(activos.where(Servicio.fila_id == fila_id))
+        return [servicio for servicio in de_la_fila if self._con_video(servicio)], vehiculo
+
+    def _fila_del_video(
+        self, entendido: Interpretacion | None, normal: str
+    ) -> tuple[int | None, str]:
+        """La fila (carros o motos) de la que habla, y cómo se llama su vehículo: el del turno
+        que está pidiendo, el que nombra o, si todos los suyos son de una fila, esa."""
+        if "tipo_vehiculo_id" in self.datos:
+            tipo = self._tipo()
+            return tipo.fila_id, tipo.nombre.lower()
+        dicho = (entendido.vehiculo if entendido is not None else None) or vehiculo_por_palabras(
+            normal
+        )
+        if dicho == CARRO:
+            carros = self.sesion.scalars(
+                select(TipoVehiculo).where(TipoVehiculo.nombre != "Moto").order_by(TipoVehiculo.id)
+            ).first()
+            if carros is not None:
+                return carros.fila_id, "carro"
+        tipo = self._tipo_por_nombre(dicho)
+        if tipo is not None:
+            return tipo.fila_id, tipo.nombre.lower()
+        suyos = {t.fila_id: t for _, t in self._vehiculos_conocidos()}
+        if len(suyos) == 1:
+            [(fila_id, _)] = suyos.items()
+            return fila_id, self._vehiculo_de_la_fila(fila_id)
+        return None, ""
+
+    def _vehiculo_de_la_fila(self, fila_id: int) -> str:
+        """ "moto" para la fila de motos; "carro" para la de automóviles y camionetas."""
+        nombres = list(
+            self.sesion.scalars(select(TipoVehiculo.nombre).where(TipoVehiculo.fila_id == fila_id))
+        )
+        return nombres[0].lower() if len(nombres) == 1 else "carro"
+
+    def _preguntar_cual_video(self) -> list[Mensaje]:
+        """Pidió un video en el menú sin decir de cuál servicio ni de qué vehículo: ¿de cuál?"""
+        self._volver_al_menu()
+        self.paso = Paso.VIDEO
+        pregunta = self._pregunta()
+        if not pregunta.opciones:
+            self._volver_al_menu()
+            return [_con_el_menu(self._fijo("sin_ningun_video"))]
+        return [pregunta]
+
+    def _pregunta_video(self) -> Mensaje:
+        con_video = select(VideoDelServicio.servicio_id)
+        servicios = self.sesion.scalars(
+            select(Servicio)
+            .where(Servicio.activo, Servicio.id.in_(con_video))
+            .order_by(Servicio.fila_id, Servicio.orden, Servicio.id)
+        )
+        opciones = tuple(
+            Opcion(
+                f"video.{servicio.id}",
+                recortar(servicio.nombre, 24),
+                f"Para {self._vehiculo_de_la_fila(servicio.fila_id)}",
+            )
+            for servicio in servicios
+        )[:MAX_OPCIONES_LISTA]
+        if not opciones:
+            return Mensaje(self.texto("pedir_cual_video"))
+        return Mensaje(self.texto("pedir_cual_video"), lista=Lista(BOTONES["ver_videos"], opciones))
+
+    def _eligio_video(self, eleccion: str) -> list[Mensaje]:
+        servicio = self.sesion.get(Servicio, _entero(eleccion) or 0)
+        self._volver_al_menu()
+        if servicio is None or not servicio.activo:
+            return self._menu("boton_vencido")
+        siguiente = self._mensaje_del_menu("menu")
+        if not self._con_video(servicio):
+            return [_con_nota(self._sin_video(servicio), siguiente)]
+        return [
+            self._mensaje_del_video(servicio, self._vehiculo_de_la_fila(servicio.fila_id)),
+            siguiente,
+        ]
 
     # --- Pedir turno: cuándo viene (lo antes posible, o un día y una hora) -------------------
 
     def _hoy(self) -> date:
         return tiempo.hora_local(self.ahora).date()
 
-    def _dicho(self, escrito: str) -> Dicho | None:
-        """Lo que dijo de cuándo viene ("mañana a las 10"), si dijo algo de eso."""
-        return entender_cuando(escrito, self._hoy())
+    def _dicho(self, escrito: str, entendido: Interpretacion | None = None) -> Dicho | None:
+        """Lo que dijo de cuándo viene ("mañana a las 10", "ya", "en una hora"), si dijo algo
+        de eso. Con `entendido`, también lo que entendió Gemini, si el bot solo no lo entiende."""
+        return _cuando_dicho(escrito, entendido, tiempo.hora_local(self.ahora))
 
     def _duracion(self) -> timedelta:
         """Lo que dura su servicio: con eso se ve en qué horarios cabe."""
@@ -2423,6 +2870,14 @@ class _Atencion:
         self.paso = Paso.CONFIRMAR
         return [self._pregunta()]
 
+    def _contesto_cuando(self, dicho: Dicho) -> list[Mensaje]:
+        """Contestó con sus palabras la pregunta de cuándo viene (o la de la hora)."""
+        dia = self._dia_elegido() if self.paso == Paso.HORA else None
+        if dia is not None and dicho.fecha is None and not dicho.ya:
+            # Ya eligió el día: "a las 3" es a las 3 de ese día, no de hoy.
+            dicho = dataclasses.replace(dicho, fecha=dia)
+        return self._con_lo_dicho(dicho)
+
     def _con_lo_dicho(self, dicho: Dicho) -> list[Mensaje]:
         """Dijo con sus palabras cuándo viene: "mañana a las 10", "el sábado en la tarde",
         "ahorita". Lo que se pueda, se hace; si esa hora no está, le muestra las más cercanas."""
@@ -2642,7 +3097,7 @@ class _Atencion:
             dia_y_hora=self._dia_y_hora(reserva.hora),
             gracia=int(self.parametros.gracia.total_seconds() // 60),
             recordatorio=self._recordatorio(reserva.hora),
-        )
+        ).rstrip()
         return Mensaje(self._con_la_direccion(texto), botones=textos.botones_de_la_reserva())
 
     def _con_la_direccion(self, texto: str) -> str:
@@ -2794,7 +3249,9 @@ class _Atencion:
         )
 
     def _turno_confirmado(self, nuevo: casos.TurnoNuevo) -> Mensaje:
-        botones: tuple[Opcion, ...] = ()
+        """Corto: el número, cuándo llegar, la dirección y el mapa. Lo demás va en botones: si
+        ya hay puesto, "En camino" y "Ya estoy aquí"; si no, cambiar la hora o cancelar."""
+        botones = textos.botones_de_la_reserva()
         if nuevo.llamado and nuevo.gracia_hasta is not None:
             situacion = self.texto("confirmado_llamado", hora=_hora_limite(nuevo.gracia_hasta))
             botones = textos.botones_del_llamado()
@@ -3302,10 +3759,11 @@ class _Atencion:
             # La ficha no lo dice: lo que sí sabe (si Gemini lo escribió) y al administrador.
             return self._pregunta_sin_respuesta(escrito, dicho if not entendido.sabe else None)
         if self.paso != Paso.MENU:
-            nota = dicho or self._fijo(
-                "toca_una_opcion" if intencion == Intencion.OTRO else "charla"
-            )
-            return [_con_nota(nota, self._pregunta())]
+            if dicho is None:
+                dicho = (
+                    self._ayuda_del_paso() if intencion == Intencion.OTRO else self._fijo("charla")
+                )
+            return [_con_nota(dicho, self._pregunta())]
         if dicho is None:
             if intencion == Intencion.SALUDO:
                 return self._saludo()
@@ -3337,7 +3795,10 @@ class _Atencion:
         """Lo que Gemini sabe del negocio (se arma una sola vez por mensaje)."""
         if self._la_ficha is None:
             self._la_ficha = ficha_completa(
-                self.parametros, self._catalogo(), servicios_de_la_ficha(self.sesion)
+                self.parametros,
+                self._catalogo(),
+                servicios_de_la_ficha(self.sesion),
+                videos_de_la_ficha(self.sesion),
             )
         return self._la_ficha
 

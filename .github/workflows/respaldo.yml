@@ -79,8 +79,12 @@ jobs:
           archivo="auto-ibaguer-$(TZ=America/Bogota date +%Y-%m-%d-%H%M).dump.gpg"
           # La copia va de pg_dump directo a gpg: sin cifrar, nunca toca el disco.
           # PGSSLMODE=require: la conexión con Render siempre va cifrada.
+          # Los videos de los servicios no van (la tabla sí, vacía): pesan unos 10 MB cada
+          # uno y con 14 copias se pasarían de los 500 MB. Tú tienes los archivos: si un día
+          # se restaura una copia, se vuelven a subir en Configuración > Menú y precios.
           docker run --rm -e RESPALDO_DATABASE_URL -e PGSSLMODE=require "$POSTGRES" \
-              sh -c 'exec pg_dump --format=custom --dbname="$RESPALDO_DATABASE_URL"' \
+              sh -c 'exec pg_dump --format=custom --exclude-table-data=video_del_servicio \
+                  --dbname="$RESPALDO_DATABASE_URL"' \
             | gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-fd 3 \
                 --symmetric --cipher-algo AES256 --compress-algo none \
                 --output "$archivo" 3<<< "$RESPALDO_CLAVE"

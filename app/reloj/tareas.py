@@ -5,21 +5,26 @@ cortas, que el reloj escribe en el registro del servidor. Nunca llevan nombres n
 celulares: ese registro lo pueden leer otras personas (por ejemplo, en la nube).
 """
 
+import logging
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Protocol
 
 from app.bot import pausa as pausa_del_bot
 from app.bot import seguimiento
 from app.bot import sesiones as sesiones_del_bot
+from app.catalogo import videos
 from app.comentarios import avisos as avisos_al_dueno
 from app.db.sesion import AbrirSesion
 from app.integraciones import bandeja_entrada, bandeja_salida
-from app.integraciones.bandeja_salida import Enviador, Resultado
+from app.integraciones.bandeja_salida import Enviador, EnvioFallido, Resultado
 from app.turnos import avisos
 from app.turnos import casos_de_uso as casos
 from app.turnos.estados import EstadoTurno
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -182,17 +187,71 @@ def _resumen_de_envios(cuenta: Counter[Resultado]) -> list[str]:
     ]
 
 
+# --- Los videos de los servicios: que WhatsApp los tenga listos ------------------------------
+
+
+class SubeVideos(Protocol):
+    def subir_video(self, contenido: bytes, tipo: str, nombre: str) -> str: ...
+
+
+# Si WhatsApp no recibe un video, se vuelve a intentar después de esto (no en cada vuelta:
+# serían 16 MB cada 30 segundos).
+ESPERA_TRAS_FALLAR = timedelta(hours=1)
+
+
+def subir_videos(subidor: SubeVideos) -> Tarea:
+    """Le sube a WhatsApp los videos de los servicios que todavía no tiene, o que tiene por
+    vencerse (los guarda 30 días). Así, cuando el bot manda uno, ya está listo."""
+    fallas: dict[int, datetime] = {}
+
+    def hacer(abrir: AbrirSesion, ahora: datetime) -> list[str]:
+        with abrir() as sesion:
+            pendientes = videos.por_subir_a_whatsapp(sesion, ahora)
+        subidos = 0
+        for servicio_id in pendientes:
+            if servicio_id in fallas and ahora - fallas[servicio_id] < ESPERA_TRAS_FALLAR:
+                continue
+            with abrir() as sesion, sesion.begin():
+                video = videos.para_subir(sesion, servicio_id)
+                if video is None or videos.id_vigente(video, ahora):
+                    continue
+                try:
+                    id_en_meta = subidor.subir_video(video.contenido, video.tipo, video.nombre)
+                except EnvioFallido as error:
+                    fallas[servicio_id] = ahora
+                    logger.warning("No se pudo subir a WhatsApp el video de un servicio: %s", error)
+                    continue
+                videos.anotar_subida(video, id_en_meta, ahora)
+                fallas.pop(servicio_id, None)
+                subidos += 1
+        if not subidos:
+            return []
+        return [
+            _cuantos(
+                subidos,
+                "video de un servicio quedó listo en WhatsApp",
+                "videos de servicios quedaron listos en WhatsApp",
+            )
+            + "."
+        ]
+
+    return Tarea("los videos de los servicios", hacer)
+
+
 # --- Todas -----------------------------------------------------------------------------------
 
 
 def del_servidor(enviador: Enviador | None) -> list[Tarea]:
     """Las tareas, en el orden en que corren en cada vuelta.
 
-    El envío va de último: así salen en la misma vuelta los mensajes que acaban de dejar
-    las otras tareas (por ejemplo, el aviso de "pasaste al final"). Sin WhatsApp conectado
-    no se envía nada y los mensajes esperan en la bandeja de salida.
+    El envío va después de las demás: así salen en la misma vuelta los mensajes que acaban de
+    dejar las otras tareas (por ejemplo, el aviso de "pasaste al final"). Subir los videos va
+    de último, para no demorar ningún mensaje. Sin WhatsApp conectado no se envía nada y los
+    mensajes esperan en la bandeja de salida.
     """
     tareas = [RESERVAS, GRACIAS, SESIONES_DEL_BOT, AVISO_AL_DUENO, SEGUIMIENTOS]
     if enviador is not None:
         tareas += [MENSAJES_OLVIDADOS, enviar_mensajes(enviador)]
+        if hasattr(enviador, "subir_video"):
+            tareas.append(subir_videos(enviador))
     return tareas

@@ -10,6 +10,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     SmallInteger,
     String,
     Text,
@@ -102,6 +103,30 @@ class ServicioPrecio(Base):
     # Duración estimada en minutos: con ella se calcula la espera de la fila.
     duracion_min: Mapped[int] = mapped_column(SmallInteger)
     activo: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+
+
+class VideoDelServicio(Base):
+    """El video que el bot le manda al cliente cuando escoge el servicio: cómo es el lavado.
+
+    El archivo se guarda aquí, en la base: el servidor no guarda archivos de un despliegue al
+    otro. WhatsApp lo recibe una vez y devuelve un id que le sirve 30 días; antes de que se
+    venza se vuelve a subir (id_en_meta y subido_a_meta_en).
+    """
+
+    __tablename__ = "video_del_servicio"
+    __table_args__ = (CheckConstraint("peso > 0", name="peso_positivo"),)
+
+    servicio_id: Mapped[int] = mapped_column(
+        ForeignKey("servicio.id", ondelete="CASCADE"), primary_key=True
+    )
+    nombre: Mapped[str] = mapped_column(String(200))  # el nombre del archivo que se subió
+    tipo: Mapped[str] = mapped_column(String(40))  # video/mp4
+    peso: Mapped[int] = mapped_column(Integer)  # en bytes
+    # El archivo entero. No se lee sino cuando se necesita (para mandarlo o verlo).
+    contenido: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    subido_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    id_en_meta: Mapped[str | None] = mapped_column(String(128))
+    subido_a_meta_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Configuracion(Base):

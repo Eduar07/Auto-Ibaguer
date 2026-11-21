@@ -1,0 +1,43 @@
+{% import "_iconos.html" as iconos %}
+{#- El video de un servicio: el bot se lo manda al cliente cuando escoge ese servicio. -#}
+<div class="dialogo__caja">
+  <div class="dialogo__cabeza">
+    <button type="button" class="boton-texto boton-volver" data-cerrar-dialogo>{{ iconos.icono("volver", 18, 2.2) }}Volver</button>
+    <h2 id="dialogo-titulo">Video del {{ servicio.nombre }} · {{ fila.nombre|lower }}</h2>
+    <p>El bot se lo manda al cliente cuando escoge este servicio (a cada cliente, máximo una vez al mes).</p>
+  </div>
+
+  <div class="dialogo__cuerpo">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    {% if video %}
+    <video class="video-del-servicio" src="/configuracion/servicios/{{ servicio.id }}/video.mp4" controls preload="metadata" playsinline></video>
+    <p class="suave">{{ video.nombre }} · {{ peso }} · subido el {{ subido }}</p>
+    <p class="nota nota--suelta">{{ iconos.icono("info", 18) }}<span>
+      {%- if video.listo_en_whatsapp %}Ya está listo en WhatsApp.
+      {%- else %}En un minuto queda listo en WhatsApp: el sistema se lo sube solo.{% endif -%}
+    </span></p>
+    {% else %}
+    <p>Todavía no tiene video.</p>
+    {% endif %}
+    <form hx-post="/configuracion/servicios/{{ servicio.id }}/video" hx-target="#dialogo-contenido"
+          hx-encoding="multipart/form-data" hx-disabled-elt="#dialogo-contenido button" class="subir-video">
+      <div class="campo">
+        <label for="archivo-video">{% if video %}Cambiarlo por otro{% else %}Escoge el video{% endif %}</label>
+        <input id="archivo-video" name="archivo" type="file" accept="video/mp4" required>
+        <p class="ayuda">MP4 de hasta 16 MB: la versión para WhatsApp.</p>
+      </div>
+      <button type="submit" class="boton">{% if video %}Cambiar video{% else %}Subir video{% endif %}</button>
+    </form>
+  </div>
+
+  <div class="dialogo__pie">
+    <button type="button" class="boton boton--grande" data-cerrar-dialogo>Listo</button>
+    {% if video %}
+    <button type="button" class="boton-texto" hx-post="/configuracion/servicios/{{ servicio.id }}/video/quitar"
+            hx-target="#dialogo-contenido" hx-disabled-elt="#dialogo-contenido button">Quitar el video</button>
+    {% endif %}
+  </div>
+</div>
+{#- Una celda de tabla no puede ir suelta en la respuesta: va dentro de <template> para que
+    htmx la cambie en la tabla del menú (hx-swap-oob). -#}
+{% if con_la_celda %}<template>{% include "_celda_del_video.html" %}</template>{% endif %}

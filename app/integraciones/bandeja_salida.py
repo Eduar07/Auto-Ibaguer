@@ -85,6 +85,23 @@ def encolar_respuesta(
     )
 
 
+def video_enviado_desde(sesion: Session, telefono: str, servicio_id: int, desde: datetime) -> bool:
+    """¿Ya le salió (o está por salirle) el video de ese servicio a ese cliente desde `desde`?
+    Así no se le repite cada vez que pide turno."""
+    consulta = (
+        select(MensajeSaliente.id)
+        .where(
+            MensajeSaliente.telefono == telefono,
+            MensajeSaliente.tipo == TIPO_RESPUESTA,
+            MensajeSaliente.contenido["video"].as_integer() == servicio_id,
+            MensajeSaliente.estado.in_([EstadoMensaje.PENDIENTE, EstadoMensaje.ENVIADO]),
+            MensajeSaliente.creado_en >= desde,
+        )
+        .limit(1)
+    )
+    return sesion.scalar(consulta) is not None
+
+
 # Lo que el administrador le escribe a un cliente desde Comentarios (hito 7b): sale tal
 # cual, como texto. `por` es el usuario que lo escribió, para verlo en la conversación.
 TIPO_DEL_ADMINISTRADOR = "del_administrador"

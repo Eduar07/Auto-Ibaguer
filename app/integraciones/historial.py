@@ -117,6 +117,8 @@ def _lo_que_salio(mensaje: MensajeSaliente, parametros: Parametros) -> Linea:
         quien, por, dice = Quien.ADMINISTRADOR, contenido.get("por"), contenido.get("texto", "")
     elif mensaje.tipo == TIPO_RESPUESTA:
         dice, opciones = contenido.get("texto", ""), _opciones(contenido)
+        if contenido.get("video") is not None:
+            dice = f"Video del servicio: {dice}"
     elif mensaje.tipo in _TIPOS_DE_AVISO:
         try:
             aviso = mensaje_del_aviso(mensaje.tipo, contenido, parametros)

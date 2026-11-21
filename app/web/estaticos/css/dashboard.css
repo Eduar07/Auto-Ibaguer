@@ -726,6 +726,9 @@ legend { padding: 0; margin-bottom: 8px; }
 .tabla-menu tbody th { font-weight: 700; min-width: 140px; }
 .tabla-menu__descripcion { display: block; font-size: 12px; font-weight: 400; color: var(--tinta-suave); max-width: 260px; }
 .tabla-menu__real { white-space: nowrap; color: var(--tinta-suave); }
+.tabla-menu__video { white-space: nowrap; }
+.video-del-servicio { display: block; max-width: 100%; max-height: 40vh; margin: 0 auto 8px; border-radius: 12px; background: #000; }
+.subir-video { margin-top: 16px; }
 .campo-pesos, .campo-minutos, .campo-con-unidad { display: flex; align-items: center; gap: 6px; }
 .campo-pesos input, .campo-minutos input {
   min-height: 44px; width: 110px; border: 1px solid var(--borde-fuerte); border-radius: 10px; padding: 0 10px; font-size: 16px; background: #fff;
@@ -953,6 +956,7 @@ form:not(:has(input[name="tipo"][value="gasto"]:checked)) .solo-si-es-gasto { di
   box-shadow: 0 1px 1px rgba(14, 26, 43, 0.12);
 }
 .burbuja--bot { align-self: flex-start; }
+.burbuja__video { display: block; width: 100%; max-width: 240px; max-height: 360px; border-radius: 8px; background: #000; margin-bottom: 6px; }
 .burbuja--bot p { background: #fff; border-top-left-radius: 4px; }
 .burbuja--yo { align-self: flex-end; }
 .burbuja--yo p { background: #d9fdd3; border-top-right-radius: 4px; }

@@ -1,0 +1,10 @@
+{% import "_iconos.html" as iconos %}
+{#- La celda "Video" de un servicio en el menú: abre el diálogo para subir, ver o quitar el
+    video que el bot manda cuando el cliente escoge el servicio. Con con_la_celda llega
+    también en la respuesta del diálogo y reemplaza la de la tabla (hx-swap-oob). -#}
+<td data-etiqueta="Video" id="video-servicio-{{ servicio.id }}" class="tabla-menu__video"{% if con_la_celda %} hx-swap-oob="true"{% endif %}>
+  <button type="button" class="boton-texto" hx-get="/configuracion/servicios/{{ servicio.id }}/video"
+          hx-target="#dialogo-contenido" hx-swap="innerHTML" hx-disabled-elt="this">
+    {%- if video %}🎬 Ver video{% else %}{{ iconos.icono("mas", 16, 2.5) }}Subir video{% endif -%}
+  </button>
+</td>

@@ -1,8 +1,10 @@
 """WhatsApp Cloud API de Meta: enviar lo que dice el bot y leer lo que Meta nos avisa.
 
 - Salida: `WhatsApp` es el que envía los mensajes de la bandeja de salida
-  (app.integraciones.bandeja_salida). Arma cada uno como lo pide Meta (texto, botones o
-  lista) y lo envía por HTTPS. Si Meta no lo acepta, dice si vale la pena reintentar.
+  (app.integraciones.bandeja_salida). Arma cada uno como lo pide Meta (texto, botones,
+  lista o el video de un servicio) y lo envía por HTTPS. Si Meta no lo acepta, dice si vale
+  la pena reintentar. Los videos se le suben a Meta antes (`subir_video`) y se mandan con
+  el id que devuelve.
 - Entrada: `leer_aviso_de_meta` convierte lo que Meta manda al webhook (app.web.webhook)
   en mensajes de clientes y en avisos de mensajes que no se pudieron entregar. De una
   foto o un audio llega solo el id: `descargar` la trae de Meta para que Gemini la vea o
@@ -29,6 +31,7 @@ from sqlalchemy.orm import Session
 from app import tiempo
 from app.bot.avisos import mensaje_del_aviso
 from app.bot.mensajes import Adjunto, Mensaje, tipo_de_archivo
+from app.catalogo import videos
 from app.catalogo.parametros import leer_parametros
 from app.clientes.reglas import es_de_prueba, es_usuario_de_whatsapp
 from app.config import ConfiguracionEntorno, obtener_entorno
@@ -268,12 +271,19 @@ def _motivo(estado: dict[str, Any]) -> str:
 # --- Enviar ----------------------------------------------------------------------------------
 
 
-def contenido_para_meta(mensaje: Mensaje, telefono: str) -> dict[str, Any]:
-    """El mensaje del bot como lo pide la Cloud API: texto, texto con botones, o con lista."""
+def contenido_para_meta(
+    mensaje: Mensaje, telefono: str, id_del_video: str | None = None
+) -> dict[str, Any]:
+    """El mensaje del bot como lo pide la Cloud API: texto, texto con botones, con lista, o
+    el video de un servicio (con `id_del_video`, el id con que Meta lo tiene guardado)."""
     # A quien no comparte su celular se le escribe con su id de usuario: va en
     # "recipient", no en "to".
     destino = "recipient" if es_usuario_de_whatsapp(telefono) else "to"
     base = {"messaging_product": "whatsapp", "recipient_type": "individual", destino: telefono}
+    if mensaje.video is not None:
+        if not id_del_video:
+            raise ValueError("Para mandar un video hace falta el id con que Meta lo tiene.")
+        return {**base, "type": "video", "video": {"id": id_del_video, "caption": mensaje.texto}}
     if mensaje.botones:
         botones = [
             {"type": "reply", "reply": {"id": boton.id, "title": boton.titulo}}
@@ -329,6 +339,8 @@ def le_escribio_hace_poco(sesion: Session, telefono: str) -> bool:
 # Lo más pesado que se le muestra a Gemini: una foto de WhatsApp pesa menos de 5 MB, y una
 # nota de voz de unos minutos, mucho menos. Más que eso no se descarga.
 PESO_MAXIMO = 5 * 1024 * 1024
+# Subir un video de hasta 16 MB puede tardar: se le da más tiempo que a un mensaje.
+ESPERA_AL_SUBIR = httpx.Timeout(90.0, connect=5.0)
 
 
 class WhatsApp:
@@ -337,6 +349,7 @@ class WhatsApp:
     def __init__(self, entorno: ConfiguracionEntorno, http: httpx.Client | None = None) -> None:
         self.url_de_la_api = f"{URL_DE_META}/{entorno.whatsapp_version_api}"
         self.url = f"{self.url_de_la_api}/{entorno.whatsapp_id_numero}/messages"
+        self.url_de_los_archivos = f"{self.url_de_la_api}/{entorno.whatsapp_id_numero}/media"
         self._encabezados = {"Authorization": f"Bearer {entorno.whatsapp_token}"}
         # Si Meta no contesta en 10 segundos, se deja para el próximo intento.
         self.http = http or httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0))
@@ -352,7 +365,18 @@ class WhatsApp:
                 "No le ha escrito al bot en las últimas 24 horas: WhatsApp no deja escribirle.",
                 reintentar=False,
             )
-        contenido = contenido_para_meta(mensaje_del_bot(sesion, mensaje), mensaje.telefono)
+        del_bot = mensaje_del_bot(sesion, mensaje)
+        if del_bot.video is None:
+            return self._mandar(contenido_para_meta(del_bot, mensaje.telefono))
+        # Un video es un extra: si no sale, no se reintenta. Así no frena lo que el bot le
+        # dice después al mismo cliente (sus mensajes salen en orden).
+        try:
+            id_del_video = self._id_del_video(sesion, del_bot.video)
+            return self._mandar(contenido_para_meta(del_bot, mensaje.telefono, id_del_video))
+        except EnvioFallido as error:
+            raise EnvioFallido(str(error), reintentar=False) from error
+
+    def _mandar(self, contenido: dict[str, Any]) -> str:
         try:
             respuesta = self.http.post(self.url, json=contenido, headers=self._encabezados)
         except httpx.TimeoutException as error:
@@ -364,6 +388,48 @@ class WhatsApp:
         if respuesta.is_success:
             return _id_del_mensaje(respuesta)
         raise _por_que_no(respuesta)
+
+    def _id_del_video(self, sesion: Session, servicio_id: int) -> str:
+        """El id con que Meta tiene el video del servicio. Si no lo tiene (o se le venció),
+        se lo sube ahora; casi siempre ya lo subió el reloj."""
+        ahora = tiempo.ahora()
+        video = videos.del_servicio(sesion, servicio_id)
+        if video is None:
+            raise EnvioFallido("Ese servicio ya no tiene video.", reintentar=False)
+        vigente = videos.id_vigente(video, ahora)
+        if vigente:
+            return vigente
+        # Leer `contenido` trae el archivo de la base (no se lee si no hace falta).
+        id_en_meta = self.subir_video(video.contenido, video.tipo, video.nombre)
+        videos.anotar_subida(video, id_en_meta, ahora)
+        sesion.flush()
+        return id_en_meta
+
+    def subir_video(self, contenido: bytes, tipo: str, nombre: str) -> str:
+        """Le sube el video a Meta y devuelve el id con que lo guarda (le sirve 30 días)."""
+        try:
+            respuesta = self.http.post(
+                self.url_de_los_archivos,
+                headers=self._encabezados,
+                data={"messaging_product": "whatsapp", "type": tipo},
+                files={"file": (nombre, contenido, tipo)},
+                timeout=ESPERA_AL_SUBIR,
+            )
+        except httpx.TimeoutException as error:
+            raise EnvioFallido("WhatsApp no recibió el video a tiempo.", reintentar=True) from error
+        except httpx.HTTPError as error:
+            raise EnvioFallido(
+                f"No hubo conexión con WhatsApp para subir el video ({type(error).__name__}).",
+                reintentar=True,
+            ) from error
+        if not respuesta.is_success:
+            raise _por_que_no(respuesta)
+        try:
+            return str(respuesta.json()["id"])
+        except (ValueError, KeyError, TypeError) as error:
+            raise EnvioFallido(
+                "WhatsApp recibió el video pero no dio su id.", reintentar=True
+            ) from error
 
     def avisar_que_escribe(self, id_meta: str) -> None:
         """El chulito azul de leído y el "escribiendo…" mientras el bot piensa la respuesta.

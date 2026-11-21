@@ -1,4 +1,5 @@
-{#- Una fila del menú: precio por tipo de vehículo, duración estimada y la real. -#}
+{#- Una fila del menú: precio por tipo de vehículo, duración estimada, la real y el video. -#}
+{% import "_iconos.html" as iconos %}
 {% set campo_duracion = "duracion-%d"|format(servicio.id) %}
 <tr>
   <th scope="row">{{ servicio.nombre }}{% if servicio.descripcion %}<span class="tabla-menu__descripcion">{{ servicio.descripcion }}</span>{% endif %}</th>
@@ -28,4 +29,5 @@
       <span class="suave" title="Todavía no hay lavados de este servicio en los últimos {{ dias_de_duracion_real or 30 }} días">—</span>
     {%- endif -%}
   </td>
+  {% with video = servicio.video, con_la_celda = False %}{% include "_celda_del_video.html" %}{% endwith %}
 </tr>

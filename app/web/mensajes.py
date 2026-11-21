@@ -111,7 +111,9 @@ def _lo_que_dijo(mensaje: MensajeEntrante) -> str:
 
 def _lo_que_dice(mensaje: MensajeSaliente) -> str:
     if mensaje.tipo == TIPO_RESPUESTA:
-        return recortar((mensaje.contenido or {}).get("texto", ""), 120)
+        contenido = mensaje.contenido or {}
+        video = "Video del servicio: " if contenido.get("video") is not None else ""
+        return recortar(video + contenido.get("texto", ""), 120)
     if mensaje.tipo == TIPO_DEL_ADMINISTRADOR:
         contenido = mensaje.contenido or {}
         por = contenido.get("por") or "Administrador"
